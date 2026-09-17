@@ -1317,6 +1317,66 @@ export function getProductSlug(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+const CATEGORY_SLUG_MAP: Record<string, string> = {
+  "SaaS": "saas",
+  "Artificial Intelligence": "artificial-intelligence",
+  "AI Agents & Automation": "ai-agents-automation",
+  "Productivity": "productivity",
+  "Marketing Tools": "marketing-tools",
+  "Finance & FinTech": "finance-fintech",
+  "Finance & Fintech": "finance-fintech",
+  "Developer Tools": "developer-tools",
+  "APIs & Integrations": "apis-integrations",
+  "Open Source": "open-source",
+  "Design Tools": "design-tools",
+  "Mobile Apps": "mobile-apps",
+  "Web3 & Crypto": "web3-crypto",
+  "E-Commerce & Retail": "e-commerce-retail",
+  "Health & Fitness": "health-fitness",
+  "Education & EdTech": "education-edtech",
+  "Analytics & Data": "analytics-data",
+  "Cybersecurity": "cybersecurity",
+  "Social & Community": "social-community",
+  "Media & Entertainment": "media-entertainment",
+  "No-Code & Low-Code": "no-code-low-code",
+  "Customer Support & CRM": "customer-support-crm",
+  "Customer Support Tools": "customer-support-crm",
+  "AR/VR": "ar-vr",
+  "AI Notetakers": "ai-notetakers",
+  "AI Presentation Software": "presentation-software",
+  "AI Workflow Automation": "workflow-automation",
+  "AI Coding Agents": "ai-coding-agents",
+  "AI Code Editors": "ai-code-editors",
+  "AI Code Testing": "ai-code-testing",
+  "AI Databases": "ai-databases",
+  "Vibe Coding Tools": "vibe-coding",
+  "3D & Animation": "3d-animation",
+  "AI Generative Media": "ai-generative-media",
+  "Accounting Software": "accounting",
+  "Budgeting Apps": "budgeting",
+  "Invoicing Tools": "invoicing",
+  "Legal Services": "legal-services",
+  "AI Sales Tools": "ai-sales-tools",
+  "CRM Software": "crm-software"
+};
+
+export function getCategorySlug(category: string): string {
+  if (!category) return "";
+  const trimmed = category.trim();
+  if (CATEGORY_SLUG_MAP[trimmed]) return CATEGORY_SLUG_MAP[trimmed];
+  return trimmed
+    .toLowerCase()
+    .replace(/&#x27;|&apos;|'/gi, '')
+    .replace(/&amp;/gi, 'and')
+    .replace(/&/g, '')
+    .replace(/&quot;|"/gi, '')
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Product | null> {
   if (!id) return null;
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);

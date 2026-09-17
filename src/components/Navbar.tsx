@@ -53,6 +53,7 @@ import {
   clearCache,
   getNotifications,
   markAllNotificationsAsRead,
+  getCategorySlug,
   type NotificationItem,
   MOCK_NOTIFICATIONS
 } from "@/lib/supabase";
@@ -72,34 +73,6 @@ interface NavbarProps {
   /** called when user clicks on search input */
   onSearchClick?: () => void;
 }
-
-const getCategorySlug = (cat: string) => {
-  const map: Record<string, string> = {
-    "SaaS": "saas",
-    "Artificial Intelligence": "artificial-intelligence",
-    "AI Agents & Automation": "ai-agents-automation",
-    "Productivity": "productivity",
-    "Marketing Tools": "marketing-tools",
-    "Finance & FinTech": "finance-fintech",
-    "Developer Tools": "developer-tools",
-    "APIs & Integrations": "apis-integrations",
-    "Open Source": "open-source",
-    "Design Tools": "design-tools",
-    "Mobile Apps": "mobile-apps",
-    "Web3 & Crypto": "web3-crypto",
-    "E-Commerce & Retail": "e-commerce-retail",
-    "Health & Fitness": "health-fitness",
-    "Education & EdTech": "education-edtech",
-    "Analytics & Data": "analytics-data",
-    "Cybersecurity": "cybersecurity",
-    "Social & Community": "social-community",
-    "Media & Entertainment": "media-entertainment",
-    "No-Code & Low-Code": "no-code-low-code",
-    "Customer Support & CRM": "customer-support-crm",
-    "AR/VR": "ar-vr"
-  };
-  return map[cat] || cat.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-};
 
 export default function Navbar({
   theme: externalTheme,

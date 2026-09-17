@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 
-import { getProductSlug } from "@/lib/supabase";
+import { getCategorySlug } from "@/lib/supabase";
 
 interface CategoryExplorerWidgetProps {
   categoryCounts: Record<string, number>;
@@ -29,7 +29,7 @@ export default function CategoryExplorerWidget({
         {Object.entries(categoryCounts).map(([catName, count]) => (
           <Link
             key={catName}
-            href={`/categories/${getProductSlug(catName)}`}
+            href={`/categories/${getCategorySlug(catName)}`}
             className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer group"
           >
             <span className="text-base font-normal text-muted-foreground group-hover:text-[#ff5733] transition-colors truncate">

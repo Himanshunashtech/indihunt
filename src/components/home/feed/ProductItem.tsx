@@ -10,7 +10,7 @@ import {
   Lock,
   LayoutGrid,
 } from "lucide-react";
-import { Product, getProductSlug } from "@/lib/supabase";
+import { Product, getProductSlug, getCategorySlug } from "@/lib/supabase";
 
 interface ProductItemProps {
   product: Product;
@@ -71,9 +71,6 @@ const ProductItem = memo(function ProductItem({
   }
   const productTags = tagList.slice(0, 3);
   const displayRank = idx + 1;
-
-  const getCategorySlug = (cat: string) =>
-    cat.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
   return (
     <section

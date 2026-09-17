@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, X, ArrowRight, Rocket, MessageSquare, ArrowUp } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Product, Thread, getProductSlug } from "@/lib/supabase";
+import { Product, Thread, getProductSlug, getCategorySlug } from "@/lib/supabase";
 
 interface BigSearchModalProps {
   open: boolean;
@@ -158,7 +158,7 @@ export default function BigSearchModal({
                             {count} projects
                           </span>
                           <Link
-                            href={`/categories/${getProductSlug(catName)}`}
+                            href={`/categories/${getCategorySlug(catName)}`}
                             onClick={() => onOpenChange(false)}
                             className="text-xs sm:text-sm font-medium text-[#ff5733] hover:underline flex-shrink-0"
                           >

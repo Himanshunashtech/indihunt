@@ -10,6 +10,7 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronsLeft,
+  ChevronsRight,
   Flame,
   Globe,
   SlidersHorizontal,
@@ -345,13 +346,24 @@ function ProductsContent() {
 
   const selectedTopic = searchParams.get("topic") || "";
   const selectedParent = searchParams.get("parentTopic") || "";
+  const pageParam = parseInt(searchParams.get("page") || "1", 10);
 
   const [products, setProducts] = useState<Product[]>(() => {
     return typeof window !== 'undefined' ? getCachedProducts() : [];
   });
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState<number>(() => {
+    return isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
+  });
   const ITEMS_PER_PAGE = 10;
+
+  // Sync page from URL if changed externally
+  useEffect(() => {
+    const p = parseInt(searchParams.get("page") || "1", 10);
+    if (!isNaN(p) && p >= 1 && p !== currentPage) {
+      setCurrentPage(p);
+    }
+  }, [searchParams]);
 
   // Auth Listener
   useEffect(() => {
@@ -438,10 +450,54 @@ function ProductsContent() {
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
 
+  const handlePageChange = (newPage: number) => {
+    const validPage = Math.max(1, Math.min(totalPages, newPage));
+    setCurrentPage(validPage);
+
+    // Sync URL query without full reload
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (validPage === 1) {
+        params.delete("page");
+      } else {
+        params.set("page", validPage.toString());
+      }
+      const newQuery = params.toString() ? `?${params.toString()}` : "";
+      window.history.pushState(null, "", `${window.location.pathname}${newQuery}`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | string)[] = [];
+    pages.push(1);
+
+    if (currentPage > 3) {
+      pages.push("dots-left");
+    }
+
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    if (currentPage < totalPages - 2) {
+      pages.push("dots-right");
+    }
+
+    pages.push(totalPages);
+    return pages;
+  }, [totalPages, currentPage]);
+
   const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const validPage = Math.min(currentPage, totalPages);
+    const startIndex = (validPage - 1) * ITEMS_PER_PAGE;
     return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
+  }, [filteredProducts, currentPage, totalPages]);
 
   const handleVote = async (e: React.MouseEvent, productId: string) => {
     e.preventDefault();
@@ -694,69 +750,82 @@ function ProductsContent() {
 
             {/* ── Numeric Pagination ── */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-8 border-t border-border/50">
-                <button
-                  onClick={() => {
-                    setCurrentPage(1);
-                    if (typeof window !== "undefined") {
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }
-                  }}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  title="First Page"
-                >
-                  <ChevronsLeft className="w-4 h-4" />
-                </button>
+              <div className="pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  Showing <span className="font-semibold text-foreground">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to{" "}
+                  <span className="font-semibold text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)}</span> of{" "}
+                  <span className="font-semibold text-foreground">{filteredProducts.length}</span> products
+                </p>
 
-                <button
-                  onClick={() => {
-                    setCurrentPage(prev => Math.max(1, prev - 1));
-                    if (typeof window !== "undefined") {
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }
-                  }}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  title="Previous Page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+                  {/* First Page */}
+                  <button
+                    onClick={() => handlePageChange(1)}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="First Page"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
 
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-                  const isActive = pageNum === currentPage;
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => {
-                        setCurrentPage(pageNum);
-                        if (typeof window !== "undefined") {
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }
-                      }}
-                      className={`min-w-[38px] h-10 px-3 rounded-xl text-base font-medium transition-all cursor-pointer ${isActive
-                        ? "bg-card border-2 border-border/80 text-foreground shadow-xs"
-                        : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                  {/* Previous Page */}
+                  <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Page Numbers */}
+                  {pageNumbers.map((pageNum, idx) => {
+                    if (typeof pageNum === "string") {
+                      return (
+                        <span
+                          key={`dots-${idx}`}
+                          className="px-2 py-1 text-muted-foreground font-medium select-none"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    const isActive = pageNum === currentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-orange-500 text-white font-semibold shadow-xs"
+                            : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
                         }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
 
-                <button
-                  onClick={() => {
-                    setCurrentPage(prev => Math.min(totalPages, prev + 1));
-                    if (typeof window !== "undefined") {
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }
-                  }}
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  title="Next Page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                  {/* Next Page */}
+                  <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  {/* Last Page */}
+                  <button
+                    onClick={() => handlePageChange(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Last Page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
 

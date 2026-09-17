@@ -57,31 +57,32 @@ export default function CategoryPageClient({
   const [currentUser, setCurrentUser] = useState<any>(reduxUser);
   const effectiveUserId = reduxUser?.id || currentUser?.id || null;
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        let uid = reduxUser?.id;
-        if (!uid) {
-          const sessionItem = sessionStorage.getItem("indihunt_user_session");
-          if (sessionItem) {
-            uid = JSON.parse(sessionItem)?.id;
-          }
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+
+  useEffect(() => {
+    try {
+      let uid = reduxUser?.id;
+      if (!uid) {
+        const sessionItem = sessionStorage.getItem("indihunt_user_session");
+        if (sessionItem) {
+          uid = JSON.parse(sessionItem)?.id;
         }
-        const raw = uid
-          ? localStorage.getItem(`indihunt_upvotes_${uid}`) ||
-            localStorage.getItem("indihunt_upvotes")
-          : null;
-        if (raw) {
-          const votedSet = new Set<string>(JSON.parse(raw));
-          return initialProducts.map((p) => ({
+      }
+      const raw = uid
+        ? localStorage.getItem(`indihunt_upvotes_${uid}`) ||
+          localStorage.getItem("indihunt_upvotes")
+        : null;
+      if (raw) {
+        const votedSet = new Set<string>(JSON.parse(raw));
+        setProducts((prev) =>
+          prev.map((p) => ({
             ...p,
             has_upvoted: votedSet.has(p.id),
-          }));
-        }
-      } catch (e) {}
-    }
-    return initialProducts;
-  });
+          }))
+        );
+      }
+    } catch (e) {}
+  }, [reduxUser?.id, initialProducts]);
 
   const [sortBy, setSortBy] = useState<'recent' | 'upvotes' | 'alphabetical'>('recent');
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
