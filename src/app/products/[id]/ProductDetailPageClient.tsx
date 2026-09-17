@@ -186,17 +186,15 @@ function ProductDetailsContent({
   const [user, setUser] = useState<any>(reduxUser || null);
 
   useEffect(() => {
-    if (reduxUser) {
-      setUser(reduxUser);
-    }
+    setUser(reduxUser || null);
   }, [reduxUser]);
 
-  const currentUserId = reduxUser?.id || reduxProfile?.id || user?.id || null;
+  const currentUserId = reduxUser?.id || null;
 
   useEffect(() => {
     if (!productId) return;
     const unsubscribe = subscribe(`product:${productId}`, "product_upvoted", (data: { productId: string; upvotes_count: number }) => {
-      setProduct((prev: any) => {
+      setLocalProduct((prev: any) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -216,6 +214,7 @@ function ProductDetailsContent({
 
   // Dynamically resolve upvoted status for current logged-in user
   const isUpvoted = useMemo(() => {
+    if (!currentUserId) return false;
     if (localProduct && typeof localProduct.has_upvoted === "boolean") {
       return localProduct.has_upvoted;
     }
@@ -223,7 +222,7 @@ function ProductDetailsContent({
       return queryProduct.has_upvoted;
     }
     const targetId = queryProduct?.id || initialProduct?.id || cachedProd?.id;
-    if (typeof window !== "undefined" && currentUserId && targetId) {
+    if (typeof window !== "undefined" && targetId) {
       try {
         const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem("indihunt_upvotes");
         if (raw) {
@@ -241,7 +240,7 @@ function ProductDetailsContent({
     return {
       ...raw,
       has_upvoted: isUpvoted,
-      upvotes_count: localProduct?.upvotes_count ?? queryProduct?.upvotes_count ?? raw.upvotes_count,
+      upvotes_count: localProduct?.upvotes_count ?? queryProduct?.upvotes_count ?? raw.upvotes_count ?? 0,
     };
   }, [localProduct, queryProduct, initialProduct, cachedProd, isUpvoted]);
 
