@@ -394,6 +394,11 @@ function ProductsContent() {
     }
   }, [selectedTopic, selectedParent]);
 
+  // Dynamic current Month & Year
+  const currentMonthYear = useMemo(() => {
+    return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date());
+  }, []);
+
   // Resolve active display title
   const activeTitle = useMemo(() => {
     if (selectedTopic) {
@@ -407,15 +412,15 @@ function ProductsContent() {
         }
       }
       const displayName = subName || (selectedTopic.charAt(0).toUpperCase() + selectedTopic.slice(1).replace(/-/g, " "));
-      return `Best ${displayName} products of August 2026`;
+      return `Best ${displayName} products of ${currentMonthYear}`;
     }
     if (selectedParent) {
       const parentObj = LAUNCH_TAGS_HIERARCHY.find(p => p.slug === selectedParent);
       const parentName = parentObj ? parentObj.name : selectedParent.charAt(0).toUpperCase() + selectedParent.slice(1).replace(/-/g, " ");
-      return `Best ${parentName} products of August 2026`;
+      return `Best ${parentName} products of ${currentMonthYear}`;
     }
-    return "Best Products of August 2026";
-  }, [selectedTopic, selectedParent]);
+    return `Best Products of ${currentMonthYear}`;
+  }, [selectedTopic, selectedParent, currentMonthYear]);
 
   // Resolve active description
   const activeDescription = useMemo(() => {
@@ -425,10 +430,10 @@ function ProductsContent() {
     }
     if (selectedTopic || selectedParent) {
       const topicName = selectedTopic ? (selectedTopic.charAt(0).toUpperCase() + selectedTopic.slice(1).replace(/-/g, " ")) : selectedParent;
-      return `Discover the best ${topicName} products of August 2026 as chosen by IndiHunt users.`;
+      return `Discover the best ${topicName} products of ${currentMonthYear} as chosen by IndiHunt users.`;
     }
-    return "Discover the best products of August 2026 as chosen by IndiHunt users.";
-  }, [selectedTopic, selectedParent]);
+    return `Discover the best products of ${currentMonthYear} as chosen by IndiHunt users.`;
+  }, [selectedTopic, selectedParent, currentMonthYear]);
 
   // Filter products by topic / parentTopic
   const filteredProducts = useMemo(() => {
