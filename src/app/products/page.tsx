@@ -435,13 +435,31 @@ function ProductsContent() {
     return `Discover the best products of ${currentMonthYear} as chosen by IndiHunt users.`;
   }, [selectedTopic, selectedParent, currentMonthYear]);
 
-  // Filter products by topic / parentTopic
+  // Filter products by current month & topic / parentTopic
   const filteredProducts = useMemo(() => {
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + IST_OFFSET_MS);
+    const currentYear = istNow.getUTCFullYear();
+    const currentMonth = istNow.getUTCMonth();
+
+    // 1. Filter products launched in the current month
+    const currentMonthProducts = products.filter(p => {
+      if (p.status === "draft") return false;
+      const pDate = p.scheduled_for
+        ? new Date(p.scheduled_for)
+        : (p.created_at ? new Date(p.created_at) : null);
+      if (!pDate) return false;
+      const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
+      return istPDate.getUTCFullYear() === currentYear && istPDate.getUTCMonth() === currentMonth;
+    });
+
+    const sourceProducts = currentMonthProducts.length > 0 ? currentMonthProducts : products;
+
     const activeQuery = (selectedTopic || selectedParent).toLowerCase().replace(/[^a-z0-9]+/g, "");
 
-    if (!activeQuery) return products;
+    if (!activeQuery) return sourceProducts;
 
-    return products.filter(p => {
+    return sourceProducts.filter(p => {
       const tagsMatch = (p.tags || []).some(t => {
         const cleanT = t.toLowerCase().replace(/[^a-z0-9]+/g, "");
         return cleanT.includes(activeQuery) || activeQuery.includes(cleanT);
