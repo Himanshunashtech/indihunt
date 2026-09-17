@@ -98,25 +98,21 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
         localStorage.removeItem('indihunt_user_session');
       } catch (e) { }
 
-      // Instant 0ms synchronous upvote highlight application from local cache without destroying counts
+      clearCache();
+
+      // Instant 0ms synchronous upvote highlight application from local cache
       try {
         const rawVotes = localStorage.getItem(`indihunt_upvotes_${session.user.id}`) || localStorage.getItem('indihunt_upvotes');
         const votedSet = rawVotes ? new Set<string>(JSON.parse(rawVotes)) : new Set<string>();
-        
-        queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) => {
-          if (!Array.isArray(old)) return old;
-          return old.map((p: any) => ({
+        const existingQueries = queryClient.getQueriesData<any[]>({ queryKey: ["products"] });
+        const currentProducts = existingQueries.find(([_, d]) => Array.isArray(d) && d.length > 0)?.[1];
+        if (currentProducts && Array.isArray(currentProducts)) {
+          const seeded = currentProducts.map((p: any) => ({
             ...p,
             has_upvoted: votedSet.has(p.id),
           }));
-        });
-        queryClient.setQueriesData({ queryKey: ["product"] }, (old: any) => {
-          if (!old || typeof old !== "object") return old;
-          return {
-            ...old,
-            has_upvoted: votedSet.has(old.id),
-          };
-        });
+          queryClient.setQueryData(["products", session.user.id], seeded);
+        }
       } catch (e) { }
 
       dispatch(setUser(session.user));
@@ -139,15 +135,11 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
               has_upvoted: votedIds.has(p.id),
             }));
           });
-          queryClient.setQueriesData({ queryKey: ["product"] }, (old: any) => {
-            if (!old || typeof old !== "object") return old;
-            return {
-              ...old,
-              has_upvoted: votedIds.has(old.id),
-            };
-          });
         }
       }).catch(() => {});
+
+      queryClient.invalidateQueries({ queryKey: ["products", session.user.id] });
+      queryClient.invalidateQueries({ queryKey: ["threads", session.user.id] });
 
       // Instant profile hydration: from local cache or session user metadata in 0ms
       try {
@@ -205,31 +197,17 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
         try {
           sessionStorage.removeItem('indihunt_user_session');
           localStorage.removeItem('indihunt_user_session');
-          localStorage.removeItem('indihunt_upvotes');
-          localStorage.removeItem('indihunt_thread_upvotes');
         } catch(e) {}
+        clearCache();
+        queryClient.clear();
 
-        // Preserve all current upvote numbers and product metadata, smoothly set has_upvoted: false
-        queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) => {
-          if (!Array.isArray(old)) return old;
-          return old.map((p: any) => ({
-            ...p,
-            has_upvoted: false,
-          }));
-        });
-        queryClient.setQueriesData({ queryKey: ["product"] }, (old: any) => {
-          if (!old || typeof old !== "object") return old;
-          return {
-            ...old,
-            has_upvoted: false,
-          };
-        });
-
-        // Invalidate and remove only private user data
-        queryClient.removeQueries({ queryKey: ["user_profile"] });
-        queryClient.removeQueries({ queryKey: ["notifications"] });
-        queryClient.removeQueries({ queryKey: ["my-products"] });
-        queryClient.removeQueries({ queryKey: ["campaigns"] });
+        // Explicitly purge upvote localStorage keys so no stale colors survive
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('indihunt_upvotes');
+            localStorage.removeItem('indihunt_thread_upvotes');
+          } catch (e) {}
+        }
 
         dispatch(setUser(null));
         dispatch(setProfile(null));

@@ -8,44 +8,22 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
-    const search = searchParams.get('search');
     const limit = parseInt(searchParams.get('limit') || '50', 10);
 
     const supabase = await createServerSupabaseClient();
     let query = supabase
       .from('stories')
-      .select('id, title, content, excerpt, image_url, category, user_id, published_at, created_at, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
+      .select('id, title, content, excerpt, image_url, category, user_id, published_at, likes_count, comments_count, read_time, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
       .order('published_at', { ascending: false })
       .limit(limit);
 
     if (category && category !== 'All') {
       query = query.eq('category', category);
     }
-    if (search) {
-      query = query.ilike('title', `%${search}%`);
-    }
 
     const { data: stories, error } = await query;
     if (error) {
-      // Fallback query if profiles relation mapping is missing
-      let fallback = supabase
-        .from('stories')
-        .select('id, title, content, excerpt, image_url, category, user_id, published_at, created_at')
-        .order('published_at', { ascending: false })
-        .limit(limit);
-
-      if (category && category !== 'All') {
-        fallback = fallback.eq('category', category);
-      }
-      if (search) {
-        fallback = fallback.ilike('title', `%${search}%`);
-      }
-
-      const { data: fallbackStories, error: fallbackError } = await fallback;
-      if (fallbackError) {
-        return apiFailure(fallbackError.message, 500);
-      }
-      return apiSuccess(fallbackStories || []);
+      return apiFailure(error.message, 500);
     }
 
     return apiSuccess(stories || []);

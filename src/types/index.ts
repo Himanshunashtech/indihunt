@@ -39,7 +39,7 @@ export interface Product {
   description: string;
   website_url: string;
   logo_url: string;
-  screenshots?: string[];
+  screenshots: string[];
   maker_id: string;
   maker?: Profile;
   upvotes_count: number;

@@ -1,19 +1,13 @@
 "use client";
 
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   MessageSquare,
-  ArrowUp,
-  Calendar,
-  Sparkles,
   Award,
-  ChevronRight,
-  TrendingUp,
   ExternalLink
 } from "lucide-react";
 import {
@@ -24,7 +18,7 @@ import {
   Product,
   supabase,
 } from "@/lib/supabase";
-import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
+import { useAppDispatch, setAuthModalOpen } from "@/lib/store";
 import { useQuery } from "@tanstack/react-query";
 import Navbar from "@/components/Navbar";
 import { CircularLoader } from "@/components/CircularLoader";
@@ -49,47 +43,73 @@ function getDaysInMonth(monthName: string, year: number) {
 
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 
-export default function BestProductsDatePage() {
-  const params = useParams();
+export default function BestProductsCatchAllPage() {
+  const urlParams = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const reduxUser = useAppSelector((state) => state.auth.user);
-  const currentUserId = reduxUser?.id || null;
 
-  // Parse URL params: /best-products/[period]/[year]/[month]/[day]
-  const rawPeriod = (params?.period as string) || "daily";
-  const rawYear = parseInt((params?.year as string) || "2026", 10);
-  const rawMonth = (params?.month as string) || "july";
-  const rawDay = params?.day ? parseInt(params.day as string, 10) : null;
+  // Extract path segments: /best-products/[[...params]]
+  // Can be: [] | ['daily'] | ['daily', '2026', 'september'] | ['daily', '2026', 'september', '16'] | ['weekly', '2026', 'september'] | ['monthly', '2026', 'august']
+  const rawParams = useMemo(() => {
+    const p = urlParams?.params;
+    if (Array.isArray(p)) return p;
+    if (typeof p === "string") return [p];
+    return [];
+  }, [urlParams]);
 
-  const period: Period = (["daily", "weekly", "monthly", "yearly"].includes(rawPeriod)
-    ? rawPeriod : "daily") as Period;
-
-  const year = isNaN(rawYear) ? 2026 : rawYear;
-  const monthFull = MONTHS_FULL[MONTHS_SHORT.indexOf(rawMonth.toLowerCase())] || "July";
-  const monthIndex = MONTHS_SHORT.indexOf(rawMonth.toLowerCase());
-
-  const [productState, setProductState] = useState<Record<string, { upvotes_count: number; has_upvoted: boolean }>>({});
-  const [activeFilter, setActiveFilter] = useState<"featured" | "all">("all");
-  const [visibleCount, setVisibleCount] = useState<number>(20);
-  const [isMounted, setIsMounted] = useState<boolean>(false);
-
-  useEffect(() => {
-    setIsMounted(true);
+  // Current IST defaults
+  const istNow = useMemo(() => {
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    return new Date(Date.now() + IST_OFFSET_MS);
   }, []);
 
-  useEffect(() => { setVisibleCount(20); }, [period, year, rawMonth, rawDay]);
+  const defaultYear = istNow.getUTCFullYear();
+  const defaultMonthIndex = istNow.getUTCMonth();
+  const defaultMonthFull = MONTHS_FULL[defaultMonthIndex];
+  const defaultDay = istNow.getUTCDate();
+
+  // Resolve period
+  const segment0 = (rawParams[0] || "").toLowerCase();
+  const tabQuery = (searchParams?.get("tab") || "").toLowerCase();
+  const validPeriods: Period[] = ["daily", "weekly", "monthly", "yearly"];
+
+  const period: Period = validPeriods.includes(segment0 as Period)
+    ? (segment0 as Period)
+    : validPeriods.includes(tabQuery as Period)
+    ? (tabQuery as Period)
+    : "daily";
+
+  // Resolve year
+  const rawYear = rawParams[1] ? parseInt(rawParams[1], 10) : defaultYear;
+  const year = isNaN(rawYear) || rawYear < 2000 || rawYear > 2100 ? defaultYear : rawYear;
+
+  // Resolve month
+  const rawMonthSegment = (rawParams[2] || "").toLowerCase();
+  const monthIdxFromSegment = MONTHS_SHORT.indexOf(rawMonthSegment);
+  const monthIndex = monthIdxFromSegment !== -1 ? monthIdxFromSegment : defaultMonthIndex;
+  const monthFull = MONTHS_FULL[monthIndex];
+
+  // Resolve day
+  const rawDaySegment = rawParams[3] ? parseInt(rawParams[3], 10) : null;
+  const rawDay = rawDaySegment !== null && !isNaN(rawDaySegment) && rawDaySegment >= 1 && rawDaySegment <= 31
+    ? rawDaySegment
+    : (rawParams.length === 0 ? defaultDay : null);
+
+  const [productState, setProductState] = useState<Record<string, { upvotes_count: number; has_upvoted: boolean }>>({});
+  const [visibleCount, setVisibleCount] = useState<number>(20);
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [period, year, monthFull, rawDay]);
 
   const handleVote = async (e: React.MouseEvent, productId: string) => {
     e.preventDefault();
     e.stopPropagation();
 
-    let userId = currentUserId;
-    if (!userId && supabase) {
-      const { data: authData } = await supabase.auth.getUser();
-      userId = authData?.user?.id || null;
-    }
-    if (!userId) {
+    if (!supabase) return;
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData?.user) {
       dispatch(setAuthModalOpen(true));
       return;
     }
@@ -106,7 +126,7 @@ export default function BestProductsDatePage() {
       }
     }));
 
-    const result = await toggleUpvote(productId, userId);
+    const result = await toggleUpvote(productId, authData.user.id);
     if (result && result.success) {
       setProductState(prev => ({
         ...prev,
@@ -118,10 +138,10 @@ export default function BestProductsDatePage() {
     }
   };
 
-  // Navigate helper — keeps URL in sync
+  // Safe navigation helper that never breaks routing
   function navigate(p: Period, y: number, m: string, d: number | null) {
     const mSlug = m.toLowerCase();
-    if (d) {
+    if (p === "daily" && d !== null) {
       router.push(`/best-products/${p}/${y}/${mSlug}/${d}`);
     } else {
       router.push(`/best-products/${p}/${y}/${mSlug}`);
@@ -129,13 +149,13 @@ export default function BestProductsDatePage() {
   }
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
-    queryKey: ["products-best-date", currentUserId || "guest", period, year, monthFull, rawDay],
+    queryKey: ["products-best-catchall", period, year, monthFull, rawDay],
     queryFn: async () => {
-      const dataList = await getProducts(currentUserId || undefined);
+      const dataList = await getProducts();
       if (!dataList || dataList.length === 0) return [];
 
       const now = new Date();
-      let filtered = dataList.filter(p => {
+      const filtered = dataList.filter(p => {
         if (p.status === "draft") return false;
         if (p.status === "scheduled" && p.scheduled_for) {
           return new Date(p.scheduled_for) <= now;
@@ -146,7 +166,7 @@ export default function BestProductsDatePage() {
       const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
       let dateFiltered: Product[] = [];
 
-      if (rawDay !== null) {
+      if (rawDay !== null && period === "daily") {
         dateFiltered = filtered.filter(p => {
           const pDate = p.scheduled_for
             ? new Date(p.scheduled_for)
@@ -169,6 +189,7 @@ export default function BestProductsDatePage() {
           return istPDate.getUTCFullYear() === year;
         });
       } else {
+        // month / week / daily all-days
         dateFiltered = filtered.filter(p => {
           const pDate = p.scheduled_for
             ? new Date(p.scheduled_for)
@@ -181,22 +202,9 @@ export default function BestProductsDatePage() {
 
       return dateFiltered.sort(compareProductsForRanking);
     },
-    placeholderData: (previousData) => {
-      if (previousData && previousData.length > 0 && currentUserId && typeof window !== 'undefined') {
-        try {
-          const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-          const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-          return previousData.map((p) => ({
-            ...p,
-            has_upvoted: votedSet.has(p.id),
-          }));
-        } catch (e) {}
-      }
-      return previousData;
-    }
   });
 
-  const displayDate = rawDay
+  const displayDate = rawDay && period === "daily"
     ? `${monthFull} ${rawDay}, ${year}`
     : period === "yearly"
       ? `${year}`
@@ -207,11 +215,11 @@ export default function BestProductsDatePage() {
       <Navbar />
 
       {/* Mini Header */}
-      <header className="sticky top-0 z-40 w-full  bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/best-products" className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+          <Link href="/" className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Leaderboard</span>
+            <span>Back to Home</span>
           </Link>
           <span className="font-bold text-sm tracking-tight bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
             IndiHunt Leaderboard
@@ -226,7 +234,7 @@ export default function BestProductsDatePage() {
           <div className="lg:col-span-9 space-y-6">
 
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4  pb-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-border/40">
               <div className="flex items-center gap-3">
                 <h1 suppressHydrationWarning className="text-xl sm:text-2xl font-extrabold text-foreground flex items-center gap-2">
                   Best of IndiHunt{" "}
@@ -241,7 +249,7 @@ export default function BestProductsDatePage() {
                 {(["daily", "weekly", "monthly", "yearly"] as Period[]).map(tab => (
                   <button
                     key={tab}
-                    onClick={() => navigate(tab, year, monthFull, tab === "daily" ? rawDay : null)}
+                    onClick={() => navigate(tab, year, monthFull, tab === "daily" ? (rawDay || defaultDay) : null)}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all cursor-pointer ${period === tab
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground"
@@ -253,35 +261,37 @@ export default function BestProductsDatePage() {
               </div>
             </div>
 
-            {/* Day Selector */}
-            <div className="bg-card border border-border p-4 rounded-2xl space-y-2">
-              <span suppressHydrationWarning className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest block">
-                Select Day of the Month ({monthFull})
-              </span>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                <button
-                  onClick={() => navigate(period, year, monthFull, null)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${rawDay === null
-                    ? "bg-orange-500 text-white border-orange-500"
-                    : "bg-muted text-muted-foreground border-border hover:text-foreground"
-                    }`}
-                >
-                  All Days
-                </button>
-                {Array.from<unknown, number>({ length: getDaysInMonth(monthFull, year) }, (_, i) => i + 1).map(day => (
+            {/* Day Selector (Shown when in daily view) */}
+            {period === "daily" && (
+              <div className="bg-card border border-border p-4 rounded-2xl space-y-2">
+                <span suppressHydrationWarning className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest block">
+                  Select Day of the Month ({monthFull})
+                </span>
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
                   <button
-                    key={day}
-                    onClick={() => navigate("daily", year, monthFull, day)}
-                    className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl text-xs font-semibold transition-all cursor-pointer border ${rawDay === day
-                      ? "bg-orange-500 text-white border-orange-500 scale-105 shadow-md"
-                      : "bg-muted text-foreground border-border hover:border-orange-500/35"
+                    onClick={() => navigate("daily", year, monthFull, null)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${rawDay === null
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-muted text-muted-foreground border-border hover:text-foreground"
                       }`}
                   >
-                    {day}
+                    All Days
                   </button>
-                ))}
+                  {Array.from({ length: getDaysInMonth(monthFull, year) }, (_, i) => i + 1).map(day => (
+                    <button
+                      key={day}
+                      onClick={() => navigate("daily", year, monthFull, day)}
+                      className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl text-xs font-semibold transition-all cursor-pointer border ${rawDay === day
+                        ? "bg-orange-500 text-white border-orange-500 scale-105 shadow-md"
+                        : "bg-muted text-foreground border-border hover:border-orange-500/35"
+                        }`}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {isLoading && products.length === 0 ? (
               <CircularLoader label="Loading leaderboard products..." size="lg" />
@@ -294,9 +304,6 @@ export default function BestProductsDatePage() {
             ) : (
               <div className="space-y-3">
                 {products.slice(0, visibleCount).map((product, idx) => {
-                  const launchDate = product.scheduled_for
-                    ? new Date(product.scheduled_for)
-                    : product.created_at ? new Date(product.created_at) : null;
                   const isUpvoted = productState[product.id]?.has_upvoted ?? product.has_upvoted;
                   const upvoteCount = productState[product.id]?.upvotes_count ?? product.upvotes_count;
 
@@ -421,7 +428,7 @@ export default function BestProductsDatePage() {
                           >
                             <div
                               className={`group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-300 ${isUpvoted
-                                ? "bg-orange-500/10 text-[#ff5733] border border-orange-500/20"
+                                ? "border-2 border-[#ff5733] bg-card text-foreground"
                                 : "border border-border bg-card hover:border-[#ff5733]"
                                 }`}
                               data-filled={isUpvoted ? "true" : "false"}
@@ -439,7 +446,7 @@ export default function BestProductsDatePage() {
                               >
                                 <path d="M6.579 3.467c.71-1.067 2.132-1.067 2.842 0L12.975 8.8c.878 1.318.043 3.2-1.422 3.2H4.447c-1.464 0-2.3-1.882-1.422-3.2z" />
                               </svg>
-                              <p className={`text-sm font-medium leading-none ${isUpvoted ? "text-[#ff5733]" : "text-foreground"}`}>
+                              <p className="text-sm font-medium leading-none text-foreground">
                                 {upvoteCount}
                               </p>
                             </div>

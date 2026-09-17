@@ -91,6 +91,7 @@ function formatFollowerCount(count: number): string {
 
 export default function ProductDetailPage({
   id,
+  initialTab,
   initialProduct,
   initialAllProducts = [],
   initialReviews = [],
@@ -103,6 +104,7 @@ export default function ProductDetailPage({
   initialCohortProducts = []
 }: {
   id: string;
+  initialTab?: string;
   initialProduct: any;
   initialAllProducts?: Product[];
   initialReviews?: Review[];
@@ -125,6 +127,7 @@ export default function ProductDetailPage({
     }>
       <ProductDetailsContent
         id={id}
+        initialTab={initialTab}
         initialProduct={initialProduct}
         initialAllProducts={initialAllProducts}
         initialReviews={initialReviews}
@@ -143,6 +146,7 @@ export default function ProductDetailPage({
 
 function ProductDetailsContent({
   id,
+  initialTab,
   initialProduct,
   initialAllProducts = [],
   initialReviews = [],
@@ -155,6 +159,7 @@ function ProductDetailsContent({
   initialCohortProducts = []
 }: {
   id: string;
+  initialTab?: string;
   initialProduct: any;
   initialAllProducts?: Product[];
   initialReviews?: Review[];
@@ -183,18 +188,12 @@ function ProductDetailsContent({
   const isNewlyLaunched = searchParams?.get("launched") === "true";
   const highlightedCommentId = searchParams?.get("comment");
 
-  const [user, setUser] = useState<any>(reduxUser || null);
-
-  useEffect(() => {
-    setUser(reduxUser || null);
-  }, [reduxUser]);
-
-  const currentUserId = reduxUser?.id || null;
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     if (!productId) return;
     const unsubscribe = subscribe(`product:${productId}`, "product_upvoted", (data: { productId: string; upvotes_count: number }) => {
-      setLocalProduct((prev: any) => {
+      setProduct((prev: any) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -207,43 +206,11 @@ function ProductDetailsContent({
   const cachedProd = typeof window !== 'undefined' ? getCachedProduct(productId) : null;
 
   // TanStack Query Hooks
-  const { data: queryProduct, isLoading: isQueryLoading, isPending } = useProduct(productId, currentUserId || undefined, initialProduct);
+  const { data: queryProduct, isLoading: isQueryLoading, isPending } = useProduct(productId, user?.id, initialProduct);
   const toggleUpvoteMutation = useToggleUpvoteMutation();
 
-  const [localProduct, setLocalProduct] = useState<any>(null);
-
-  // Dynamically resolve upvoted status for current logged-in user
-  const isUpvoted = useMemo(() => {
-    if (!currentUserId) return false;
-    if (localProduct && typeof localProduct.has_upvoted === "boolean") {
-      return localProduct.has_upvoted;
-    }
-    if (queryProduct && typeof queryProduct.has_upvoted === "boolean") {
-      return queryProduct.has_upvoted;
-    }
-    const targetId = queryProduct?.id || initialProduct?.id || cachedProd?.id;
-    if (typeof window !== "undefined" && targetId) {
-      try {
-        const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem("indihunt_upvotes");
-        if (raw) {
-          const votes: string[] = JSON.parse(raw);
-          return votes.includes(targetId);
-        }
-      } catch (e) {}
-    }
-    return (localProduct || queryProduct || initialProduct || cachedProd)?.has_upvoted ?? false;
-  }, [localProduct, queryProduct, currentUserId, initialProduct, cachedProd]);
-
-  const product = useMemo(() => {
-    const raw = localProduct || queryProduct || initialProduct || cachedProd;
-    if (!raw) return null;
-    return {
-      ...raw,
-      has_upvoted: isUpvoted,
-      upvotes_count: localProduct?.upvotes_count ?? queryProduct?.upvotes_count ?? raw.upvotes_count ?? 0,
-    };
-  }, [localProduct, queryProduct, initialProduct, cachedProd, isUpvoted]);
-
+  const [localProduct, setLocalProduct] = useState<any>(initialProduct || null);
+  const product = localProduct || queryProduct || initialProduct || cachedProd;
   const isProductLoading = !product && (isQueryLoading || isPending);
   const { data: queryComments = [] } = useComments(product?.id || productId);
   const comments = queryComments;
@@ -252,7 +219,34 @@ function ProductDetailsContent({
   // TAB & UI STATE
   // ==========================================================================
 
-  const [activeSubTab, setActiveSubTab] = useState<string>("Overview");
+  const initialResolvedTab = useMemo(() => {
+    if (initialTab) return initialTab;
+    if (typeof window !== "undefined") {
+      if (window.location.pathname.endsWith("/alternatives")) return "Alternatives";
+      const tabParam = searchParams?.get("tab");
+      if (tabParam) {
+        const found = ["Overview", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"].find(
+          t => t.toLowerCase() === tabParam.toLowerCase()
+        );
+        if (found) return found;
+      }
+    }
+    return "Overview";
+  }, [initialTab, searchParams]);
+
+  const [activeSubTab, setActiveSubTab] = useState<string>(initialResolvedTab);
+
+  const handleTabChange = (tab: string) => {
+    setActiveSubTab(tab);
+    if (typeof window !== "undefined") {
+      const slug = getProductSlug(product?.name || id);
+      if (tab === "Alternatives") {
+        window.history.pushState(null, "", `/products/${slug}/alternatives`);
+      } else if (window.location.pathname.endsWith("/alternatives")) {
+        window.history.pushState(null, "", `/products/${slug}`);
+      }
+    }
+  };
   const [isFollowed, setIsFollowed] = useState<boolean>(false);
   const [linkClicksCount, setLinkClicksCount] = useState<number>(0);
   const [showEmbedModal, setShowEmbedModal] = useState<boolean>(false);
@@ -281,31 +275,6 @@ function ProductDetailsContent({
     }
     return [];
   });
-
-  // Client background fetch to ensure full cohort for rank calculation
-  useEffect(() => {
-    let isSubscribed = true;
-    getProducts(currentUserId || undefined).then((prods) => {
-      if (!isSubscribed || !prods || prods.length === 0) return;
-      const targetId = product?.id || productId;
-      const filteredProds = prods.filter(
-        (p: Product) =>
-          p &&
-          p.id !== targetId &&
-          p.id !== "prod-media-1" &&
-          p.id !== "prod-media-2" &&
-          p.id !== "prod-media-3" &&
-          p.name !== "StreamPulse AI" &&
-          p.name !== "VoxWave Studio" &&
-          p.name !== "OmniPlay Pro" &&
-          (product ? getProductSlug(p.name) !== getProductSlug(product.name) : true)
-      );
-      setAllProductsList(filteredProds);
-    }).catch(() => {});
-    return () => {
-      isSubscribed = false;
-    };
-  }, [productId, currentUserId, product?.name]);
   const [similarProducts, setSimilarProducts] = useState<Product[]>(() => {
     const target = initialProduct;
     const pool = initialAllProducts && initialAllProducts.length > 0 ? initialAllProducts : (typeof window !== "undefined" ? getCachedProducts() : []);
@@ -628,6 +597,7 @@ function ProductDetailsContent({
     "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&h=450&q=80"
   ];
   const isScheduled = !!(product?.status === 'scheduled' && product?.scheduled_for && new Date(product.scheduled_for) > new Date());
+  const currentUserId = user?.id || reduxUser?.id || reduxProfile?.id;
   const isOwner = !!(currentUserId && product?.maker_id && currentUserId === product.maker_id);
 
   // Calculate awards
@@ -838,7 +808,7 @@ function ProductDetailsContent({
             {/* Tab Navigation */}
             <TabNavigation
               activeTab={activeSubTab}
-              onTabChange={setActiveSubTab}
+              onTabChange={handleTabChange}
               product={product}
               user={user}
               onReport={() => {
@@ -890,6 +860,7 @@ function ProductDetailsContent({
                 setAlternatives={setAlternatives}
                 allProductsList={allProductsList}
                 productId={productId}
+                product={product}
                 user={user}
               />
             )}

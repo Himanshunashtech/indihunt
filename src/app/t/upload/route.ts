@@ -26,7 +26,6 @@ export async function POST(request: NextRequest) {
       .from(bucket)
       .upload(filePath, buffer, {
         contentType: file.type || 'image/png',
-        cacheControl: '31536000',
         upsert: true,
       });
 

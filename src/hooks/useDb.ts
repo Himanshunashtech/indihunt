@@ -17,73 +17,28 @@ import {
   getCachedPromotedProducts
 } from "@/lib/supabase";
 
-function getLocalVotedSet(userId?: string | null): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    let raw = userId ? localStorage.getItem(`indihunt_upvotes_${userId}`) : null;
-    if (!raw && userId) {
-      raw = localStorage.getItem('indihunt_upvotes');
-    }
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return new Set(parsed);
-      }
-    }
-  } catch (e) {}
-  return new Set();
-}
-
 // 1. Fetch all products
 export function useProducts(currentUserId?: string, initialData?: Product[]) {
-  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["products", currentUserId || "guest"],
     queryFn: () => getProducts(currentUserId || undefined),
-    staleTime: currentUserId ? 3 * 60 * 1000 : 10 * 60 * 1000,
+    staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    initialData: () => {
-      const votedSet = getLocalVotedSet(currentUserId);
-      // 1. If any products query already exists in the cache, reuse its upvote counts to avoid flashing
-      const existingQueries = queryClient.getQueriesData<Product[]>({ queryKey: ["products"] });
-      const currentProducts = existingQueries.find(([_, d]) => Array.isArray(d) && d.length > 0)?.[1];
-      if (currentProducts && Array.isArray(currentProducts) && currentProducts.length > 0) {
-        return currentProducts.map((p) => ({
-          ...p,
-          has_upvoted: currentUserId ? votedSet.has(p.id) : false,
-        }));
-      }
-      // 2. Initial SSR data fallback
-      if (initialData && Array.isArray(initialData) && initialData.length > 0) {
-        return initialData.map((p) => ({
-          ...p,
-          has_upvoted: currentUserId ? votedSet.has(p.id) : false,
-        }));
-      }
-      return undefined;
-    },
+    initialData: initialData && initialData.length > 0 ? initialData : undefined,
+    initialDataUpdatedAt: currentUserId ? 0 : undefined,
     placeholderData: (previousData) => {
-      const votedSet = getLocalVotedSet(currentUserId);
-      if (previousData && Array.isArray(previousData) && previousData.length > 0) {
-        return previousData.map((p) => ({
-          ...p,
-          has_upvoted: currentUserId ? votedSet.has(p.id) : false,
-        }));
-      }
-      const existingQueries = queryClient.getQueriesData<Product[]>({ queryKey: ["products"] });
-      const currentProducts = existingQueries.find(([_, d]) => Array.isArray(d) && d.length > 0)?.[1];
-      if (currentProducts && Array.isArray(currentProducts) && currentProducts.length > 0) {
-        return currentProducts.map((p) => ({
-          ...p,
-          has_upvoted: currentUserId ? votedSet.has(p.id) : false,
-        }));
-      }
-      if (initialData && Array.isArray(initialData) && initialData.length > 0) {
-        return initialData.map((p) => ({
-          ...p,
-          has_upvoted: currentUserId ? votedSet.has(p.id) : false,
-        }));
+      if (previousData && previousData.length > 0) {
+        if (currentUserId && typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
+            const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+            return previousData.map((p) => ({
+              ...p,
+              has_upvoted: votedSet.has(p.id),
+            }));
+          } catch (e) {}
+        }
+        return previousData;
       }
       return previousData;
     },
@@ -95,9 +50,8 @@ export function usePromotedProducts(existingProducts?: Product[], initialData?: 
   return useQuery({
     queryKey: ["promoted_products"],
     queryFn: () => getPromotedProducts(existingProducts),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
     initialData: initialData && initialData.length > 0 ? initialData : undefined,
     placeholderData: (previousData) => previousData,
   });
@@ -110,62 +64,32 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
     queryKey: ["product", productId, currentUserId || "guest"],
     queryFn: () => getProductById(productId, currentUserId || undefined),
     enabled: !!productId,
-    staleTime: currentUserId ? 3 * 60 * 1000 : 10 * 60 * 1000,
+    staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    initialData: () => {
-      const votedSet = getLocalVotedSet(currentUserId);
-      const existingQueries = queryClient.getQueriesData<Product>({ queryKey: ["product", productId] });
-      const existingSingle = existingQueries.find(([_, d]) => d && typeof d === 'object' && d.id)?.[1];
-      if (existingSingle) {
-        return {
-          ...existingSingle,
-          has_upvoted: currentUserId ? votedSet.has(existingSingle.id) : false,
-        };
-      }
-      if (productId) {
-        const normalized = productId.toLowerCase();
-        const existingListQueries = queryClient.getQueriesData<Product[]>({ queryKey: ["products"] });
-        const currentProducts = existingListQueries.find(([_, d]) => Array.isArray(d) && d.length > 0)?.[1];
-        if (currentProducts && Array.isArray(currentProducts)) {
-          const match = currentProducts.find(p => p.id === productId || getProductSlug(p.name) === normalized);
-          if (match) {
-            return {
-              ...match,
-              has_upvoted: currentUserId ? votedSet.has(match.id) : false,
-            };
-          }
-        }
-      }
-      if (initialData) {
-        return {
-          ...initialData,
-          has_upvoted: currentUserId ? votedSet.has(initialData.id) : false,
-        };
-      }
-      return undefined;
-    },
+    initialData: initialData ? initialData : undefined,
+    initialDataUpdatedAt: currentUserId ? 0 : undefined,
     placeholderData: (previousData) => {
-      const votedSet = getLocalVotedSet(currentUserId);
       if (previousData) {
-        return {
-          ...previousData,
-          has_upvoted: currentUserId ? votedSet.has(previousData.id) : false,
-        };
+        if (currentUserId && typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
+            const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+            return {
+              ...previousData,
+              has_upvoted: votedSet.has(previousData.id),
+            };
+          } catch (e) {}
+        }
+        return previousData;
       }
       if (typeof window !== 'undefined' && productId) {
         try {
           const normalized = productId.toLowerCase();
-          const existingListQueries = queryClient.getQueriesData<Product[]>({ queryKey: ["products"] });
-          const currentProducts = existingListQueries.find(([_, d]) => Array.isArray(d) && d.length > 0)?.[1];
-          if (currentProducts && Array.isArray(currentProducts)) {
-            const match = currentProducts.find(p => p.id === productId || getProductSlug(p.name) === normalized);
-            if (match) {
-              return {
-                ...match,
-                has_upvoted: currentUserId ? votedSet.has(match.id) : false,
-              };
-            }
+          const existing = queryClient.getQueryData<Product[]>(["products", currentUserId || "guest"]) ||
+                           queryClient.getQueryData<Product[]>(["products", "guest"]);
+          if (existing && Array.isArray(existing)) {
+            const match = existing.find(p => p.id === productId || getProductSlug(p.name) === normalized);
+            if (match) return match;
           }
         } catch (e) {}
       }
@@ -179,10 +103,10 @@ export function useThreads(currentUserId?: string, initialData?: Thread[]) {
   return useQuery({
     queryKey: ["threads", currentUserId || "guest"],
     queryFn: () => getThreads(currentUserId || undefined),
-    staleTime: currentUserId ? 3 * 60 * 1000 : 10 * 60 * 1000,
+    staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
     initialData: initialData && initialData.length > 0 ? initialData : undefined,
+    initialDataUpdatedAt: currentUserId ? 0 : undefined,
     placeholderData: (previousData) => previousData,
   });
 }
@@ -193,9 +117,8 @@ export function useThread(threadId: string) {
     queryKey: ["thread", threadId],
     queryFn: () => getThreadById(threadId),
     enabled: !!threadId,
-    staleTime: 10 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
     placeholderData: (previousData) => previousData,
   });
 }

@@ -117,16 +117,11 @@ export default function HomePageClient({
   // Sync auth state from global Redux store
   const reduxUser = useAppSelector((state) => state.auth.user);
   const reduxProfile = useAppSelector((state) => state.auth.profile);
-  const effectiveUserId = reduxUser?.id || null;
+  const effectiveUserId = reduxUser?.id || currentUser?.id || null;
 
   useEffect(() => {
-    setCurrentUser(reduxUser || null);
-    setProfile(reduxProfile || null);
-    if (reduxUser?.id) {
-      fetchProfileAndCheckOnboarding(reduxUser.id, reduxUser);
-    } else {
-      setShowOnboarding(false);
-    }
+    setCurrentUser(reduxUser);
+    setProfile(reduxProfile);
   }, [reduxUser, reduxProfile]);
 
   // TanStack Query Hooks (Hydrated with server initialData, staleTime: 5 mins)
@@ -438,7 +433,34 @@ export default function HomePageClient({
     }
   };
 
+  useEffect(() => {
+    if (!supabase) return;
+    let lastFetchedUid: string | null = null;
+    const processUserAuth = (user: any) => {
+      const uid = user?.id ?? null;
+      if (uid === lastFetchedUid && uid !== null) return;
+      lastFetchedUid = uid;
+      setCurrentUser(user);
+      if (user) {
+        fetchProfileAndCheckOnboarding(user.id, user);
+      } else {
+        setProfile(null);
+        setShowOnboarding(false);
+      }
+    };
 
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      processUserAuth(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      processUserAuth(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Global Ctrl+K / Cmd+K search shortcut
   useEffect(() => {

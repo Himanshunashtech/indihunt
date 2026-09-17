@@ -85,18 +85,10 @@ export default function CookieConsentBanner() {
       return () => clearTimeout(timer);
     } else {
       try {
-        if (stored === "granted") {
-          const defaultPrefs: CookiePreferences = { essential: true, analytics: true, marketing: true };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPrefs));
-          setPreferences(defaultPrefs);
-          setRealCookies(defaultPrefs);
-          setIsVisible(false);
-        } else {
-          const parsed = JSON.parse(stored);
-          setPreferences(parsed);
-          setRealCookies(parsed);
-          setIsVisible(false);
-        }
+        const parsed = JSON.parse(stored);
+        setPreferences(parsed);
+        setRealCookies(parsed);
+        setIsVisible(false);
       } catch {
         setIsVisible(false);
       }

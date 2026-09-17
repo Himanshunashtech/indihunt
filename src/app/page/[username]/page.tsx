@@ -27,9 +27,67 @@ export default function IndiePageView() {
   const params = useParams();
   const username = typeof params?.username === "string" ? params.username : "";
 
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [profile, setProfile] = useState<Profile | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const profiles: Profile[] = JSON.parse(localStorage.getItem('indihunt_profiles') || '[]');
+        const localProf = profiles.find(p => p.username?.toLowerCase() === username.toLowerCase());
+        if (localProf) return localProf;
+        const currentProf = JSON.parse(localStorage.getItem('indihunt_profile') || 'null');
+        if (currentProf && currentProf.username?.toLowerCase() === username.toLowerCase()) return currentProf;
+      } catch (e) { }
+    }
+    if (username.toLowerCase() === "sonu.hs9557" || username.toLowerCase() === "himanshu") {
+      return {
+        id: "usr-sonu-hs9557",
+        username: "sonu.hs9557",
+        full_name: "Himanshu Sharma",
+        avatar_url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&h=200&q=80",
+        headline: "Building next-gen indie maker tools • Founder @ IndiHunt",
+        bio: "Indie hacker, product builder & hunter based in India.",
+        location: "India",
+        indie_page_enabled: true,
+        indie_page_theme: "light",
+        indie_page_font: "inter",
+        monthly_revenue: "$1,200 MRR",
+        created_at: new Date().toISOString()
+      } as any;
+    }
+    return null;
+  });
+
+  const [products, setProducts] = useState<Product[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const allProducts: Product[] = JSON.parse(localStorage.getItem('indihunt_products') || '[]');
+        if (allProducts && allProducts.length > 0) {
+          const matched = allProducts.filter(p => 
+            (p.maker_id === profile?.id || (username.toLowerCase() === "sonu.hs9557" && p.maker_id === "usr-sonu-hs9557")) && 
+            p.worked_on_launch !== false && 
+            (p as any).role !== 'hunter'
+          );
+          if (matched.length > 0) return matched;
+        }
+      } catch (e) { }
+    }
+    if (username.toLowerCase() === "sonu.hs9557") {
+      return [
+        {
+          id: "prod-sonu-maker-1",
+          name: "IndiHunt",
+          tagline: "The product discovery platform for Indian indie hackers & builders",
+          category: "Productivity",
+          upvotes_count: 42,
+          worked_on_launch: true,
+          maker_id: "usr-sonu-hs9557",
+          created_at: new Date().toISOString()
+        } as any
+      ];
+    }
+    return [];
+  });
+
+  const [isLoading, setIsLoading] = useState<boolean>(() => !profile);
   const [notFound, setNotFound] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -38,40 +96,21 @@ export default function IndiePageView() {
 
   useEffect(() => {
     if (!username) return;
-    const cleanUser = username.replace(/^@/, '').trim();
-    const cleanUserLower = cleanUser.toLowerCase();
-
-    // Instant local cache resolution on client mount
-    try {
-      const profiles: Profile[] = JSON.parse(localStorage.getItem('indihunt_profiles') || '[]');
-      const localProf = profiles.find(p => p.username?.toLowerCase() === cleanUserLower);
-      const currentProf = JSON.parse(localStorage.getItem('indihunt_profile') || 'null');
-      const currentUser = JSON.parse(localStorage.getItem('indihunt_user') || 'null');
-      const resolvedProf = localProf || 
-        (currentProf && currentProf.username?.toLowerCase() === cleanUserLower ? currentProf : null) ||
-        (currentUser && currentUser.username?.toLowerCase() === cleanUserLower ? currentUser : null);
-
-      if (resolvedProf) {
-        setProfile(resolvedProf);
-        setIsLoading(false);
-      }
-    } catch (e) {}
-
-    getIndiePage(cleanUser).then(result => {
-      if (result && result.profile) {
+    if (!profile) {
+      setIsLoading(true);
+    }
+    getIndiePage(username).then(result => {
+      if (result) {
         setProfile(result.profile);
-        setProducts(result.products || []);
+        // Only keep products created/worked on by the user, excluding hunted items
+        const userProducts = (result.products || []).filter(
+          p => p.worked_on_launch !== false && (p as any).role !== 'hunter'
+        );
+        setProducts(userProducts);
         setNotFound(false);
-      } else {
-        setProfile(prev => {
-          if (!prev) {
-            setNotFound(true);
-          }
-          return prev;
-        });
+      } else if (!profile) {
+        setNotFound(true);
       }
-      setIsLoading(false);
-    }).catch(() => {
       setIsLoading(false);
     });
   }, [username]);
@@ -435,14 +474,10 @@ export default function IndiePageView() {
 
                       {/* Tags & Badges */}
                       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        {/* Role Badge: Maker or Hunter */}
-                        <span className={`px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-full flex items-center gap-1.5 shadow-sm ${
-                          (product as any).role === 'hunter'
-                            ? 'bg-blue-600 text-white shadow-blue-500/30 border border-blue-400/40'
-                            : 'bg-emerald-600 text-white shadow-emerald-500/30 border border-emerald-400/40'
-                        }`}>
+                        {/* Role Badge: Maker */}
+                        <span className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 flex items-center gap-1.5 border border-emerald-400/40">
                           <Star className="w-3.5 h-3.5 fill-white text-white shrink-0" />
-                          <span>{(product as any).role === 'hunter' ? 'Hunter' : 'Maker'}</span>
+                          <span>Maker</span>
                         </span>
 
                         {product.category && (

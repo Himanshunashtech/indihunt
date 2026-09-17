@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     let query = supabase
       .from('products')
-      .select('*, maker:profiles!maker_id(*)')
+      .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -73,11 +73,7 @@ export async function GET(request: NextRequest) {
       }));
     }
 
-    const cacheHeader = (!userId && !queryStr)
-      ? { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' }
-      : undefined;
-
-    return apiSuccess(products, 200, cacheHeader);
+    return apiSuccess(products);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch products', 500);
   }

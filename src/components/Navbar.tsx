@@ -291,19 +291,13 @@ export default function Navbar({
         try {
           const keys = Object.keys(localStorage);
           keys.forEach(k => {
-            // Preserve user preferences like cookie consent and theme
-            if (k.includes('cookie_consent') || k === 'theme') return;
             if (k.startsWith('ih_') || k.startsWith('indihunt_') || k.startsWith('sb-')) {
               localStorage.removeItem(k);
             }
           });
           sessionStorage.clear();
           document.cookie.split(";").forEach((c) => {
-            const name = c.split("=")[0].trim();
-            if (name.startsWith('indihunt_consent') || name.startsWith('indihunt_analytics') || name.startsWith('indihunt_marketing')) {
-              return;
-            }
-            document.cookie = name + "=;expires=" + new Date(0).toUTCString() + ";path=/";
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
           });
         } catch (e) {}
       }

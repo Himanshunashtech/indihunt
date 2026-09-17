@@ -53,20 +53,19 @@ export default async function ProductDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [reviews, alternatives, allProducts] = await Promise.all([
+  const [reviews, alternatives] = await Promise.all([
     getReviews(product.id).catch(() => []),
-    getAlternatives(product.id).catch(() => []),
-    getProducts().catch(() => [])
+    getAlternatives(product.id).catch(() => [])
   ]);
 
-  // Fast server-side rank fallback from all products
-  const rankDetails = calculateProductRank(product, allProducts);
+  // Fast server-side rank fallback from current product
+  const rankDetails = calculateProductRank(product, [product]);
 
   return (
     <ProductDetailPageClient
       id={id}
       initialProduct={product}
-      initialAllProducts={allProducts}
+      initialAllProducts={[product]}
       initialReviews={reviews}
       initialAlternatives={alternatives}
       initialRank={rankDetails.rank}
