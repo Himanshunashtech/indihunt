@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect, RedirectType } from "next/navigation";
 import { getProductById, getProducts, calculateProductRank, getReviews, getAlternatives, getProductSlug } from "@/lib/supabase";
 import ProductDetailPageClient from "./ProductDetailPageClient";
 
@@ -51,6 +51,11 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   if (!product) {
     notFound();
+  }
+
+  const slug = getProductSlug(product.name);
+  if (slug && id.toLowerCase() !== slug.toLowerCase()) {
+    redirect(`/products/${slug}`, RedirectType.replace);
   }
 
   const [reviews, alternatives] = await Promise.all([

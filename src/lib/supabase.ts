@@ -1307,6 +1307,11 @@ export function getProductSlug(name: string): string {
   return name
     .toLowerCase()
     .trim()
+    .replace(/&#x27;|&apos;|'/gi, '')
+    .replace(/&amp;/gi, 'and')
+    .replace(/&quot;|"/gi, '')
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '')
     .replace(/[^\w\s-]/g, '')
     .replace(/[\s_-]+/g, '-')
     .replace(/^-+|-+$/g, '');

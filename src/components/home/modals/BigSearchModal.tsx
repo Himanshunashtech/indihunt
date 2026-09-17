@@ -158,9 +158,7 @@ export default function BigSearchModal({
                             {count} projects
                           </span>
                           <Link
-                            href={`/categories?category=${encodeURIComponent(
-                              catName.toLowerCase()
-                            )}`}
+                            href={`/categories/${getProductSlug(catName)}`}
                             onClick={() => onOpenChange(false)}
                             className="text-xs sm:text-sm font-medium text-[#ff5733] hover:underline flex-shrink-0"
                           >

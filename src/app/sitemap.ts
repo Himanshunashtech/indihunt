@@ -255,24 +255,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           .forEach((p: any) => {
             const cleanUser = p.username.replace(/^@/, "").trim();
             if (cleanUser) {
-              // Handle @username profile route
+              // Canonical maker profile route
               profileRoutes.push({
                 url: `${SITE_URL}/@${cleanUser}`,
                 lastModified: p.created_at ? new Date(p.created_at) : new Date(),
                 changeFrequency: "weekly" as const,
-                priority: 0.8,
+                priority: 0.85,
               });
-              
-              // Handle /page/username IndiHunt page route
-              // Only include if the user has active products and hasn't explicitly disabled the page
-              if (p.indie_page_enabled !== false && activeMakerIds.has(p.id)) {
-                profileRoutes.push({
-                  url: `${SITE_URL}/page/${cleanUser}`,
-                  lastModified: p.created_at ? new Date(p.created_at) : new Date(),
-                  changeFrequency: "weekly" as const,
-                  priority: 0.85,
-                });
-              }
             }
           });
       }

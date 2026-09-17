@@ -17,6 +17,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url), 301);
   }
 
+  // ── 301 Permanent Canonical Redirects for Search Engines ──
+  // 1. /categories?category=xyz -> /categories/xyz
+  if (pathname === '/categories' && request.nextUrl.searchParams.has('category')) {
+    const rawCat = request.nextUrl.searchParams.get('category') || '';
+    const cleanCat = rawCat.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+    const target = cleanCat ? `/categories/${cleanCat}` : '/categories';
+    return NextResponse.redirect(new URL(target, request.url), 301);
+  }
+
+  // 2. /categories/[cat]?category=... -> strip duplicate query param
+  if (pathname.startsWith('/categories/') && request.nextUrl.searchParams.has('category')) {
+    return NextResponse.redirect(new URL(pathname, request.url), 301);
+  }
+
+  // 3. /page/[username] -> /@[username] (consolidates duplicate maker profile URLs)
+  if (pathname.startsWith('/page/')) {
+    const rawUser = pathname.replace('/page/', '').replace(/^@/, '').trim();
+    if (rawUser) {
+      return NextResponse.redirect(new URL(`/@${rawUser}`, request.url), 301);
+    }
+  }
+
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, { status: 204, headers: corsHeaders });
   }
