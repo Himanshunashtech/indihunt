@@ -1,0 +1,44 @@
+{
+  "name": "IndiHunt — Daily Global Tech Launchpad",
+  "short_name": "IndiHunt",
+  "description": "Discover, launch, and upvote the best global tech products, software, startups, and open-source masterpieces every day.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#ff5722",
+  "orientation": "any",
+  "categories": ["technology", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.webp",
+      "sizes": "512x512 192x192 64x64 32x32",
+      "type": "image/webp",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.webp",
+      "sizes": "192x192",
+      "type": "image/webp",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.webp",
+      "sizes": "192x192",
+      "type": "image/webp",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "maskable"
+    }
+  ]
+}

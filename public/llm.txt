@@ -1,0 +1,75 @@
+# IndiHunt
+
+A community-driven, full-stack platform for discovering, sharing, and discussing the best new software products built by Indian makers.
+
+## Site Overview
+- Users submit product launches of their own or upvote and review other launches they use and care to share with the community.
+- Launches compete to be at the top of the leaderboard on the daily feed.
+- Products launch daily with continuous voting, reviews, discussions, and developer Q&A.
+- Homepage rank is driven by active feed tabs (Featured, Trending, All) and filters (Today, Yesterday, This Week, This Month).
+- Includes dynamic features like Hexagon Badges for user profiles (Tastemaker, Gone streaking).
+- Built-in content moderation checking for text submissions.
+
+## Product Discovery and Research
+- **Products**:
+  - Path format: `/products/{slug}`
+  - Includes product details: name, tagline, description, launch date, makers, co-makers, links, tags/categories, upvote/engagement scores, reviews, comments, and maker launch schedule.
+- **Categories**:
+  - Path format: `/categories/{slug}` (e.g., `/categories/ai-code-editors`)
+  - All categories page can be found at `/categories`
+- **Makers / Profiles**:
+  - Path format: `/profile?id={user_id}`
+  - Includes user stats, followers, following, websites/social links, maker history, and hexagon badges.
+- **Discussions & Threads**:
+  - Path format: `/threads/{id}`
+- **Stories**:
+  - Path format: `/stories/{id}`
+- **Launch Insights**:
+  - Path format: `/launch-insights`
+
+## Community & Roles
+- **Makers**: Creators and developers of products.
+- **Hunters**: Users who submit/discover products.
+- **Community Members**: Engage through voting, comments, reviews, and threads.
+
+## Important Content Paths
+- **Core Pages**:
+  - Home: `/home`
+  - Makers Leaderboard: `/makers`
+  - About Us: `/about`
+  - FAQ: `/faq`
+  - Help Center: `/help`
+  - Platform Changelog: `/changelog`
+  - Privacy Policy: `/privacy`
+  - Cookie Policy: `/cookies`
+  - Terms of Service: `/terms`
+  - LLM Profile: `/llm.txt`
+- **Categories**:
+  - Vibe Coding Tools: `/categories/vibe-coding`
+  - AI Coding Agents: `/categories/ai-coding-agents`
+  - AI Code Editors: `/categories/ai-code-editors`
+  - AI Chatbots: `/categories/ai-chatbots`
+  - AI Infrastructure Tools: `/categories/ai-infrastructure`
+  - Prompt Engineering Tools: `/categories/prompt-engineering-tools`
+  - AI Voice Agents: `/categories/ai-voice-agents`
+  - AI notetakers: `/categories/ai-meeting-notetakers`
+  - Note and writing apps: `/categories/notes-documents`
+  - Team collaboration software: `/categories/team-collaboration`
+  - Search: `/categories/search`
+  - AI Workflow Automation: `/categories/ai-workflow-automation`
+  - Lead generation software: `/categories/lead-generation`
+  - Marketing automation platforms: `/categories/marketing-automation`
+  - Video editing: `/categories/video-editing`
+  - Design resources: `/categories/design-resources`
+  - Graphic design tools: `/categories/graphic-design-tools`
+  - AI Generative Media: `/categories/ai-generative-media`
+  - Social Networking: `/categories/social-networking`
+  - Professional networking platforms: `/categories/professional-networking`
+  - Community management: `/categories/community-management`
+  - Accounting software: `/categories/accounting`
+  - Fundraising resources: `/categories/fundraising-resources`
+  - Investing: `/categories/investing`
+
+## Guidelines & Attribution
+- Styling requirement: Maintain clean, responsive UI layouts with standard Tailwind CSS v3 classes.
+- Attribution requirement: "Data and content managed via IndiHunt (https://indihunt.in/)"

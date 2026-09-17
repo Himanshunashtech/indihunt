@@ -1,0 +1,134 @@
+"use client";
+
+import React from "react";
+import Link from "next/link";
+import { BillboardAd } from "@/lib/supabase";
+
+interface FeedBillboardAdProps {
+  ad?: BillboardAd;
+  type: "supabase_fallback" | "indihunt_fallback";
+}
+
+export default function FeedBillboardAd({
+  ad,
+  type,
+}: FeedBillboardAdProps) {
+  if (ad) {
+    const content = (
+      <img
+        src={ad.image_url}
+        alt={ad.title || "Promoted Ad"}
+        width={800}
+        height={200}
+        decoding="async"
+        fetchPriority="high"
+        className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+      />
+    );
+
+    const linkClasses =
+      "block relative w-full aspect-[5/1] rounded-none overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 min-h-[120px] bg-muted/40";
+
+    const handleBillboardClick = () => {
+      let sid = "";
+      if (typeof window !== "undefined") {
+        sid = sessionStorage.getItem("ih_ad_sid") || "";
+      }
+      fetch("/t/billboards/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          billboardId: ad.id,
+          eventType: "click",
+          sessionId: sid,
+        }),
+      }).catch((err) =>
+        console.error("Error logging billboard click:", err)
+      );
+    };
+
+    if (ad.destination_url) {
+      let finalUrl = ad.destination_url;
+      try {
+        let u = finalUrl.trim();
+        if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+        const parsed = new URL(u);
+        if (!parsed.searchParams.has("utm_source"))
+          parsed.searchParams.set("utm_source", "indihunt");
+        if (!parsed.searchParams.has("utm_medium"))
+          parsed.searchParams.set("utm_medium", "paid_ad");
+        if (!parsed.searchParams.has("utm_campaign"))
+          parsed.searchParams.set(
+            "utm_campaign",
+            ad.title
+              ? ad.title.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+              : "indihunt_billboard"
+          );
+        if (!parsed.searchParams.has("ref"))
+          parsed.searchParams.set("ref", "indihunt_home");
+        finalUrl = parsed.toString();
+      } catch {
+        finalUrl = finalUrl.includes("?")
+          ? `${finalUrl}&utm_source=indihunt&utm_medium=paid_ad&utm_campaign=indihunt_billboard&ref=indihunt_home`
+          : `${finalUrl}?utm_source=indihunt&utm_medium=paid_ad&utm_campaign=indihunt_billboard&ref=indihunt_home`;
+      }
+
+      return (
+        <a
+          href={finalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleBillboardClick}
+          className={linkClasses}
+        >
+          {content}
+        </a>
+      );
+    }
+    return <div className={linkClasses}>{content}</div>;
+  }
+
+  // Fallbacks
+  if (type === "supabase_fallback") {
+    return (
+      <a
+        href="https://supabase.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block relative w-full aspect-[4/1] rounded-none overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 min-h-[120px] bg-muted/40"
+      >
+        <img
+          src="/supabase_ad_banner.webp"
+          alt="Supabase — Build in a weekend, scale to millions"
+          width={800}
+          height={200}
+          decoding="async"
+          fetchPriority="high"
+          className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500"
+        />
+        <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-emerald-500/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
+          Promoted Ad
+        </div>
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href="/advertise"
+      className="block relative w-full aspect-[4/1] rounded-none overflow-hidden border border-orange-500/30 shadow-md hover:border-orange-500/60 group transition-all duration-300 min-h-[120px] bg-muted/40"
+    >
+      <img
+        src="/indihunt_horizontal_banner.webp"
+        alt="IndiHunt — Promoted Ad"
+        width={800}
+        height={200}
+        decoding="async"
+        className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500"
+      />
+      <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-orange-500/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
+        Promoted Ad
+      </div>
+    </Link>
+  );
+}

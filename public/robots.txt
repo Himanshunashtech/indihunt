@@ -1,0 +1,87 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /my-products/
+Disallow: /profile/settings
+Disallow: /analytics/
+
+User-agent: Googlebot
+Allow: /
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /my-products/
+Disallow: /profile/settings
+Disallow: /analytics/
+
+User-agent: Bingbot
+Allow: /
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /my-products/
+
+User-agent: GPTBot
+Allow: /
+Allow: /products/
+Allow: /categories
+Allow: /best-products
+Allow: /makers
+Allow: /faq
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /my-products/
+Disallow: /analytics/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /products/
+Allow: /categories
+Allow: /best-products
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /my-products/
+
+User-agent: Google-Extended
+Allow: /
+Allow: /products/
+Allow: /categories
+Allow: /best-products
+Allow: /makers
+Allow: /faq
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /my-products/
+
+User-agent: PerplexityBot
+Allow: /
+Allow: /products/
+Allow: /categories
+Allow: /best-products
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+
+User-agent: anthropic-ai
+Allow: /
+Allow: /products/
+Allow: /categories
+Allow: /pages
+Allow: /page/
+Disallow: /api/
+Disallow: /auth/
+
+Sitemap: https://indihunt.in/sitemap.xml
