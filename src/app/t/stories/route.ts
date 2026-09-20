@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     let query = supabase
       .from('stories')
-      .select('id, title, content, excerpt, image_url, category, user_id, published_at, likes_count, comments_count, read_time, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
+      .select('id, title, content, excerpt, image_url, category, user_id, published_at, created_at, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
       .order('published_at', { ascending: false })
       .limit(limit);
 

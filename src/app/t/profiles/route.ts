@@ -24,14 +24,14 @@ export async function GET(request: NextRequest) {
       if (cachedAll) return apiSuccess(cachedAll);
     }
 
-    const PUBLIC_PROFILE_COLUMNS = 'id, username, full_name, avatar_url, bio, website, github_url, linkedin_url, twitter_url, is_maker, location, headline, karma_points, followers_count, is_verified, streak_count, created_at, tech_stack';
+    const PUBLIC_PROFILE_COLUMNS = 'id, username, full_name, avatar_url, bio, website, github_url, linkedin_url, twitter_url, is_maker, location, headline, karma_points, followers_count, is_verified, streak_count, created_at, tech_stack, indie_page_enabled, indie_page_theme, indie_page_font, monthly_revenue';
     const supabase = await createServerSupabaseClient();
     let query = supabase.from('profiles').select(PUBLIC_PROFILE_COLUMNS);
 
     if (userId) {
       query = query.eq('id', userId);
     } else if (username) {
-      query = query.eq('username', username);
+      query = query.ilike('username', username);
     } else {
       const { data: allProfiles, error } = await query.limit(50);
       if (error) return apiFailure(error.message, 500);

@@ -111,6 +111,23 @@ const CHANGELOG: ChangelogItem[] = [
     highlight: true,
   },
   {
+    version: "v6.5.1",
+    date: "September 17, 2026",
+    title: "DB Query & Cache Consistency Fixes",
+    summary: "Four targeted fixes in supabase.ts: indexed slug lookup replaces 3-fallback full-table scan in product detail, polar_payments removed from write hot-path, all report functions unified to upsert, and missing cache invalidation added to three mutating functions.",
+    icon: Zap,
+    iconColor: "text-blue-500",
+    iconBg: "bg-blue-500/10 border-blue-500/20",
+    tags: ["Fix", "Performance"],
+    features: [
+      { icon: Zap, text: "Slug indexed lookup: getProductByIdRaw now uses a single eq('slug') query backed by a generated column + B-tree index (migration 100), eliminating the previous 3-fallback waterfall ending in a limit(500) full-table scan." },
+      { icon: CheckCircle, text: "polar_payments write cleanup: recordPayment and updatePaymentStatusInDb no longer unconditionally dual-write to the legacy polar_payments table — it is now a true fallback activated only when the canonical payments table is missing the row." },
+      { icon: CheckCircle, text: "Report upsert unification: reportProduct and reportThread now use .upsert() with onConflict, matching reportComment, eliminating spurious 23505 error logs on duplicate reports." },
+      { icon: CheckCircle, text: "Cache invalidation fixed: addAlternative, createProductThread, and toggleFollowUser now call clearCache() on successful DB writes, preventing stale client-side data after mutations." },
+    ],
+    highlight: false,
+  },
+  {
     version: "v6.4.9",
     date: "September 11, 2026",
     title: "Cloudflare Turnstile Removal & Profile Route SEO Hardening",

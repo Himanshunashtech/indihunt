@@ -31,14 +31,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(pathname, request.url), 301);
   }
 
-  // 3. /page/[username] -> /@[username] (consolidates duplicate maker profile URLs)
-  if (pathname.startsWith('/page/')) {
-    const rawUser = pathname.replace('/page/', '').replace(/^@/, '').trim();
-    if (rawUser) {
-      return NextResponse.redirect(new URL(`/@${rawUser}`, request.url), 301);
-    }
-  }
-
   if (request.method === 'OPTIONS') {
     return new NextResponse(null, { status: 204, headers: corsHeaders });
   }

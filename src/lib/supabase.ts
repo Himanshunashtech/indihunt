@@ -1209,8 +1209,11 @@ async function getUserProfileRaw(userId: string) {
 export const getUserProfile = withCache('user_profile', getUserProfileRaw);
 
 async function getUserProfileByUsernameRaw(username: string) {
+  const cleaned = username.replace(/^@/, '').toLowerCase().trim();
+  if (!cleaned) return null;
+
   try {
-    const res = await fetch(`/t/profiles?username=${encodeURIComponent(username)}`);
+    const res = await fetch(`/t/profiles?username=${encodeURIComponent(cleaned)}`);
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.data) return data.data;
@@ -1219,7 +1222,18 @@ async function getUserProfileByUsernameRaw(username: string) {
     console.error("getUserProfileByUsername API Error:", err);
   }
 
-  const cleaned = username.replace(/^@/, '').toLowerCase();
+  // Direct Supabase client fallback (mirrors getUserProfileRaw pattern)
+  if (supabase) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .ilike('username', cleaned)
+        .maybeSingle();
+      if (profile) return profile;
+    } catch (e) { }
+  }
+
   const found = Object.values(MOCK_PROFILES).find(p => p.username.toLowerCase() === cleaned);
   return found || null;
 }
@@ -1412,51 +1426,37 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
         targetProduct = data;
       }
     } else {
-      // Check memory/localStorage cache first for instant response
+      // Check memory/localStorage cache first for instant response (<1ms)
       const cached = getCachedProducts(currentUserId);
       const cachedMatch = cached.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
       if (cachedMatch) {
         targetProduct = cachedMatch;
       } else {
-        // Perform fast targeted lookup instead of full table scan
-        const cleanSearchName = id.replace(/-/g, ' ');
-        const { data: matchedProducts } = await supabase
+        // Single indexed lookup via the `slug` generated column (migration 100).
+        // Falls back to a name ilike only if the slug column doesn't exist yet on this DB.
+        const { data: slugMatch, error: slugError } = await supabase
           .from('products')
           .select('*, maker:profiles!maker_id(*)')
-          .ilike('name', `%${cleanSearchName}%`)
-          .limit(15);
+          .eq('slug', normalizedKey)
+          .limit(5);
 
-        if (matchedProducts && matchedProducts.length > 0) {
-          targetProduct = matchedProducts.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
+        if (!slugError && slugMatch && slugMatch.length > 0) {
+          // Tiebreak in JS in the (rare) case of slug collision
+          targetProduct = slugMatch.find(p => getProductSlug(p.name) === normalizedKey || p.id === id)
+            ?? slugMatch[0];
         }
 
-        // Multi-token fallback (e.g. for slugs with numbers, dots or special chars)
-        if (!targetProduct) {
-          const tokens = id.split(/[-_]+/).filter(Boolean);
-          if (tokens.length > 0) {
-            const tokenQuery = tokens.slice(0, 2).join('%');
-            const { data: tokenProducts } = await supabase
-              .from('products')
-              .select('*, maker:profiles!maker_id(*)')
-              .ilike('name', `%${tokenQuery}%`)
-              .limit(30);
-
-            if (tokenProducts && tokenProducts.length > 0) {
-              targetProduct = tokenProducts.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
-            }
-          }
-        }
-
-        // Full search fallback to guarantee all platform products are discoverable by slug
-        if (!targetProduct) {
-          const { data: products } = await supabase
+        // Safety fallback: slug column may not exist on older DB (PGRST116 / column not found)
+        if (!targetProduct && (slugError || !slugMatch)) {
+          const cleanSearchName = id.replace(/-/g, ' ');
+          const { data: fallbackProducts } = await supabase
             .from('products')
             .select('*, maker:profiles!maker_id(*)')
-            .order('created_at', { ascending: false })
-            .limit(500);
+            .ilike('name', `%${cleanSearchName}%`)
+            .limit(30);
 
-          if (products) {
-            targetProduct = products.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
+          if (fallbackProducts && fallbackProducts.length > 0) {
+            targetProduct = fallbackProducts.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
           }
         }
       }
@@ -2290,6 +2290,7 @@ export async function addAlternative(productId: string, alternativeId: string, u
       console.error("Error adding alternative:", error);
       return null;
     }
+    clearCache();
     return data;
   }
 
@@ -2453,6 +2454,7 @@ export async function createProductThread(
       console.error("Error creating product thread:", error);
       return null;
     }
+    clearCache();
     return data;
   }
 
@@ -2510,22 +2512,18 @@ export async function reportProduct(
   description?: string
 ): Promise<{ success: boolean; alreadyReported?: boolean }> {
   if (supabase) {
+    // Use upsert so duplicate reports are silently ignored (no 23505 error log)
     const { error } = await supabase
       .from('reports')
-      .insert({
-        product_id: productId,
-        user_id: userId || null,
-        reason,
-        description: description || null
-      });
+      .upsert(
+        { product_id: productId, user_id: userId || null, reason, description: description || null },
+        { onConflict: 'product_id,user_id', ignoreDuplicates: true }
+      );
     if (error) {
-      if (error.code === '23505') {
-        return { success: false, alreadyReported: true };
-      }
-      console.error("Error reporting product:", error);
+      console.error('Error reporting product:', error);
       return { success: false };
     }
-    return { success: true };
+    return { success: true, alreadyReported: false };
   }
 
   // Fallback
@@ -2920,6 +2918,7 @@ export async function toggleFollowUser(followerId: string, followingId: string, 
         console.error(error);
         return false;
       }
+      clearCache(`user_profile_${followerId}`);
       return true;
     } else {
       const { error } = await supabase
@@ -2929,6 +2928,7 @@ export async function toggleFollowUser(followerId: string, followingId: string, 
         console.error(error);
         return false;
       }
+      clearCache(`user_profile_${followerId}`);
       return true;
     }
   }
@@ -4991,17 +4991,18 @@ export async function reportThread(
   description?: string
 ): Promise<{ success: boolean; alreadyReported?: boolean }> {
   if (supabase) {
+    // Use upsert so duplicate reports are silently ignored (no 23505 error log)
     const { error } = await supabase
       .from('thread_reports')
-      .insert({ thread_id: threadId, user_id: userId, reason, description: description || null });
+      .upsert(
+        { thread_id: threadId, user_id: userId, reason, description: description || null },
+        { onConflict: 'thread_id,user_id', ignoreDuplicates: true }
+      );
     if (error) {
-      if (error.code === '23505') {
-        return { success: false, alreadyReported: true };
-      }
-      console.error("Error reporting thread:", error);
+      console.error('Error reporting thread:', error);
       return { success: false };
     }
-    return { success: true };
+    return { success: true, alreadyReported: false };
   }
 
   if (typeof window !== 'undefined') {
@@ -5920,6 +5921,8 @@ export async function recordPayment(payment: Partial<PaymentRecord>): Promise<Pa
       .single();
     if (!error && data) return data as PaymentRecord;
 
+    // Fallback: write to polar_payments only if payments table insert failed
+    // (e.g. table not yet migrated on this DB instance)
     const { data: legacyData } = await supabase
       .from('polar_payments')
       .insert(newRecord)
@@ -5929,11 +5932,11 @@ export async function recordPayment(payment: Partial<PaymentRecord>): Promise<Pa
   }
 
   if (typeof window !== 'undefined') {
+    // Read from either key for backward compat; write only to the canonical key
     const cached = localStorage.getItem('indihunt_payments') || localStorage.getItem('indihunt_polar_payments');
     let list: PaymentRecord[] = cached ? JSON.parse(cached) : [];
     list.unshift(newRecord);
     localStorage.setItem('indihunt_payments', JSON.stringify(list));
-    localStorage.setItem('indihunt_polar_payments', JSON.stringify(list));
   }
 
   return newRecord;
@@ -5941,24 +5944,28 @@ export async function recordPayment(payment: Partial<PaymentRecord>): Promise<Pa
 
 export async function updatePaymentStatusInDb(paymentId: string, status: "succeeded" | "pending" | "failed" | "refunded", notes?: string): Promise<boolean> {
   if (supabase) {
-    await supabase
+    const { error: updateError } = await supabase
       .from('payments')
       .update({ status, metadata: { notes, updated_at: new Date().toISOString() } })
       .eq('id', paymentId);
 
-    await supabase
-      .from('polar_payments')
-      .update({ status, metadata: { notes, updated_at: new Date().toISOString() } })
-      .eq('id', paymentId);
+    // Only touch polar_payments if the payments update failed
+    // (i.e. this DB hasn't migrated yet)
+    if (updateError) {
+      await supabase
+        .from('polar_payments')
+        .update({ status, metadata: { notes, updated_at: new Date().toISOString() } })
+        .eq('id', paymentId);
+    }
     return true;
   }
 
   if (typeof window !== 'undefined') {
+    // Read from either key for backward compat; write only to the canonical key
     const cached = localStorage.getItem('indihunt_payments') || localStorage.getItem('indihunt_polar_payments');
     let list: PaymentRecord[] = cached ? JSON.parse(cached) : [];
     list = list.map(p => p.id === paymentId ? { ...p, status, metadata: { ...p.metadata, notes } } : p);
     localStorage.setItem('indihunt_payments', JSON.stringify(list));
-    localStorage.setItem('indihunt_polar_payments', JSON.stringify(list));
     return true;
   }
   return true;
