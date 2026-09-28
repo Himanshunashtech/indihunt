@@ -10,6 +10,10 @@ import {
   Trophy,
   MessageSquare,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Target,
   Sparkles,
   Flame,
@@ -338,12 +342,20 @@ export default function TopHuntersPage() {
   const [hunters, setHunters] = useState<Hunter[]>([]);
   const [topProducts, setTopProducts] = useState<Product[]>([]);
 
+  // Initial one-time products load for marquee
   useEffect(() => {
     const cached = getCachedProducts();
     if (cached && cached.length > 0) {
       setTopProducts([...cached].sort((a, b) => (b.upvotes_count || 0) - (a.upvotes_count || 0)));
+    } else {
+      getProducts().then((prods) => {
+        if (prods && prods.length > 0) {
+          setTopProducts([...prods].sort((a, b) => (b.upvotes_count || 0) - (a.upvotes_count || 0)));
+        }
+      }).catch(() => {});
     }
   }, []);
+
   const [timeframe, setTimeframe] = useState<"all_time" | "last_year" | "last_month" | "last_week">("all_time");
   const [rankCategory, setRankCategory] = useState<"top_hunters" | "weekly" | "monthly" | "yearly">("top_hunters");
   const [sortBy, setSortBy] = useState<"hunts" | "upvotes" | "comments" | "first_places" | "avg_upvotes">("hunts");
@@ -385,20 +397,17 @@ export default function TopHuntersPage() {
   }, [topProducts]);
 
   useEffect(() => {
+    let isCurrent = true;
     async function loadData() {
       setLoading(true);
-      const [data, prods] = await Promise.all([
-        getTopHuntersData(timeframe),
-        getProducts()
-      ]);
-      setHunters(data);
-      if (prods && prods.length > 0) {
-        const sortedProds = [...prods].sort((a, b) => (b.upvotes_count || 0) - (a.upvotes_count || 0));
-        setTopProducts(sortedProds);
+      const data = await getTopHuntersData(timeframe);
+      if (isCurrent) {
+        setHunters(data);
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadData();
+    return () => { isCurrent = false; };
   }, [timeframe]);
 
   const handlePillSelect = (cat: "top_hunters" | "weekly" | "monthly" | "yearly") => {
@@ -445,11 +454,30 @@ export default function TopHuntersPage() {
       return b.hunts_count - a.hunts_count;
     });
 
-  const totalPages = Math.ceil(filteredHunters.length / ITEMS_PER_PAGE) || 1;
+  const totalPages = Math.max(1, Math.ceil(filteredHunters.length / ITEMS_PER_PAGE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
   const paginatedHunters = filteredHunters.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+    (validCurrentPage - 1) * ITEMS_PER_PAGE,
+    validCurrentPage * ITEMS_PER_PAGE
   );
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (validCurrentPage > 3) pages.push("...");
+      const start = Math.max(2, validCurrentPage - 1);
+      const end = Math.min(totalPages - 1, validCurrentPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (validCurrentPage < totalPages - 2) pages.push("...");
+      if (!pages.includes(totalPages)) pages.push(totalPages);
+    }
+    return pages;
+  };
 
   const mostFeatured = [...hunters].sort((a, b) => b.hunts_count - a.hunts_count)[0] || hunters[0];
   const mostFirsts = [...hunters].sort((a, b) => b.first_places_count - a.first_places_count)[0] || hunters[2];
@@ -755,55 +783,104 @@ export default function TopHuntersPage() {
             {/* Pagination Controls */}
             {totalPages > 1 && (
               <div className="mt-6 pt-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-xs font-medium text-muted-foreground">
-                  Showing <span className="font-extrabold text-orange-500">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span>–
-                  <span className="font-extrabold text-orange-500">{Math.min(currentPage * ITEMS_PER_PAGE, filteredHunters.length)}</span> of{" "}
-                  <span className="font-extrabold text-foreground">{filteredHunters.length}</span> top hunters
-                </div>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  Showing{" "}
+                  <span className="font-semibold text-foreground">
+                    {(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}
+                  </span>
+                  {" "}to{" "}
+                  <span className="font-semibold text-foreground">
+                    {Math.min(validCurrentPage * ITEMS_PER_PAGE, filteredHunters.length)}
+                  </span>
+                  {" "}of{" "}
+                  <span className="font-semibold text-foreground">
+                    {filteredHunters.length}
+                  </span>{" "}
+                  top hunters
+                </p>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+                  {/* First Page */}
                   <button
-                    disabled={currentPage === 1}
                     onClick={() => {
-                      setCurrentPage((p) => Math.max(1, p - 1));
-                      if (typeof window !== "undefined") {
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }
+                      setCurrentPage(1);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold border border-border bg-card text-foreground hover:border-orange-500 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={validCurrentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="First Page"
                   >
-                    Previous
+                    <ChevronsLeft className="w-4 h-4" />
                   </button>
 
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pg) => (
-                    <button
-                      key={pg}
-                      onClick={() => {
-                        setCurrentPage(pg);
-                        if (typeof window !== "undefined") {
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }
-                      }}
-                      className={`w-8 h-8 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${currentPage === pg
-                        ? "bg-orange-500 border-orange-500 text-white shadow-sm"
-                        : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-orange-500"
-                        }`}
-                    >
-                      {pg}
-                    </button>
-                  ))}
-
+                  {/* Previous Page */}
                   <button
-                    disabled={currentPage === totalPages}
+                    onClick={() => {
+                      setCurrentPage((p) => Math.max(1, p - 1));
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    disabled={validCurrentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Smart Ellipsis Page Numbers */}
+                  {getPageNumbers().map((pageNum, idx) => {
+                    if (typeof pageNum === "string") {
+                      return (
+                        <span
+                          key={`dots-${idx}`}
+                          className="px-2 py-1 text-muted-foreground font-medium select-none"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    const isActive = pageNum === validCurrentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => {
+                          setCurrentPage(pageNum);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-orange-500 text-white font-semibold shadow-xs"
+                            : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* Next Page */}
+                  <button
                     onClick={() => {
                       setCurrentPage((p) => Math.min(totalPages, p + 1));
-                      if (typeof window !== "undefined") {
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }
+                      window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold border border-border bg-card text-foreground hover:border-orange-500 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={validCurrentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Next Page"
                   >
-                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  {/* Last Page */}
+                  <button
+                    onClick={() => {
+                      setCurrentPage(totalPages);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    disabled={validCurrentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Last Page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>

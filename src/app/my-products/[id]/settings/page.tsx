@@ -29,6 +29,7 @@ import {
 import {
   supabase,
   getProductById,
+  getUserProfile,
   updateProduct,
   getProductMembers,
   inviteProductMember,
@@ -234,10 +235,10 @@ export default function ProductSettingsPage() {
       if (prod) {
         // Fetch user profile to check for admin role
         let isAdmin = false;
-        if (supabase) {
-          const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
-          isAdmin = profile?.role === 'admin';
-        }
+        try {
+          const profile = await getUserProfile(userId);
+          isAdmin = (profile as any)?.role === 'admin';
+        } catch (e) {}
 
         // Only allow owner/maker, member, or admin to view settings
         if (prod.maker_id !== userId && !isAdmin) {
@@ -284,22 +285,10 @@ export default function ProductSettingsPage() {
         const shoutoutsGiven = await getProductShoutoutsGiven(prod.id);
 
         let productsList: Product[] = [];
-        if (supabase) {
-          const { data, error } = await supabase
-            .from('products')
-            .select('*, maker:profiles!maker_id(*)');
-          if (!error && data) {
-            productsList = data;
-          }
-        } else {
-          const local = localStorage.getItem("indihunt_products");
-          if (local) {
-            try {
-              productsList = JSON.parse(local);
-            } catch (e) {
-              console.error(e);
-            }
-          }
+        try {
+          productsList = await getProducts();
+        } catch (e) {
+          console.error(e);
         }
 
         const filtered = productsList.filter(p => p.id !== prod.id);

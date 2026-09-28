@@ -48,8 +48,8 @@ import {
   getProductSlug,
   checkContentViolation
 } from "@/lib/supabase";
-import { useAppDispatch, setAuthModalOpen } from "@/lib/store";
-import { useThread, useComments } from "@/hooks/useDb";
+import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
+import { useThread, useComments, useToggleThreadUpvoteMutation } from "@/hooks/useDb";
 import { UserHoverCard } from "@/components/UserHoverCard";
 import Navbar from "@/components/Navbar";
 import DiscussionsSidebar from "@/components/DiscussionsSidebar";
@@ -143,8 +143,12 @@ export default function ThreadDetailPage() {
     { value: 'ai_generated', label: 'Artificially generated (e.g. ChatGPT)' },
   ];
 
-  const { data: fetchedThread, isLoading: isThreadLoading } = useThread(threadId);
+  const reduxUser = useAppSelector((state) => state.auth.user);
+  const effectiveUserId = reduxUser?.id || user?.id;
+
+  const { data: fetchedThread, isLoading: isThreadLoading } = useThread(threadId, effectiveUserId || undefined);
   const { data: fetchedComments = [] } = useComments(undefined, threadId);
+  const toggleThreadUpvoteMutation = useToggleThreadUpvoteMutation();
 
   const thread = fetchedThread || null;
   const comments = fetchedComments;
@@ -185,20 +189,14 @@ export default function ThreadDetailPage() {
   // Handle thread upvote
   const handleVote = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!user) {
+    const activeUserId = effectiveUserId || user?.id;
+    if (!activeUserId) {
       dispatch(setAuthModalOpen(true));
       return;
     }
     if (!thread) return;
 
-    const result = await toggleThreadUpvote(thread.id, user.id);
-    if (result.success) {
-      queryClient.setQueryData(["thread", threadId], (prev: Thread | undefined) => prev ? {
-        ...prev,
-        upvotes_count: result.upvotes_count,
-        has_upvoted: !prev.has_upvoted
-      } : undefined);
-    }
+    toggleThreadUpvoteMutation.mutate({ threadId: thread.id, userId: activeUserId });
   };
 
   // Add Comment (Reply)

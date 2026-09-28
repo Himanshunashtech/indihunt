@@ -14,20 +14,26 @@ export default function FeedBillboardAd({
   type,
 }: FeedBillboardAdProps) {
   if (ad) {
+    const isInternal = ad.destination_url?.startsWith("/") || (!ad.destination_url?.startsWith("http://") && !ad.destination_url?.startsWith("https://") && !ad.destination_url?.includes("."));
+
     const content = (
-      <img
-        src={ad.image_url}
-        alt={ad.title || "Promoted Ad"}
-        width={800}
-        height={200}
-        decoding="async"
-        fetchPriority="high"
-        className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-      />
+      <>
+        <div className="relative w-full" style={{ paddingBottom: "25%" }}>
+          <img
+            src={ad.image_url}
+            alt={ad.title || "Promoted Ad"}
+            decoding="async"
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+          />
+        </div>
+        <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-slate-900/80 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm shadow-xs">
+          Promoted Ad
+        </div>
+      </>
     );
 
     const linkClasses =
-      "block relative w-full aspect-[5/1] rounded-none overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 min-h-[120px] bg-muted/40";
+      "block relative w-full overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 bg-muted/40";
 
     const handleBillboardClick = () => {
       let sid = "";
@@ -48,6 +54,18 @@ export default function FeedBillboardAd({
     };
 
     if (ad.destination_url) {
+      if (isInternal) {
+        return (
+          <Link
+            href={ad.destination_url}
+            onClick={handleBillboardClick}
+            className={linkClasses}
+          >
+            {content}
+          </Link>
+        );
+      }
+
       let finalUrl = ad.destination_url;
       try {
         let u = finalUrl.trim();
@@ -95,17 +113,16 @@ export default function FeedBillboardAd({
         href="https://supabase.com"
         target="_blank"
         rel="noopener noreferrer"
-        className="block relative w-full aspect-[4/1] rounded-none overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 min-h-[120px] bg-muted/40"
+        className="block relative w-full overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 bg-muted/40"
       >
-        <img
-          src="/supabase_ad_banner.webp"
-          alt="Supabase — Build in a weekend, scale to millions"
-          width={800}
-          height={200}
-          decoding="async"
-          fetchPriority="high"
-          className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500"
-        />
+        <div className="relative w-full" style={{ paddingBottom: "25%" }}>
+          <img
+            src="/supabase_ad_banner.webp"
+            alt="Supabase — Build in a weekend, scale to millions"
+            decoding="async"
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+          />
+        </div>
         <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-emerald-500/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
           Promoted Ad
         </div>
@@ -116,16 +133,16 @@ export default function FeedBillboardAd({
   return (
     <Link
       href="/advertise"
-      className="block relative w-full aspect-[4/1] rounded-none overflow-hidden border border-orange-500/30 shadow-md hover:border-orange-500/60 group transition-all duration-300 min-h-[120px] bg-muted/40"
+      className="block relative w-full overflow-hidden border border-orange-500/30 shadow-md hover:border-orange-500/60 group transition-all duration-300 bg-muted/40"
     >
-      <img
-        src="/indihunt_horizontal_banner.webp"
-        alt="IndiHunt — Promoted Ad"
-        width={800}
-        height={200}
-        decoding="async"
-        className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500"
-      />
+      <div className="relative w-full" style={{ paddingBottom: "25%" }}>
+        <img
+          src="/indihunt_horizontal_banner.webp"
+          alt="IndiHunt — Promoted Ad"
+          decoding="async"
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+        />
+      </div>
       <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-orange-500/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
         Promoted Ad
       </div>

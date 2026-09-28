@@ -24,6 +24,8 @@ export default function StoriesPage() {
     queryFn: async () => {
       return await getStories(searchQuery);
     },
+    initialData: () => (searchQuery ? undefined : getCachedStories()),
+    staleTime: 60 * 1000,
     placeholderData: (previousData) => previousData
   });
 

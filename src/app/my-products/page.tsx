@@ -14,6 +14,10 @@ import {
   Clock,
   FileText,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   HelpCircle,
   BookOpen,
   Plus
@@ -23,6 +27,7 @@ import {
   supabase,
   getProducts,
   getCachedProducts,
+  getUserProducts,
   Product,
   getProductSlug
 } from "@/lib/supabase";
@@ -31,6 +36,8 @@ import Navbar from "@/components/Navbar";
 import { CircularLoader } from "@/components/CircularLoader";
 
 type FilterCategory = "all" | "in-progress" | "drafts" | "scheduled" | "posted";
+
+const ITEMS_PER_PAGE = 10;
 
 export default function MyProductsPage() {
   const router = useRouter();
@@ -43,54 +50,71 @@ export default function MyProductsPage() {
     }
     return [];
   });
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    if (typeof window !== 'undefined' && reduxUser?.id) {
-      const cached = getCachedProducts();
-      const userProds = cached.filter(p => p.maker_id === reduxUser.id && !p.is_deleted);
-      return userProds.length === 0;
-    }
-    return true;
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeFilter, setActiveFilter] = useState<FilterCategory>("all");
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!supabase) return;
+    let isMounted = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session && !reduxUser) {
-        router.push("/");
-      } else {
-        const currentUser = session?.user || reduxUser;
-        if (currentUser) {
-          setUser(currentUser);
-          const cached = getCachedProducts();
-          const userProds = cached.filter(p => p.maker_id === currentUser.id && !p.is_deleted);
-          if (userProds.length > 0) {
-            setProducts(userProds);
-            setIsLoading(false);
-          }
-          fetchMyProducts(currentUser.id);
-        }
+    const initUserAndProducts = async () => {
+      let currentUser = reduxUser;
+
+      if (!currentUser && supabase) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          currentUser = session?.user || null;
+        } catch (e) {}
       }
-    });
+
+      if (!currentUser && typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('indihunt_user');
+          if (stored) currentUser = JSON.parse(stored);
+        } catch (e) {}
+      }
+
+      if (!currentUser) {
+        // If neither session nor local user exists, redirect to auth
+        router.push("/auth");
+        return;
+      }
+
+      if (isMounted) {
+        setUser(currentUser);
+        // Instant render from local cache if present
+        const cached = getCachedProducts();
+        const userCached = cached.filter(
+          (p) => (p.maker_id === currentUser.id || p.maker?.id === currentUser.id) && !p.is_deleted
+        );
+        if (userCached.length > 0) {
+          setProducts(userCached);
+          setIsLoading(false);
+        }
+
+        // Fetch fresh products for this user
+        fetchMyProducts(currentUser.id);
+      }
+    };
+
+    initUserAndProducts();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router, reduxUser]);
 
   const fetchMyProducts = async (uid: string) => {
-    if (products.length === 0) {
-      setIsLoading(true);
-    }
     try {
-      const res = await fetch(`/t/products?userId=${uid}`);
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.data || data.products;
-        if (Array.isArray(list)) {
-          setProducts(list.filter((p: any) => p.maker_id === uid && !p.is_deleted));
-        }
-      }
+      const userProds = await getUserProducts(uid);
+      setProducts(userProds);
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching user products:", err);
+      const cached = getCachedProducts();
+      setProducts(
+        cached.filter((p) => (p.maker_id === uid || p.maker?.id === uid) && !p.is_deleted)
+      );
     } finally {
       setIsLoading(false);
     }
@@ -132,6 +156,35 @@ export default function MyProductsPage() {
   };
 
   const filteredProducts = getFilteredProducts();
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedProducts = filteredProducts.slice(
+    (validCurrentPage - 1) * ITEMS_PER_PAGE,
+    validCurrentPage * ITEMS_PER_PAGE
+  );
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (validCurrentPage > 3) pages.push("...");
+      const start = Math.max(2, validCurrentPage - 1);
+      const end = Math.min(totalPages - 1, validCurrentPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (validCurrentPage < totalPages - 2) pages.push("...");
+      if (!pages.includes(totalPages)) pages.push(totalPages);
+    }
+    return pages;
+  };
+
+  const handleFilterChange = (filter: FilterCategory) => {
+    setActiveFilter(filter);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-[#ff5733] selection:text-white transition-colors duration-300">
@@ -165,7 +218,7 @@ export default function MyProductsPage() {
             <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground px-3">Launches</h3>
             <nav className="flex flex-col gap-1">
               <button
-                onClick={() => setActiveFilter("all")}
+                onClick={() => handleFilterChange("all")}
                 className={`flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer ${activeFilter === "all" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
               >
                 <span className="flex items-center gap-2">📢 All</span>
@@ -173,7 +226,7 @@ export default function MyProductsPage() {
               </button>
 
               <button
-                onClick={() => setActiveFilter("in-progress")}
+                onClick={() => handleFilterChange("in-progress")}
                 className={`flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer ${activeFilter === "in-progress" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
               >
                 <span className="flex items-center gap-2">✍️ In Progress</span>
@@ -181,7 +234,7 @@ export default function MyProductsPage() {
               </button>
 
               <button
-                onClick={() => setActiveFilter("drafts")}
+                onClick={() => handleFilterChange("drafts")}
                 className={`flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer ${activeFilter === "drafts" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
               >
                 <span className="flex items-center gap-2">📝 Drafts</span>
@@ -189,7 +242,7 @@ export default function MyProductsPage() {
               </button>
 
               <button
-                onClick={() => setActiveFilter("scheduled")}
+                onClick={() => handleFilterChange("scheduled")}
                 className={`flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer ${activeFilter === "scheduled" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
               >
                 <span className="flex items-center gap-2">⏰ Scheduled</span>
@@ -197,7 +250,7 @@ export default function MyProductsPage() {
               </button>
 
               <button
-                onClick={() => setActiveFilter("posted")}
+                onClick={() => handleFilterChange("posted")}
                 className={`flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer ${activeFilter === "posted" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"}`}
               >
                 <span className="flex items-center gap-2">🚀 Posted</span>
@@ -308,7 +361,7 @@ export default function MyProductsPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                {filteredProducts.map(product => {
+                {paginatedProducts.map(product => {
                   const isDraft = product.status === "draft";
                   const isScheduled = product.status === "scheduled" && (!product.scheduled_for || new Date(product.scheduled_for) > new Date());
                   const isLive = product.status === "live" || !product.status || (product.status === "scheduled" && product.scheduled_for && new Date(product.scheduled_for) <= new Date());
@@ -353,7 +406,7 @@ export default function MyProductsPage() {
                               <>
                                 <span className="w-1 h-1 rounded-full bg-muted-foreground/30"></span>
                                 <span className="flex items-center gap-0.5">
-                                  <ArrowUp className="w-3 h-3 text-emerald-500" />
+                                   <ArrowUp className="w-3 h-3 text-emerald-500" />
                                   {product.upvotes_count} upvotes
                                 </span>
                                 <span className="w-1 h-1 rounded-full bg-muted-foreground/30"></span>
@@ -419,6 +472,87 @@ export default function MyProductsPage() {
                     </div>
                   );
                 })}
+
+                {/* ── Numeric Pagination ── */}
+                {totalPages > 1 && (
+                  <div className="pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      Showing <span className="font-semibold text-foreground">{(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}</span> to{" "}
+                      <span className="font-semibold text-foreground">{Math.min(validCurrentPage * ITEMS_PER_PAGE, filteredProducts.length)}</span> of{" "}
+                      <span className="font-semibold text-foreground">{filteredProducts.length}</span> launches
+                    </p>
+
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+                      {/* First Page */}
+                      <button
+                        onClick={() => setCurrentPage(1)}
+                        disabled={validCurrentPage === 1}
+                        className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                        title="First Page"
+                      >
+                        <ChevronsLeft className="w-4 h-4" />
+                      </button>
+
+                      {/* Previous Page */}
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={validCurrentPage === 1}
+                        className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                        title="Previous Page"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+
+                      {/* Page Numbers */}
+                      {getPageNumbers().map((pageNum, idx) => {
+                        if (typeof pageNum === "string") {
+                          return (
+                            <span
+                              key={`dots-${idx}`}
+                              className="px-2 py-1 text-muted-foreground font-medium select-none"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+                        const isActive = pageNum === validCurrentPage;
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                              isActive
+                                ? "bg-[#ff5733] text-white font-semibold shadow-xs"
+                                : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+
+                      {/* Next Page */}
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={validCurrentPage === totalPages}
+                        className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                        title="Next Page"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+
+                      {/* Last Page */}
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={validCurrentPage === totalPages}
+                        className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                        title="Last Page"
+                      >
+                        <ChevronsRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

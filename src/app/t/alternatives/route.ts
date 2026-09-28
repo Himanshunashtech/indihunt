@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,9 +25,9 @@ export async function GET(request: NextRequest) {
           .select('alternative_id')
           .eq('user_id', userId);
         const votedIds = new Set((votes || []).map((v: any) => v.alternative_id));
-        return apiSuccess(cached.map((a: any) => ({ ...a, has_voted: votedIds.has(a.id) })));
+        return apiSuccessSecure(cached.map((a: any) => ({ ...a, has_voted: votedIds.has(a.id) })));
       }
-      return apiSuccess(cached);
+      return apiSuccessSecure(cached);
     }
 
     const supabase = await createServerSupabaseClient();
@@ -48,10 +48,10 @@ export async function GET(request: NextRequest) {
         .select('alternative_id')
         .eq('user_id', userId);
       const votedIds = new Set((votes || []).map((v: any) => v.alternative_id));
-      return apiSuccess(list.map((a: any) => ({ ...a, has_voted: votedIds.has(a.id) })));
+      return apiSuccessSecure(list.map((a: any) => ({ ...a, has_voted: votedIds.has(a.id) })));
     }
 
-    return apiSuccess(list);
+    return apiSuccessSecure(list);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch alternatives', 500);
   }
@@ -93,16 +93,17 @@ export async function POST(request: NextRequest) {
         .single();
 
       await invalidateCache(`alternatives:${pId}`);
-      return apiSuccess({ success: true, votes_count: alt?.votes_count || 0, has_voted: !existing });
+      return apiSuccessSecure({ success: true, votes_count: alt?.votes_count || 0, has_voted: !existing });
     }
 
     // Add new alternative
     const { alternativeProductId, note } = body;
-    if (!alternativeProductId) return apiFailure('alternativeProductId is required for action=add', 400);
+    const altProdId = alternativeProductId || altId;
+    if (!altProdId) return apiFailure('alternativeProductId is required for action=add', 400);
 
     const { data: newAlt, error } = await supabase
       .from('product_alternatives')
-      .insert({ product_id: pId, alternative_id: alternativeProductId, created_by: uId, note: note || null, votes_count: 1 })
+      .insert({ product_id: pId, alternative_id: altProdId, created_by: uId, note: note || null, votes_count: 1 })
       .select('*, alternative_product:products!alternative_id(id, name, tagline, logo_url, website_url, upvotes_count, category)')
       .single();
 
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
     await supabase.from('product_alternative_votes').insert({ alternative_id: newAlt.id, user_id: uId });
     await invalidateCache(`alternatives:${pId}`);
 
-    return apiSuccess({ ...newAlt, has_voted: true }, 201);
+    return apiSuccessSecure({ ...newAlt, has_voted: true }, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to handle alternative', 500);
   }
@@ -132,8 +133,9 @@ export async function DELETE(request: NextRequest) {
     if (error) return apiFailure(error.message, 500);
 
     if (productId) await invalidateCache(`alternatives:${productId}`);
-    return apiSuccess({ success: true });
+    return apiSuccessSecure({ success: true });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to delete alternative', 500);
   }
 }
+

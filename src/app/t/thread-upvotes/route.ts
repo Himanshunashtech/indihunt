@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { invalidateCache } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     await invalidateCache(`thread:${tId}`);
     await invalidateCache('threads:all');
 
-    return apiSuccess({
+    return apiSuccessSecure({
       success: true,
       upvotes_count: thread?.upvotes_count || 0,
       has_upvoted: !existing,
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       .eq('user_id', userId)
       .maybeSingle();
 
-    return apiSuccess({ has_upvoted: !!existing });
+    return apiSuccessSecure({ has_upvoted: !!existing });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to check thread upvote', 500);
   }

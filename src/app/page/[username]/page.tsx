@@ -435,11 +435,18 @@ export default function IndiePageView() {
 
                       {/* Tags & Badges */}
                       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        {/* Role Badge: Maker */}
-                        <span className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 flex items-center gap-1.5 border border-emerald-400/40">
-                          <Star className="w-3.5 h-3.5 fill-white text-white shrink-0" />
-                          <span>Maker</span>
-                        </span>
+                        {/* Role Badge: Maker vs Hunter */}
+                        {product.worked_on_launch === false || (product as any).role === 'hunter' ? (
+                          <span className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-full bg-amber-500 text-white shadow-sm shadow-amber-500/30 flex items-center gap-1.5 border border-amber-400/40">
+                            <Rocket className="w-3.5 h-3.5 fill-white text-white shrink-0" />
+                            <span>Hunter</span>
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 flex items-center gap-1.5 border border-emerald-400/40">
+                            <Star className="w-3.5 h-3.5 fill-white text-white shrink-0" />
+                            <span>Maker</span>
+                          </span>
+                        )}
 
                         {product.category && (
                           <span

@@ -15,15 +15,22 @@ export interface ApiFailurePayload {
 
 export type ApiResponsePayload<T = unknown> = ApiSuccessPayload<T> | ApiFailurePayload;
 
+import { encodePayload } from './obfuscate';
+
 /**
  * Universal Response Wrapper for successful API outcomes.
- * Guarantees that { success: true } is always returned in the JSON response payload.
- *
- * - If data is an object: spreads the object and guarantees `success: true`.
- * - If data is an array or primitive: wraps in `{ success: true, data }`.
- * - If data is omitted/void: returns `{ success: true }`.
+ * If secure: true is enabled or data masking is applied, encodes payload so it's not readable in Network tab.
  */
-export function apiSuccess<T = unknown>(data?: T, status = 200, headers?: HeadersInit): NextResponse {
+export function apiSuccess<T = unknown>(
+  data?: T,
+  status = 200,
+  headers?: HeadersInit,
+  options?: { secure?: boolean }
+): NextResponse {
+  if (options?.secure) {
+    return apiSuccessSecure(data, status, headers);
+  }
+
   let body: any = { success: true };
 
   if (data !== undefined && data !== null) {
@@ -38,6 +45,25 @@ export function apiSuccess<T = unknown>(data?: T, status = 200, headers?: Header
   }
 
   return NextResponse.json(body, { status, headers });
+}
+
+/**
+ * Secure Response Wrapper that obfuscates / hides the returned payload
+ * from plain-text visibility in the browser Network tab.
+ */
+export function apiSuccessSecure<T = unknown>(
+  data?: T,
+  status = 200,
+  headers?: HeadersInit
+): NextResponse {
+  const encoded = encodePayload(data !== undefined ? data : null);
+  return NextResponse.json(
+    {
+      success: true,
+      _d: encoded
+    },
+    { status, headers }
+  );
 }
 
 /**

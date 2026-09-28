@@ -1,4 +1,4 @@
-import { apiSuccess, apiFailure } from "@/lib/api/response";
+import { apiSuccessSecure, apiFailure } from "@/lib/api/response";
 import { addNotification, getUserNotificationSettings } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/onesignal";
 
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     // If user unsubscribed from all, skip
     if (settings.unsubscribe_all) {
-      return apiSuccess({ skipped: true, reason: "unsubscribed_all" });
+      return apiSuccessSecure({ skipped: true, reason: "unsubscribed_all" });
     }
 
     // 2. Dispatch in-app notification row
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       });
     }
 
-    return apiSuccess();
+    return apiSuccessSecure();
   } catch (error: any) {
     console.error("Notification process endpoint error:", error);
     return apiFailure(error?.message || "Internal server error", 500);

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { apiSuccessSecure } from '@/lib/api/response';
 import { getProducts } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 
@@ -285,13 +286,13 @@ async function handleDailyDigest(req: Request) {
     const recipientList = Array.from(emailsSet);
 
     if (recipientList.length === 0) {
-      return NextResponse.json({
+      return apiSuccessSecure({
         success: false,
         message: "No subscribers found in database to send daily digest.",
         tip: "You can test email sending immediately by adding ?testEmail=your@email.com to the API URL",
         diagnostics: queryLogs,
         databaseConnected: !!dbClient
-      }, { status: 200 });
+      });
     }
 
     const results = [];
@@ -326,13 +327,13 @@ async function handleDailyDigest(req: Request) {
     }
 
     const anySuccess = results.some(r => r.success);
-    return NextResponse.json({
+    return apiSuccessSecure({
       success: anySuccess,
       totalRecipients: recipientList.length,
       recipientsCount: recipientList.length,
       batchesSent: results.length,
       results
-    }, { status: anySuccess ? 200 : 500 });
+    });
   } catch (error: any) {
     console.error('[Daily Digest API Error]', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });

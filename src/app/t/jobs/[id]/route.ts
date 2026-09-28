@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { invalidateCache } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (error) return apiFailure(error.message, 500);
     if (!job) return apiFailure('Job not found', 404);
 
-    return apiSuccess(job);
+    return apiSuccessSecure(job);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch job', 500);
   }
@@ -43,7 +43,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     await invalidateCache('jobs:active');
     await invalidateCache('jobs:all');
-    return apiSuccess(job);
+    return apiSuccessSecure(job);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to update job', 500);
   }
@@ -61,7 +61,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
     await invalidateCache('jobs:active');
     await invalidateCache('jobs:all');
-    return apiSuccess({ success: true });
+    return apiSuccessSecure({ success: true });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to delete job', 500);
   }

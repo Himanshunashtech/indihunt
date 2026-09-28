@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,7 +74,7 @@ IndiHunt Team`;
       return apiFailure(resendData?.message || 'Failed to send email via Resend', 500);
     }
 
-    return apiSuccess({ id: resendData.id });
+    return apiSuccessSecure({ id: resendData.id });
   } catch (err: any) {
     return apiFailure(err?.message || 'Error processing email sending request', 500);
   }

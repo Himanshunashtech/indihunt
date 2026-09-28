@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import {
   supabase,
+  checkProductUrlExists,
   submitProduct,
   createThread,
   fetchUrlMetadata,
@@ -287,11 +288,10 @@ function NewLaunchWizard() {
     setErrorMsg("");
 
     try {
-      // 1. Check if product already exists
-      const localProds = await getProducts();
-      const existing = localProds.find(p => p.website_url.toLowerCase() === urlToCheck.toLowerCase());
-      if (existing) {
-        setErrorMsg("This product has already been launched on IndiHunt!");
+      // 1. Check if product already exists (across Supabase DB and local store)
+      const duplicateCheck = await checkProductUrlExists(urlToCheck);
+      if (duplicateCheck.exists) {
+        setErrorMsg(duplicateCheck.message || "This product has already been launched on IndiHunt!");
         setIsFetchingMetadata(false);
         return;
       }
@@ -383,6 +383,15 @@ function NewLaunchWizard() {
     setIsSubmitting(true);
 
     try {
+      // Re-verify URL duplicate before launch submission
+      const duplicateCheck = await checkProductUrlExists(submitUrl);
+      if (duplicateCheck.exists) {
+        setErrorMsg(duplicateCheck.message || "This product has already been launched on IndiHunt!");
+        setActiveStep("main-info");
+        setIsSubmitting(false);
+        return;
+      }
+
       const activeGallery = galleryImages.filter(g => g.trim() !== "");
       const newProd = await submitProduct({
         name: submitName,

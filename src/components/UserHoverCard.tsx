@@ -6,6 +6,7 @@ import { CheckCircle2, ShieldCheck, Globe, ExternalLink } from "lucide-react";
 import { Github, Twitter, Linkedin } from "@/components/icons";
 import { Profile, supabase, toggleFollowUser, isFollowingUser } from "@/lib/supabase";
 import { useAppDispatch, setAuthModalOpen } from "@/lib/store";
+import { secureApiFetch } from "@/lib/api/client";
 
 interface UserHoverCardProps {
   user?: Profile | null;
@@ -52,11 +53,10 @@ export function UserHoverCard({ user: propUser, userId, children, align = "left"
         }
 
         const viewerQuery = sessUser?.id ? `&viewerId=${sessUser.id}` : "";
-        const res = await fetch(`/t/profiles/hover?userId=${targetId}${viewerQuery}`);
+        const res = await secureApiFetch<any>(`/t/profiles/hover?userId=${targetId}${viewerQuery}`);
         
-        if (res.ok) {
-          const data = await res.json();
-          const payload = data.data || data;
+        if (res && res.success && res.data) {
+          const payload = res.data;
           if (isMounted && payload) {
             if (payload.profile) setProfile(payload.profile);
             setIsFollowing(!!payload.isFollowing);

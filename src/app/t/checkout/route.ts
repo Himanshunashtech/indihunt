@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { getPaymentGatewayConfig } from '@/lib/supabase';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { POST as dodoPOST } from './dodo/route';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const config = await getPaymentGatewayConfig();
-  return apiSuccess({
+  return apiSuccessSecure({
     status: 'ok',
     active_gateway: config.active_gateway || 'dodo',
     dodo_enabled: true,

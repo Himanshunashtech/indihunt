@@ -16,6 +16,8 @@ import {
   Trophy,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   ExternalLink,
   Grid,
   Bot,
@@ -54,7 +56,25 @@ function LeaderboardContent() {
   const [categorySearchQuery, setCategorySearchQuery] = useState<string>("");
   const [timeFilter] = useState<"all" | "today">("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const limit = 50;
+  const limit = 20;
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("...");
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (currentPage < totalPages - 2) pages.push("...");
+      if (!pages.includes(totalPages)) pages.push(totalPages);
+    }
+    return pages;
+  };
 
   const [products, setProducts] = useState<Product[]>([]);
   const [topRanked, setTopRanked] = useState<Product[]>([]);
@@ -500,87 +520,99 @@ function LeaderboardContent() {
               </div>
             )}
 
-            {/* ── PAGINATION CONTROLS (Top 50 per page limit) ───── */}
+            {/* ── PAGINATION CONTROLS ───── */}
             {totalPages > 1 && (
-              <div className="pt-8 pb-4 text-center space-y-3 border-t border-border/40">
-                <div className="flex items-center justify-center gap-2 flex-wrap">
+              <div className="pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  Showing <span className="font-semibold text-foreground">{(currentPage - 1) * limit + 1}</span> to{" "}
+                  <span className="font-semibold text-foreground">{Math.min(currentPage * limit, totalCount)}</span> of{" "}
+                  <span className="font-semibold text-foreground">{totalCount.toLocaleString()}</span> products
+                </p>
 
-                  {/* Prev */}
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+                  {/* First Page */}
                   <button
+                    onClick={() => {
+                      setCurrentPage(1);
+                      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
                     disabled={currentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="First Page"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Previous Page */}
+                  <button
                     onClick={() => {
                       setCurrentPage(prev => Math.max(1, prev - 1));
-                      if (typeof window !== "undefined") {
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }
+                      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="p-2 rounded-full border border-border/80 bg-card hover:bg-muted text-foreground disabled:opacity-40 cursor-pointer transition-colors"
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Previous Page"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
 
                   {/* Page Numbers */}
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pageNum = i + 1;
+                  {getPageNumbers().map((pageNum, idx) => {
+                    if (typeof pageNum === "string") {
+                      return (
+                        <span
+                          key={`dots-${idx}`}
+                          className="px-2 py-1 text-muted-foreground font-medium select-none"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
                     const isActive = pageNum === currentPage;
                     return (
                       <button
                         key={pageNum}
                         onClick={() => {
                           setCurrentPage(pageNum);
-                          if (typeof window !== "undefined") {
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }
+                          if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
                         }}
-                        className={`w-9 h-9 rounded-full text-base font-bold transition-all cursor-pointer ${isActive
-                          ? "bg-[#ff5733] text-white shadow-md shadow-orange-500/20"
-                          : "bg-card border border-border/80 text-foreground/80 hover:bg-muted"
-                          }`}
+                        className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-[#ff5733] text-white font-semibold shadow-xs"
+                            : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                        }`}
                       >
                         {pageNum}
                       </button>
                     );
                   })}
 
-                  {totalPages > 5 && (
-                    <>
-                      <span className="text-base text-muted-foreground px-1">...</span>
-                      <button
-                        onClick={() => {
-                          setCurrentPage(totalPages);
-                          if (typeof window !== "undefined") {
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }
-                        }}
-                        className={`w-9 h-9 rounded-full text-base font-bold transition-all cursor-pointer ${currentPage === totalPages
-                          ? "bg-[#ff5733] text-white shadow-md"
-                          : "bg-card border border-border/80 text-foreground/80 hover:bg-muted"
-                          }`}
-                      >
-                        {totalPages}
-                      </button>
-                    </>
-                  )}
-
-                  {/* Next */}
+                  {/* Next Page */}
                   <button
-                    disabled={currentPage === totalPages}
                     onClick={() => {
                       setCurrentPage(prev => Math.min(totalPages, prev + 1));
-                      if (typeof window !== "undefined") {
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }
+                      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="p-2 rounded-full border border-border/80 bg-card hover:bg-muted text-foreground disabled:opacity-40 cursor-pointer transition-colors"
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Next Page"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
-                </div>
 
-                {/* Range summary */}
-                <p className="text-base text-muted-foreground font-medium">
-                  {((currentPage - 1) * limit) + 1} - {Math.min(currentPage * limit, totalCount)} of {totalCount.toLocaleString()}
-                </p>
+                  {/* Last Page */}
+                  <button
+                    onClick={() => {
+                      setCurrentPage(totalPages);
+                      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Last Page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
 

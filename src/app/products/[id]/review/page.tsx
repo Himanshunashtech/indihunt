@@ -22,6 +22,7 @@ import {
   getProductById,
   addReview,
   getProducts,
+  getCachedProducts,
   Product,
   Profile,
   checkContentViolation
@@ -112,11 +113,16 @@ export default function ReviewWizardPage() {
     });
 
     // Load other products for comparison
-    getProducts().then((list) => {
-      if (list) {
-        setAllProducts(list);
-      }
-    });
+    const cachedProds = getCachedProducts();
+    if (cachedProds && cachedProds.length > 0) {
+      setAllProducts(cachedProds);
+    } else {
+      getProducts().then((list) => {
+        if (list) {
+          setAllProducts(list);
+        }
+      });
+    }
   }, [id]);
 
   const handleProTagToggle = (tag: string) => {

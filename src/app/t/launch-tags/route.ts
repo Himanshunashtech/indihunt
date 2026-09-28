@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = `launch-tags:${category || 'all'}:${search || ''}`;
     const cached = await getCachedData<any[]>(cacheKey);
-    if (cached) return apiSuccess(cached);
+    if (cached) return apiSuccessSecure(cached);
 
     const supabase = await createServerSupabaseClient();
     let query = supabase.from('launch_tags').select('*').order('name', { ascending: true });
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     const list = tags || [];
     await setCachedData(cacheKey, list, 600);
-    return apiSuccess(list);
+    return apiSuccessSecure(list);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch launch tags', 500);
   }
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     if (error) return apiFailure(error.message, 500);
 
     await invalidateCache('launch-tags:all:');
-    return apiSuccess(tag, 201);
+    return apiSuccessSecure(tag, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to create launch tag', 500);
   }
@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest) {
     if (error) return apiFailure(error.message, 500);
 
     await invalidateCache('launch-tags:all:');
-    return apiSuccess(tag);
+    return apiSuccessSecure(tag);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to update launch tag', 500);
   }
@@ -94,7 +94,7 @@ export async function DELETE(request: NextRequest) {
     if (error) return apiFailure(error.message, 500);
 
     await invalidateCache('launch-tags:all:');
-    return apiSuccess({ success: true });
+    return apiSuccessSecure({ success: true });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to delete launch tag', 500);
   }

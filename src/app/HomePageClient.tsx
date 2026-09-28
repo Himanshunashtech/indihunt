@@ -9,12 +9,14 @@ import {
   getUserProfile,
   updateUserProfile,
   getBillboardAds,
+  DEFAULT_BILLBOARDS,
   BillboardAd,
   getTopHuntersData,
   compareProductsForRanking,
   isIndianPreLaunchWindow,
   isGlobalPreLaunchWindow,
   getISTStartOfDay,
+  getProductSlug,
   Hunter,
 } from "@/lib/supabase";
 import {
@@ -32,6 +34,7 @@ import {
 import Navbar from "@/components/Navbar";
 import { queryClient } from "@/lib/queryClient";
 import { useWebSocket } from "@/components/WebSocketProvider";
+import { secureApiFetch } from "@/lib/api/client";
 
 import {
   PaymentBanner,
@@ -103,7 +106,7 @@ export default function HomePageClient({
           (old: any) => {
             if (!Array.isArray(old)) return old;
             return old.map((p) =>
-              p.id === data.productId
+              p.id === data.productId || (p.name && getProductSlug(p.name).toLowerCase() === data.productId.toLowerCase())
                 ? { ...p, upvotes_count: data.upvotes_count }
                 : p
             );
@@ -114,7 +117,7 @@ export default function HomePageClient({
     return unsubscribe;
   }, [subscribe]);
 
-  // Sync auth state from global Redux store
+  // Sync auth state & onboarding from global Redux store
   const reduxUser = useAppSelector((state) => state.auth.user);
   const reduxProfile = useAppSelector((state) => state.auth.profile);
   const effectiveUserId = reduxUser?.id || currentUser?.id || null;
@@ -122,6 +125,32 @@ export default function HomePageClient({
   useEffect(() => {
     setCurrentUser(reduxUser);
     setProfile(reduxProfile);
+    if (reduxProfile) {
+      setOnboardName(
+        reduxProfile.full_name ||
+          reduxUser?.user_metadata?.full_name ||
+          reduxUser?.user_metadata?.name ||
+          ""
+      );
+      setOnboardUsername(
+        reduxProfile.username ||
+          reduxUser?.user_metadata?.username ||
+          reduxUser?.user_metadata?.user_name ||
+          reduxUser?.email?.split("@")[0] ||
+          ""
+      );
+      setOnboardLinkedIn(reduxProfile.linkedin_url || "");
+      setOnboardTwitter(reduxProfile.twitter_url || "");
+      setOnboardHeadline(reduxProfile.headline || "");
+
+      if (reduxProfile.onboarding_completed === false) {
+        setShowOnboarding(true);
+      } else {
+        setShowOnboarding(false);
+      }
+    } else if (!reduxUser) {
+      setShowOnboarding(false);
+    }
   }, [reduxUser, reduxProfile]);
 
   // TanStack Query Hooks (Hydrated with server initialData, staleTime: 5 mins)
@@ -149,7 +178,25 @@ export default function HomePageClient({
   );
   const [selectedBillboardAds, setSelectedBillboardAds] = useState<
     BillboardAd[]
-  >(initialBillboardAds.slice(0, 2));
+  >(() => {
+    let list = [...initialBillboardAds];
+    if (list.length === 0) {
+      list = [...DEFAULT_BILLBOARDS];
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const lastId = sessionStorage.getItem("ih_last_billboard_id");
+        if (lastId && list.length > 1) {
+          const idx = list.findIndex((a) => a.id === lastId);
+          if (idx !== -1) {
+            const nextIdx = (idx + 1) % list.length;
+            list = [...list.slice(nextIdx), ...list.slice(0, nextIdx)];
+          }
+        }
+      } catch (e) {}
+    }
+    return list;
+  });
 
   // Payment Status Banner state from checkout redirect
   const [paymentBanner, setPaymentBanner] =
@@ -353,36 +400,102 @@ export default function HomePageClient({
     });
 
     let sid = "";
+    let lastSeenId = "";
     if (typeof window !== "undefined") {
       sid = sessionStorage.getItem("ih_ad_sid") || "";
       if (!sid) {
         sid = `sid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         sessionStorage.setItem("ih_ad_sid", sid);
       }
+      lastSeenId = sessionStorage.getItem("ih_last_billboard_id") || "";
     }
 
-    fetch(`/t/billboards?sessionId=${sid}`)
-      .then((res) => (res.ok ? res.json() : { ads: [] }))
-      .then((data: any) => {
-        const adsList = data.data?.ads || data.ads || [];
-        setSelectedBillboardAds(adsList);
+    secureApiFetch<any>(`/t/billboards?sessionId=${sid}&lastSeenId=${encodeURIComponent(lastSeenId)}`)
+      .then((res) => {
+        let adsList: BillboardAd[] = [];
+        if (res && res.success && res.data) {
+          if (Array.isArray(res.data)) {
+            adsList = res.data;
+          } else if (Array.isArray((res.data as any).ads)) {
+            adsList = (res.data as any).ads;
+          }
+        }
+        const uniqueAds: BillboardAd[] = [];
+        for (const ad of adsList) {
+          if (!uniqueAds.some((u) => u.id === ad.id || (u.destination_url && u.destination_url === ad.destination_url))) {
+            uniqueAds.push(ad);
+          }
+        }
+        if (uniqueAds.length === 0) {
+          for (const defAd of DEFAULT_BILLBOARDS) {
+            if (!uniqueAds.some((u) => u.id === defAd.id || (u.destination_url && u.destination_url === defAd.destination_url))) {
+              uniqueAds.push(defAd);
+            }
+          }
+        }
 
-        adsList.forEach((ad: any) => {
-          fetch("/t/billboards/event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              billboardId: ad.id,
-              eventType: "impression",
-              sessionId: sid,
-            }),
-          }).catch(() => {});
-        });
+        if (uniqueAds.length > 0) {
+          let rotated = [...uniqueAds];
+          if (typeof window !== "undefined") {
+            try {
+              if (lastSeenId && rotated.length > 1) {
+                const idx = rotated.findIndex((a) => a.id === lastSeenId);
+                if (idx !== -1) {
+                  const nextIdx = (idx + 1) % rotated.length;
+                  rotated = [...rotated.slice(nextIdx), ...rotated.slice(0, nextIdx)];
+                } else {
+                  const unviewed = rotated.filter((a) => a.id !== lastSeenId);
+                  if (unviewed.length > 0) {
+                    rotated = [...unviewed, ...rotated.filter((a) => a.id === lastSeenId)];
+                  }
+                }
+              }
+              if (rotated[0]) {
+                sessionStorage.setItem("ih_last_billboard_id", rotated[0].id);
+              }
+            } catch (e) {}
+          }
+
+          setSelectedBillboardAds(rotated);
+
+          rotated.forEach((ad: any) => {
+            fetch("/t/billboards/event", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                billboardId: ad.id,
+                eventType: "impression",
+                sessionId: sid,
+              }),
+            }).catch(() => {});
+          });
+        }
       })
       .catch(() => {
         getBillboardAds(false).then((ads) => {
-          const shuffled = [...ads].sort(() => 0.5 - Math.random());
-          setSelectedBillboardAds(shuffled.slice(0, 2));
+          let list = [...(ads || [])];
+          if (list.length === 0) {
+            for (const defAd of DEFAULT_BILLBOARDS) {
+              if (!list.some((u) => u.id === defAd.id || (u.destination_url && u.destination_url === defAd.destination_url))) {
+                list.push(defAd);
+              }
+            }
+          }
+          if (typeof window !== "undefined" && list.length > 1) {
+            try {
+              if (lastSeenId) {
+                const idx = list.findIndex((a) => a.id === lastSeenId);
+                if (idx !== -1) {
+                  const nextIdx = (idx + 1) % list.length;
+                  list = [...list.slice(nextIdx), ...list.slice(0, nextIdx)];
+                }
+              }
+              if (list[0]) {
+                sessionStorage.setItem("ih_last_billboard_id", list[0].id);
+              }
+            } catch (e) {}
+          }
+          setSelectedBillboardAds(list);
         });
       });
   }, []);
@@ -397,70 +510,6 @@ export default function HomePageClient({
     return () => clearInterval(interval);
   }, []);
 
-  const fetchProfileAndCheckOnboarding = async (
-    uid: string,
-    userObj: any,
-    retries = 3
-  ) => {
-    const prof = await getUserProfile(uid);
-    if (prof) {
-      setProfile(prof);
-      setOnboardName(
-        prof.full_name ||
-          userObj?.user_metadata?.full_name ||
-          userObj?.user_metadata?.name ||
-          ""
-      );
-      setOnboardUsername(
-        prof.username ||
-          userObj?.user_metadata?.username ||
-          userObj?.user_metadata?.user_name ||
-          userObj?.email?.split("@")[0] ||
-          ""
-      );
-      setOnboardLinkedIn(prof.linkedin_url || "");
-      setOnboardTwitter(prof.twitter_url || "");
-      setOnboardHeadline(prof.headline || "");
-
-      if (!prof.onboarding_completed) {
-        setShowOnboarding(true);
-      }
-    } else if (retries > 0) {
-      setTimeout(
-        () => fetchProfileAndCheckOnboarding(uid, userObj, retries - 1),
-        1000
-      );
-    }
-  };
-
-  useEffect(() => {
-    if (!supabase) return;
-    let lastFetchedUid: string | null = null;
-    const processUserAuth = (user: any) => {
-      const uid = user?.id ?? null;
-      if (uid === lastFetchedUid && uid !== null) return;
-      lastFetchedUid = uid;
-      setCurrentUser(user);
-      if (user) {
-        fetchProfileAndCheckOnboarding(user.id, user);
-      } else {
-        setProfile(null);
-        setShowOnboarding(false);
-      }
-    };
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      processUserAuth(session?.user ?? null);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      processUserAuth(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   // Global Ctrl+K / Cmd+K search shortcut
   useEffect(() => {
@@ -502,8 +551,7 @@ export default function HomePageClient({
 
   // Pulse stats fetch
   useEffect(() => {
-    fetch("/t/stats/pulse")
-      .then((res) => (res.ok ? res.json() : null))
+    secureApiFetch("/t/stats/pulse")
       .then((resData) => {
         const data = resData?.data || resData;
         if (data) {
@@ -534,22 +582,6 @@ export default function HomePageClient({
         {
           onSuccess: (result) => {
             if (result.success) {
-              queryClient.setQueriesData(
-                { queryKey: ["promoted_products"] },
-                (old: any) => {
-                  if (!Array.isArray(old)) return old;
-                  return old.map((p) =>
-                    p.id === productId
-                      ? {
-                          ...p,
-                          has_upvoted: !p.has_upvoted,
-                          upvotes_count: result.upvotes_count,
-                        }
-                      : p
-                  );
-                }
-              );
-
               publish("feed", "product_upvoted", {
                 productId,
                 upvotes_count: result.upvotes_count,
@@ -1093,10 +1125,11 @@ export default function HomePageClient({
                   No products found matching these filters.
                 </div>
               ) : (
-                feedSections.map((sec) => (
+                feedSections.map((sec, secIdx) => (
                   <FeedSection
                     key={sec.id}
                     section={sec}
+                    showBillboardAd={secIdx === 0}
                     selectedBillboardAds={selectedBillboardAds}
                     onVote={handleVote}
                     onLoadMoreUpcoming={() =>

@@ -8,6 +8,7 @@ import { CircularLoader } from "@/components/CircularLoader";
 import {
   supabase,
   getUserProfile,
+  getUserProducts,
   updateUserProfile,
   INDIE_PAGE_THEMES,
   INDIE_PAGE_FONTS,
@@ -113,25 +114,25 @@ export default function PagesStudioPage() {
       }
 
       // Fetch user's launched products
+      const ownProducts = await getUserProducts(uid);
+      let memberProducts: Product[] = [];
+
       if (supabase) {
-        const [ownResult, memberResult] = await Promise.all([
-          supabase.from("products").select("*").eq("maker_id", uid),
-          supabase.from("product_members").select("products(*)").eq("user_id", uid),
-        ]);
-
-        const ownProducts = ownResult?.data || [];
-        const memberProducts = (memberResult?.data || [])
-          .map((m: any) => m.products)
-          .filter((p): p is Product => !!p);
-
-        const combined = [...ownProducts, ...memberProducts];
-        const uniqueProducts = combined.filter(
-          (value, index, self) => self.findIndex((p) => p.id === value.id) === index
-        );
-
-        uniqueProducts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setProducts(uniqueProducts as Product[]);
+        try {
+          const memberResult = await supabase.from("product_members").select("products(*)").eq("user_id", uid);
+          memberProducts = (memberResult?.data || [])
+            .map((m: any) => m.products)
+            .filter((p): p is Product => !!p);
+        } catch (e) {}
       }
+
+      const combined = [...ownProducts, ...memberProducts];
+      const uniqueProducts = combined.filter(
+        (value, index, self) => self.findIndex((p) => p.id === value.id) === index
+      );
+
+      uniqueProducts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setProducts(uniqueProducts as Product[]);
     } catch (err) {
       console.error(err);
     } finally {

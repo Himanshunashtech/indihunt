@@ -1,11 +1,28 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, X, ArrowRight, Rocket, MessageSquare, ArrowUp } from "lucide-react";
+import {
+  Search,
+  X,
+  ArrowRight,
+  Rocket,
+  MessageSquare,
+  ArrowUp,
+  Loader2,
+  Users,
+  UserCheck
+} from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Product, Thread, getProductSlug, getCategorySlug } from "@/lib/supabase";
+import {
+  Product,
+  Thread,
+  Profile,
+  getProductSlug,
+  getCategorySlug,
+  performVectorSearch
+} from "@/lib/supabase";
 
 interface BigSearchModalProps {
   open: boolean;
@@ -29,6 +46,69 @@ export default function BigSearchModal({
 }: BigSearchModalProps) {
   const router = useRouter();
 
+  const [asyncResults, setAsyncResults] = useState<{
+    products: Product[];
+    threads: Thread[];
+    users: Profile[];
+  }>({ products: [], threads: [], users: [] });
+  const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setAsyncResults({ products: [], threads: [], users: [] });
+      setIsSearching(false);
+      return;
+    }
+
+    if (!modalSearchQuery.trim()) {
+      setAsyncResults({ products: [], threads: [], users: [] });
+      setIsSearching(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsSearching(true);
+    const timeoutId = setTimeout(async () => {
+      try {
+        const res = await performVectorSearch(modalSearchQuery.trim());
+        if (isCurrent) {
+          setAsyncResults({
+            products: (res.products || []).map((r) => r.item),
+            threads: (res.threads || []).map((r) => r.item),
+            users: (res.users || []).map((r) => r.item),
+          });
+        }
+      } catch (err) {
+        console.error("Vector search failed in BigSearchModal:", err);
+      } finally {
+        if (isCurrent) setIsSearching(false);
+      }
+    }, 150);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeoutId);
+    };
+  }, [modalSearchQuery, open]);
+
+  const combinedProducts = useMemo(() => {
+    const map = new Map<string, Product>();
+    (modalSearchResults?.products || []).forEach((p) => map.set(p.id, p));
+    (asyncResults.products || []).forEach((p) => map.set(p.id, p));
+    return Array.from(map.values()).slice(0, 8);
+  }, [modalSearchResults, asyncResults.products]);
+
+  const combinedThreads = useMemo(() => {
+    const map = new Map<string, Thread>();
+    (modalSearchResults?.threads || []).forEach((t) => map.set(t.id, t));
+    (asyncResults.threads || []).forEach((t) => map.set(t.id, t));
+    return Array.from(map.values()).slice(0, 5);
+  }, [modalSearchResults, asyncResults.threads]);
+
+  const combinedUsers = useMemo(() => {
+    return (asyncResults.users || []).slice(0, 4);
+  }, [asyncResults.users]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onOpenChange(false);
@@ -46,7 +126,10 @@ export default function BigSearchModal({
       open={open}
       onOpenChange={(isOpen) => {
         onOpenChange(isOpen);
-        if (!isOpen) setModalSearchQuery("");
+        if (!isOpen) {
+          setModalSearchQuery("");
+          setAsyncResults({ products: [], threads: [], users: [] });
+        }
       }}
     >
       <Dialog.Portal>
@@ -58,7 +141,11 @@ export default function BigSearchModal({
             onSubmit={handleSearchSubmit}
             className="relative flex items-center px-6 sm:px-8 py-5 sm:py-6 border-b border-border/80 flex-shrink-0"
           >
-            <Search className="w-6 h-6 text-muted-foreground flex-shrink-0" />
+            {isSearching ? (
+              <Loader2 className="w-6 h-6 text-[#ff5733] animate-spin flex-shrink-0" />
+            ) : (
+              <Search className="w-6 h-6 text-muted-foreground flex-shrink-0" />
+            )}
             <input
               type="text"
               placeholder="Search for products, launches, or people..."
@@ -173,16 +260,16 @@ export default function BigSearchModal({
             ) : (
               <>
                 {/* Matching Products */}
-                {modalSearchResults.products.length > 0 && (
+                {combinedProducts.length > 0 && (
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-1.5 text-base font-semibold text-muted-foreground uppercase tracking-widest">
-                      <Rocket className="w-3.5 h-3.5" />
+                      <Rocket className="w-3.5 h-3.5 text-[#ff5733]" />
                       <span>
-                        Products ({modalSearchResults.products.length})
+                        Products ({combinedProducts.length})
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {modalSearchResults.products.map((product) => (
+                      {combinedProducts.map((product) => (
                         <div
                           key={product.id}
                           onClick={() => {
@@ -205,12 +292,12 @@ export default function BigSearchModal({
                               <span className="font-semibold text-base text-foreground group-hover:text-[#ff5733] transition-colors block">
                                 {product.name}
                               </span>
-                              <span className="text-base text-muted-foreground truncate block mt-0.5">
+                              <span className="text-sm sm:text-base text-muted-foreground truncate block mt-0.5">
                                 {product.tagline}
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 bg-card px-2.5 py-1 rounded-lg border border-border text-base font-semibold text-muted-foreground group-hover:text-[#ff5733] transition-colors">
+                          <div className="flex items-center gap-1.5 bg-card px-2.5 py-1 rounded-lg border border-border text-xs sm:text-sm font-semibold text-muted-foreground group-hover:text-[#ff5733] transition-colors">
                             <ArrowUp className="w-3 h-3" />
                             <span>{product.upvotes_count}</span>
                           </div>
@@ -220,17 +307,67 @@ export default function BigSearchModal({
                   </div>
                 )}
 
-                {/* Matching Forum Threads */}
-                {modalSearchResults.threads.length > 0 && (
+                {/* Matching Makers / People */}
+                {combinedUsers.length > 0 && (
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-1.5 text-base font-semibold text-muted-foreground uppercase tracking-widest">
-                      <MessageSquare className="w-3.5 h-3.5" />
+                      <Users className="w-3.5 h-3.5 text-indigo-500" />
                       <span>
-                        Discussions ({modalSearchResults.threads.length})
+                        People & Makers ({combinedUsers.length})
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {modalSearchResults.threads.map((thread) => (
+                      {combinedUsers.map((person) => (
+                        <div
+                          key={person.id}
+                          onClick={() => {
+                            onOpenChange(false);
+                            router.push(`/page/${person.username}`);
+                          }}
+                          className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-secondary/60 hover:bg-secondary cursor-pointer transition-all group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-card border border-border flex-shrink-0 flex items-center justify-center">
+                              <img
+                                src={person.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${person.username}`}
+                                alt=""
+                                className="w-full h-full object-cover rounded-full"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-base text-foreground group-hover:text-[#ff5733] transition-colors">
+                                  {person.full_name || person.username}
+                                </span>
+                                <span className="text-xs text-muted-foreground">@{person.username}</span>
+                              </div>
+                              <span className="text-xs sm:text-sm text-muted-foreground truncate block">
+                                {person.headline || person.bio || "IndiHunt Maker"}
+                              </span>
+                            </div>
+                          </div>
+                          {person.is_maker && (
+                            <span className="text-[10px] font-bold bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full border border-orange-500/20">
+                              Maker
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Matching Forum Threads */}
+                {combinedThreads.length > 0 && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-base font-semibold text-muted-foreground uppercase tracking-widest">
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>
+                        Discussions ({combinedThreads.length})
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {combinedThreads.map((thread) => (
                         <div
                           key={thread.id}
                           onClick={() => {
@@ -244,7 +381,7 @@ export default function BigSearchModal({
                               <span className="font-semibold text-base text-foreground group-hover:text-[#ff5733] transition-colors block leading-snug line-clamp-1">
                                 {thread.title}
                               </span>
-                              <span className="text-base text-muted-foreground line-clamp-1 mt-1 leading-normal">
+                              <span className="text-sm text-muted-foreground line-clamp-1 mt-1 leading-normal">
                                 {thread.body}
                               </span>
                             </div>
@@ -259,14 +396,16 @@ export default function BigSearchModal({
                 )}
 
                 {/* No Results Placeholder */}
-                {modalSearchResults.products.length === 0 &&
-                  modalSearchResults.threads.length === 0 && (
+                {!isSearching &&
+                  combinedProducts.length === 0 &&
+                  combinedThreads.length === 0 &&
+                  combinedUsers.length === 0 && (
                     <div className="py-12 text-center space-y-3">
                       <p className="text-base font-medium text-foreground">
                         No matches found for &quot;{modalSearchQuery}&quot;
                       </p>
-                      <p className="text-base text-muted-foreground max-w-xs mx-auto">
-                        Double check spelling or try using simpler keywords.
+                      <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                        Double check spelling or try searching for tags, categories, or maker handles.
                       </p>
                     </div>
                   )}
@@ -288,7 +427,7 @@ export default function BigSearchModal({
                   }`
                 );
               }}
-              className="text-[#ff5733] hover:underline flex items-center gap-1 cursor-pointer font-bold normal-case text-base"
+              className="text-[#ff5733] hover:underline flex items-center gap-1 cursor-pointer font-bold normal-case text-sm sm:text-base"
             >
               <span>View full search page</span>
               <ArrowRight className="w-3.5 h-3.5" />

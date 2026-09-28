@@ -3,9 +3,11 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase, Profile, getUserProfile, getStreakLeaderboard, updateUserStreak, toggleFollowUser, isFollowingUser } from "@/lib/supabase";
+
+const ITEMS_PER_PAGE = 20;
 
 export default function StreakPage() {
   const [user, setUser] = useState<any>(null);
@@ -14,6 +16,7 @@ export default function StreakPage() {
   const [sessionTime, setSessionTime] = useState<number>(0);
   const [streakActive, setStreakActive] = useState<boolean>(false);
   const [leaders, setLeaders] = useState<Profile[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [loading, setLoading] = useState(true);
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
   const [followLoadingMap, setFollowLoadingMap] = useState<Record<string, boolean>>({});
@@ -31,8 +34,8 @@ export default function StreakPage() {
         }
       }
 
-      // Load streak leaderboard
-      const data = await getStreakLeaderboard(20);
+      // Load streak leaderboard (up to 100)
+      const data = await getStreakLeaderboard(100);
       setLeaders(data);
 
       // Load following state
@@ -68,7 +71,7 @@ export default function StreakPage() {
           getUserProfile(user.id).then((prof) => {
             if (prof) setStreakCount((prof as any).streak_count || 0);
           });
-          getStreakLeaderboard(20).then(setLeaders);
+          getStreakLeaderboard(100).then(setLeaders);
         }, 2000);
       }
     }, 1000);
@@ -82,6 +85,31 @@ export default function StreakPage() {
     await toggleFollowUser(user.id, leaderId, !!followingMap[leaderId]);
     setFollowingMap(prev => ({ ...prev, [leaderId]: !prev[leaderId] }));
     setFollowLoadingMap(prev => ({ ...prev, [leaderId]: false }));
+  };
+
+  const totalPages = Math.max(1, Math.ceil(leaders.length / ITEMS_PER_PAGE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedLeaders = leaders.slice(
+    (validCurrentPage - 1) * ITEMS_PER_PAGE,
+    validCurrentPage * ITEMS_PER_PAGE
+  );
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (validCurrentPage > 3) pages.push("...");
+      const start = Math.max(2, validCurrentPage - 1);
+      const end = Math.min(totalPages - 1, validCurrentPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (validCurrentPage < totalPages - 2) pages.push("...");
+      if (!pages.includes(totalPages)) pages.push(totalPages);
+    }
+    return pages;
   };
 
   return (
@@ -105,8 +133,9 @@ export default function StreakPage() {
             ) : leaders.length === 0 ? (
               <div className="p-10 text-center text-sm font-medium text-muted-foreground italic">No streak data yet. Start visiting daily to build yours!</div>
             ) : (
-              leaders.map((leader, i) => {
+              paginatedLeaders.map((leader, i) => {
                 const streak = (leader as any).streak_count ?? 0;
+                const globalRank = (validCurrentPage - 1) * ITEMS_PER_PAGE + i + 1;
                 const isMe = leader.id === user?.id;
                 return (
                   <div
@@ -114,8 +143,8 @@ export default function StreakPage() {
                     className={`flex items-center justify-between p-4 hover:bg-muted/15 transition-all ${isMe ? 'bg-orange-500/5 border-l-2 border-l-orange-500' : ''}`}
                   >
                     <div className="flex items-center gap-3.5">
-                      <span className={`text-sm font-semibold w-6 text-center ${i < 3 ? 'text-[#ff5733]' : 'text-muted-foreground'}`}>
-                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                      <span className={`text-sm font-semibold w-6 text-center ${globalRank <= 3 ? 'text-[#ff5733]' : 'text-muted-foreground'}`}>
+                        {globalRank === 1 ? '🥇' : globalRank === 2 ? '🥈' : globalRank === 3 ? '🥉' : globalRank}
                       </span>
                       <Link href={leader.username ? `/@${leader.username}` : `/profile?id=${leader.id}`} className="w-12 h-12 rounded-full overflow-hidden border border-border bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white text-base font-semibold hover:opacity-90 transition-opacity flex-shrink-0" style={{ width: "48px", height: "48px" }}>
                         {leader.avatar_url ? (
@@ -152,6 +181,102 @@ export default function StreakPage() {
               })
             )}
           </div>
+
+          {/* ── Numeric Pagination ── */}
+          {totalPages > 1 && (
+            <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Showing <span className="font-semibold text-foreground">{(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}</span> to{" "}
+                <span className="font-semibold text-foreground">{Math.min(validCurrentPage * ITEMS_PER_PAGE, leaders.length)}</span> of{" "}
+                <span className="font-semibold text-foreground">{leaders.length}</span> members
+              </p>
+
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+                {/* First Page */}
+                <button
+                  onClick={() => {
+                    setCurrentPage(1);
+                    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  disabled={validCurrentPage === 1}
+                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+
+                {/* Previous Page */}
+                <button
+                  onClick={() => {
+                    setCurrentPage(prev => Math.max(1, prev - 1));
+                    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  disabled={validCurrentPage === 1}
+                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Page Numbers */}
+                {getPageNumbers().map((pageNum, idx) => {
+                  if (typeof pageNum === "string") {
+                    return (
+                      <span
+                        key={`dots-${idx}`}
+                        className="px-2 py-1 text-muted-foreground font-medium select-none"
+                      >
+                        ...
+                      </span>
+                    );
+                  }
+                  const isActive = pageNum === validCurrentPage;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => {
+                        setCurrentPage(pageNum);
+                        if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-[#ff5733] text-white font-semibold shadow-xs"
+                          : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                {/* Next Page */}
+                <button
+                  onClick={() => {
+                    setCurrentPage(prev => Math.min(totalPages, prev + 1));
+                    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  disabled={validCurrentPage === totalPages}
+                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Last Page */}
+                <button
+                  onClick={() => {
+                    setCurrentPage(totalPages);
+                    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  disabled={validCurrentPage === totalPages}
+                  className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar Streak Status */}

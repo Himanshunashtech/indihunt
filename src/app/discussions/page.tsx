@@ -30,6 +30,7 @@ import {
   Flag,
 } from "lucide-react";
 import { ReportModal } from "@/components/ReportModal";
+import { secureApiFetch } from "@/lib/api/client";
 import {
   supabase,
   getThreads,
@@ -259,9 +260,20 @@ export default function DiscussionsPage() {
   const handleVote = async (e: React.MouseEvent, threadId: string) => {
     e.preventDefault(); e.stopPropagation();
     if (!currentUser) { dispatch(setAuthModalOpen(true)); return; }
+
+    const targetThread = threads.find(t => t.id === threadId);
+    const wasUpvoted = !!targetThread?.has_upvoted;
+    const optimisticCount = wasUpvoted
+      ? Math.max(0, (targetThread?.upvotes_count || 1) - 1)
+      : (targetThread?.upvotes_count || 0) + 1;
+
+    setThreads(prev => prev.map(t => t.id === threadId ? { ...t, upvotes_count: optimisticCount, has_upvoted: !wasUpvoted } : t));
+
     const result = await toggleThreadUpvote(threadId, currentUser.id);
     if (result.success) {
-      setThreads(prev => prev.map(t => t.id === threadId ? { ...t, upvotes_count: result.upvotes_count, has_upvoted: !t.has_upvoted } : t));
+      setThreads(prev => prev.map(t => t.id === threadId ? { ...t, upvotes_count: result.upvotes_count } : t));
+    } else {
+      setThreads(prev => prev.map(t => t.id === threadId ? { ...t, upvotes_count: targetThread?.upvotes_count || 0, has_upvoted: wasUpvoted } : t));
     }
   };
 

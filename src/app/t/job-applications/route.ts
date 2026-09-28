@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (error) return apiFailure(error.message, 500);
-    return apiSuccess(applications || []);
+    return apiSuccessSecure(applications || []);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch job applications', 500);
   }
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) return apiFailure(error.message, 500);
-    return apiSuccess(application, 201);
+    return apiSuccessSecure(application, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to submit job application', 500);
   }
@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest) {
     const { error } = await supabase.from('job_applications').update(payload).eq('id', id);
     if (error) return apiFailure(error.message, 500);
 
-    return apiSuccess({ success: true });
+    return apiSuccessSecure({ success: true });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to update application status', 500);
   }
@@ -100,7 +100,7 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase.from('job_applications').delete().eq('id', id);
     if (error) return apiFailure(error.message, 500);
 
-    return apiSuccess({ success: true });
+    return apiSuccessSecure({ success: true });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to delete application', 500);
   }

@@ -25,6 +25,7 @@ export interface FeedSectionData {
 interface FeedSectionProps {
   section: FeedSectionData;
   selectedBillboardAds: BillboardAd[];
+  showBillboardAd?: boolean;
   onVote: (e: React.MouseEvent, productId: string) => void;
   onLoadMoreUpcoming?: () => void;
   onToggleExpand?: (sectionId: string) => void;
@@ -33,10 +34,16 @@ interface FeedSectionProps {
 export default function FeedSection({
   section,
   selectedBillboardAds,
+  showBillboardAd = false,
   onVote,
   onLoadMoreUpcoming,
   onToggleExpand,
 }: FeedSectionProps) {
+  const billboardAd =
+    selectedBillboardAds && selectedBillboardAds.length > 0
+      ? selectedBillboardAds[0]
+      : undefined;
+
   return (
     <div className="space-y-2">
       {!section.hideHeader && (
@@ -74,18 +81,10 @@ export default function FeedSection({
           <p className="py-1 text-center text-base font-normal text-muted-foreground">
             {section.emptyMessage}
           </p>
-          {section.id === "yesterday" && (
+          {showBillboardAd && (
             <div className="pt-2 pb-1 sm:pb-2">
               <FeedBillboardAd
-                ad={selectedBillboardAds[0]}
-                type="supabase_fallback"
-              />
-            </div>
-          )}
-          {section.id === "last-week" && (
-            <div className="pt-2 pb-1 sm:pb-2">
-              <FeedBillboardAd
-                ad={selectedBillboardAds[1]}
+                ad={billboardAd}
                 type="indihunt_fallback"
               />
             </div>
@@ -96,25 +95,17 @@ export default function FeedSection({
           {section.items.map((p, idx) => (
             <React.Fragment key={`${section.id}-${p.id}-${idx}`}>
               <ProductItem product={p} idx={idx} onVote={onVote} />
-              {(section.id === "today" || section.id === "upcoming") &&
+              {showBillboardAd &&
                 (idx === 4 ||
                   (section.items.length <= 4 &&
                     idx === section.items.length - 1)) && (
                   <div className="pt-2 pb-1 sm:pt-4 sm:pb-2">
                     <FeedBillboardAd
-                      ad={selectedBillboardAds[1]}
+                      ad={billboardAd}
                       type="indihunt_fallback"
                     />
                   </div>
                 )}
-              {section.id === "yesterday" && idx === 0 && (
-                <div className="pt-2 pb-1 sm:pt-4 sm:pb-2">
-                  <FeedBillboardAd
-                    ad={selectedBillboardAds[0]}
-                    type="supabase_fallback"
-                  />
-                </div>
-              )}
             </React.Fragment>
           ))}
         </div>

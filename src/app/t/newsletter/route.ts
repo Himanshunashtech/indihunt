@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       return apiFailure(error.message, 500);
     }
 
-    return apiSuccess({ message: 'Successfully subscribed to IndiHunt newsletter!' });
+    return apiSuccessSecure({ message: 'Successfully subscribed to IndiHunt newsletter!' });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to subscribe', 500);
   }

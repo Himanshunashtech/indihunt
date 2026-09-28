@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ExternalLink, Star, LayoutGrid, X, ChevronLeft, ChevronRight } from "lucide-react";
@@ -37,6 +37,7 @@ import Navbar from "@/components/Navbar";
 import { CircularLoader } from "@/components/CircularLoader";
 import {
   useProduct,
+  useProducts,
   useComments,
   useToggleUpvoteMutation,
 } from "@/hooks/useDb";
@@ -117,29 +118,20 @@ export default function ProductDetailPage({
   initialCohortProducts?: Product[];
 }) {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-background text-foreground flex flex-col pt-[72px] sm:pt-[78px]">
-        <Navbar />
-        <main className="flex-1 w-full min-h-[calc(100vh-84px)] flex items-center justify-center">
-          <CircularLoader label="Loading product details..." size="lg" center={false} />
-        </main>
-      </div>
-    }>
-      <ProductDetailsContent
-        id={id}
-        initialTab={initialTab}
-        initialProduct={initialProduct}
-        initialAllProducts={initialAllProducts}
-        initialReviews={initialReviews}
-        initialAlternatives={initialAlternatives}
-        initialRank={initialRank}
-        initialRankLabel={initialRankLabel}
-        initialIsTopHunt={initialIsTopHunt}
-        initialPrevProd={initialPrevProd}
-        initialNextProd={initialNextProd}
-        initialCohortProducts={initialCohortProducts}
-      />
-    </Suspense>
+    <ProductDetailsContent
+      id={id}
+      initialTab={initialTab}
+      initialProduct={initialProduct}
+      initialAllProducts={initialAllProducts}
+      initialReviews={initialReviews}
+      initialAlternatives={initialAlternatives}
+      initialRank={initialRank}
+      initialRankLabel={initialRankLabel}
+      initialIsTopHunt={initialIsTopHunt}
+      initialPrevProd={initialPrevProd}
+      initialNextProd={initialNextProd}
+      initialCohortProducts={initialCohortProducts}
+    />
   );
 }
 
@@ -188,12 +180,69 @@ function ProductDetailsContent({
   const isNewlyLaunched = searchParams?.get("launched") === "true";
   const highlightedCommentId = searchParams?.get("comment");
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(reduxUser || null);
+  const effectiveUserId = reduxUser?.id || reduxProfile?.id || user?.id || null;
+
+  const initialResolvedTab = useMemo(() => {
+    if (initialTab) return initialTab;
+    const tabParam = searchParams?.get("tab");
+    if (tabParam) {
+      const found = ["Overview", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"].find(
+        t => t.toLowerCase() === tabParam.toLowerCase()
+      );
+      if (found) return found;
+    }
+    return "Overview";
+  }, [initialTab, searchParams]);
+
+  const [activeSubTab, setActiveSubTab] = useState<string>(initialResolvedTab);
+
+  // TanStack Query Hooks
+  const { data: queryProduct } = useProduct(productId, effectiveUserId || undefined, initialProduct);
+  const isAlternativesTab = activeSubTab === "Alternatives";
+  const { data: dbAllProducts = [] } = useProducts(effectiveUserId || undefined, initialAllProducts, isAlternativesTab);
+  const toggleUpvoteMutation = useToggleUpvoteMutation();
+
+  const [localProduct, setLocalProduct] = useState<any>(() => {
+    if (typeof window !== 'undefined' && effectiveUserId && initialProduct) {
+      try {
+        const raw = localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`) || localStorage.getItem('indihunt_upvotes');
+        const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+        return {
+          ...initialProduct,
+          has_upvoted: votedSet.has(initialProduct.id),
+        };
+      } catch {}
+    }
+    return initialProduct || null;
+  });
+  const [isPageLoading, setIsPageLoading] = useState<boolean>(!initialProduct);
+
+  const setProduct = useCallback((updater: any) => {
+    setLocalProduct((prev: any) => {
+      const current = prev || queryProduct || initialProduct;
+      const nextProduct = typeof updater === 'function' ? updater(current) : updater;
+      const activeUserId = effectiveUserId;
+      if (activeUserId) {
+        queryClient.setQueryData(["product", productId, activeUserId], nextProduct);
+      }
+      queryClient.setQueryData(["product", productId, "guest"], nextProduct);
+      queryClient.setQueryData(["product", productId], nextProduct);
+      return nextProduct;
+    });
+  }, [effectiveUserId, queryClient, productId, queryProduct, initialProduct]);
+
+  useEffect(() => {
+    if (queryProduct) {
+      setLocalProduct(queryProduct);
+      setIsPageLoading(false);
+    }
+  }, [queryProduct]);
 
   useEffect(() => {
     if (!productId) return;
     const unsubscribe = subscribe(`product:${productId}`, "product_upvoted", (data: { productId: string; upvotes_count: number }) => {
-      setProduct((prev: any) => {
+      setLocalProduct((prev: any) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -203,38 +252,67 @@ function ProductDetailsContent({
     });
     return unsubscribe;
   }, [productId, subscribe]);
-  const cachedProd = typeof window !== 'undefined' ? getCachedProduct(productId) : null;
 
-  // TanStack Query Hooks
-  const { data: queryProduct, isLoading: isQueryLoading, isPending } = useProduct(productId, user?.id, initialProduct);
-  const toggleUpvoteMutation = useToggleUpvoteMutation();
+  const rawProduct = localProduct || queryProduct || initialProduct;
+  const product = useMemo(() => {
+    if (!rawProduct) return rawProduct;
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = (effectiveUserId && localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`)) ||
+                    localStorage.getItem('indihunt_upvotes');
+        const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+        const productSlug = getProductSlug(rawProduct.name);
+        const isVoted = votedSet.has(rawProduct.id) || (productSlug ? votedSet.has(productSlug) : false);
+        return {
+          ...rawProduct,
+          has_upvoted: rawProduct._userToggled !== undefined ? !!rawProduct.has_upvoted : isVoted,
+        };
+      } catch {}
+    }
+    return rawProduct;
+  }, [rawProduct, effectiveUserId]);
 
-  const [localProduct, setLocalProduct] = useState<any>(initialProduct || null);
-  const product = localProduct || queryProduct || initialProduct || cachedProd;
-  const isProductLoading = !product && (isQueryLoading || isPending);
-  const { data: queryComments = [] } = useComments(product?.id || productId);
+  // Lazy-load comments only when scrolled near comments or when direct deep-linked
+  const [shouldLoadComments, setShouldLoadComments] = useState<boolean>(false);
+  const commentsSentinelRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (shouldLoadComments) return;
+    if (highlightedCommentId || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("comment"))) {
+      setShouldLoadComments(true);
+      return;
+    }
+
+    const sentinel = commentsSentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") {
+      setShouldLoadComments(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setShouldLoadComments(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "350px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [shouldLoadComments, highlightedCommentId]);
+
+  const { data: queryComments = [], isLoading: isCommentsLoading } = useComments(
+    product?.id || productId,
+    undefined,
+    shouldLoadComments
+  );
   const comments = queryComments;
 
   // ==========================================================================
   // TAB & UI STATE
   // ==========================================================================
-
-  const initialResolvedTab = useMemo(() => {
-    if (initialTab) return initialTab;
-    if (typeof window !== "undefined") {
-      if (window.location.pathname.endsWith("/alternatives")) return "Alternatives";
-      const tabParam = searchParams?.get("tab");
-      if (tabParam) {
-        const found = ["Overview", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"].find(
-          t => t.toLowerCase() === tabParam.toLowerCase()
-        );
-        if (found) return found;
-      }
-    }
-    return "Overview";
-  }, [initialTab, searchParams]);
-
-  const [activeSubTab, setActiveSubTab] = useState<string>(initialResolvedTab);
 
   const handleTabChange = (tab: string) => {
     setActiveSubTab(tab);
@@ -268,17 +346,26 @@ function ProductDetailsContent({
       return initialAllProducts.filter((p: Product) => p.id !== productId);
     }
     if (typeof window !== "undefined") {
-      const cached = getCachedProducts();
-      if (cached && cached.length > 0) {
-        return cached.filter((p: Product) => p.id !== productId);
-      }
+      try {
+        const cached = getCachedProducts();
+        if (cached && cached.length > 0) {
+          return cached.filter((p: Product) => p.id !== productId);
+        }
+      } catch {}
     }
     return [];
   });
-  const [similarProducts, setSimilarProducts] = useState<Product[]>(() => {
-    const target = initialProduct;
-    const pool = initialAllProducts && initialAllProducts.length > 0 ? initialAllProducts : (typeof window !== "undefined" ? getCachedProducts() : []);
-    if (!target || !pool || pool.length === 0) return [];
+
+  const effectiveAllProducts = useMemo(() => {
+    if (allProductsList && allProductsList.length > 0) return allProductsList;
+    if (dbAllProducts && dbAllProducts.length > 0) return dbAllProducts;
+    if (initialAllProducts && initialAllProducts.length > 0) return initialAllProducts;
+    return [];
+  }, [allProductsList, dbAllProducts, initialAllProducts]);
+
+  const similarProducts = useMemo(() => {
+    const target = product || initialProduct;
+    if (!target || !effectiveAllProducts || effectiveAllProducts.length === 0) return [];
     const targetCategory = (target.category || "").trim().toLowerCase();
     const targetTags = new Set(
       ((target.tags || []) as any[])
@@ -286,7 +373,7 @@ function ProductDetailsContent({
         .map((t: string) => t.trim().toLowerCase())
     );
 
-    const filtered = pool.filter(
+    const filtered = effectiveAllProducts.filter(
       (p: Product) =>
         p &&
         p.id !== target.id &&
@@ -298,6 +385,8 @@ function ProductDetailsContent({
         p.name !== "OmniPlay Pro" &&
         getProductSlug(p.name) !== getProductSlug(target.name)
     );
+
+    if (filtered.length === 0) return [];
 
     const scored = filtered.map(p => {
       let score = 0;
@@ -315,7 +404,7 @@ function ProductDetailsContent({
 
     scored.sort((a, b) => b.score - a.score || (b.product.upvotes_count || 0) - (a.product.upvotes_count || 0));
     return scored.slice(0, 3).map(s => s.product);
-  });
+  }, [product, initialProduct, effectiveAllProducts]);
   const [recordedReviewViews, setRecordedReviewViews] = useState<Record<string, boolean>>({});
 
   // ==========================================================================
@@ -365,13 +454,7 @@ function ProductDetailsContent({
 
   useEffect(() => {
     setUser(reduxUser);
-    if (reduxUser?.id) {
-      getUserCollections(reduxUser.id).then(setUserCollections);
-    } else {
-      setUserCollections([]);
-    }
   }, [reduxUser]);
-
 
   useEffect(() => {
     if (product) {
@@ -408,7 +491,14 @@ function ProductDetailsContent({
     const targetProd = product || initialProduct;
     if (!targetProd) return;
 
-    if (activeSubTab === "Forums" && forumThreads.length === 0) {
+    if (activeSubTab === "Reviews" && reviews.length === 0) {
+      getReviews(targetProd.id).then(setReviews).catch(() => {});
+    } else if (activeSubTab === "Analytics") {
+      if (!shouldLoadComments) setShouldLoadComments(true);
+      if (reviews.length === 0) getReviews(targetProd.id).then(setReviews).catch(() => {});
+    } else if (activeSubTab === "Alternatives" && alternatives.length === 0) {
+      getAlternatives(targetProd.id, user?.id).then(setAlternatives).catch(() => {});
+    } else if (activeSubTab === "Forum" && forumThreads.length === 0) {
       getProductThreads(targetProd.id, user?.id).then(setForumThreads).catch(() => {});
     } else if (activeSubTab === "Team" && teamMembers.length === 0) {
       getProductMembers(targetProd.id).then(setTeamMembers).catch(() => {});
@@ -417,18 +507,22 @@ function ProductDetailsContent({
     } else if (activeSubTab === "Shoutouts" && shoutoutsGiven.length === 0) {
       getProductShoutoutsGiven(targetProd.id).then(setShoutoutsGiven).catch(() => {});
     }
-  }, [activeSubTab, product, initialProduct, user, forumThreads.length, teamMembers.length, productFollowers.length, shoutoutsGiven.length]);
+  }, [activeSubTab, product, initialProduct, user, reviews.length, alternatives.length, forumThreads.length, teamMembers.length, productFollowers.length, shoutoutsGiven.length, shouldLoadComments]);
 
-  // Initial client mount: only fetch if initialProduct was not provided by SSR
+  // Initial client mount: non-blocking background telemetry
   useEffect(() => {
     const targetProd = product || initialProduct;
     if (targetProd) {
-      // Record view in background without blocking
-      recordView(targetProd.id, 'product', user?.id || undefined);
-      if (user?.id) {
-        isFollowingProduct(targetProd.id, user.id).then(setIsFollowed).catch(() => {});
-      }
-    } else if (productId) {
+      // Defer view recording and follow check so initial render is instantaneous
+      const timer = setTimeout(() => {
+        recordView(targetProd.id, 'product', user?.id || undefined);
+        if (user?.id) {
+          isFollowingProduct(targetProd.id, user.id).then(setIsFollowed).catch(() => {});
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    } else if (productId && !queryProduct && !localProduct) {
+      // Only call loadData() when there is genuinely no data from SSR or cache
       loadData();
     }
   }, [productId, user?.id]);
@@ -438,50 +532,38 @@ function ProductDetailsContent({
   // ==========================================================================
 
   const loadData = async (silent = false) => {
-    const existing = queryProduct || initialProduct || cachedProd;
-    if (existing && !localProduct) {
-      setLocalProduct(existing);
+    const existing = queryProduct || initialProduct || localProduct;
+
+    // If we already have the product, skip re-fetching it — tabs and comments load on demand
+    if (existing) {
+      if (!localProduct) setLocalProduct(existing);
+      setIsPageLoading(false);
+
+      recordView(existing.id, 'product', user?.id || undefined);
+      if (user?.id) {
+        isFollowingProduct(existing.id, user.id).then(setIsFollowed).catch(() => {});
+      }
+      return;
     }
 
+    // No product at all — full load from scratch
     const prod = await getProductById(productId, user?.id);
-    if (!prod) return;
+    if (!prod) {
+      setIsPageLoading(false);
+      return;
+    }
     setProduct({ ...prod });
+    setIsPageLoading(false);
 
     recordView(prod.id, 'product', user?.id || undefined);
     if (user?.id) {
       isFollowingProduct(prod.id, user.id).then(setIsFollowed).catch(() => {});
     }
-
-    // Parallel fetch core fallback data
-    const [revs, alts, allProds] = await Promise.all([
-      getReviews(prod.id).catch(() => []),
-      getAlternatives(prod.id, user?.id).catch(() => []),
-      initialAllProducts && initialAllProducts.length > 0 ? Promise.resolve(initialAllProducts) : getProducts().catch(() => [])
-    ]);
-
-    setReviews(revs);
-    setAlternatives(alts);
-
-    if (allProds && allProds.length > 0) {
-      const filteredProds = allProds.filter(
-        (p: Product) =>
-          p &&
-          p.id !== prod.id &&
-          p.id !== "prod-media-1" &&
-          p.id !== "prod-media-2" &&
-          p.id !== "prod-media-3" &&
-          p.name !== "StreamPulse AI" &&
-          p.name !== "VoxWave Studio" &&
-          p.name !== "OmniPlay Pro" &&
-          getProductSlug(p.name) !== getProductSlug(prod.name)
-      );
-      setAllProductsList(filteredProds);
-    }
   };
 
   // Derive server-synchronized, reactive rank calculation
   const rankInfo = useMemo(() => {
-    const target = product || initialProduct || cachedProd;
+    const target = product || initialProduct;
     if (!target) {
       return {
         rank: initialRank ?? null,
@@ -492,17 +574,13 @@ function ProductDetailsContent({
         nextProd: initialNextProd || null,
       };
     }
-    const sourcePool = (allProductsList && allProductsList.length > 0)
-      ? allProductsList
-      : (initialAllProducts && initialAllProducts.length > 0)
-        ? initialAllProducts
-        : [];
+    const sourcePool = effectiveAllProducts.length > 0 ? effectiveAllProducts : [];
 
     const otherProds = sourcePool.filter(p => p.id !== target.id && getProductSlug(p.name) !== getProductSlug(target.name));
     const pool = [target, ...otherProds];
 
     return calculateProductRank(target, pool);
-  }, [product, initialProduct, cachedProd, allProductsList, initialAllProducts, initialRank, initialRankLabel, initialIsTopHunt, initialCohortProducts, initialPrevProd, initialNextProd]);
+  }, [product, initialProduct, effectiveAllProducts, initialRank, initialRankLabel, initialIsTopHunt, initialCohortProducts, initialPrevProd, initialNextProd]);
 
   const dailyRank = rankInfo.rank;
   const rankLabel = rankInfo.rankLabel;
@@ -510,16 +588,6 @@ function ProductDetailsContent({
   const cohortProducts = rankInfo.cohortProducts;
   const prevProd = rankInfo.prevProd;
   const nextProd = rankInfo.nextProd;
-
-  const setProduct = (updatedProduct: any) => {
-    setLocalProduct(updatedProduct);
-    const activeUserId = user?.id || reduxUser?.id || reduxProfile?.id;
-    if (activeUserId) {
-      queryClient.setQueryData(["product", productId, activeUserId], updatedProduct);
-    }
-    queryClient.setQueryData(["product", productId, "guest"], updatedProduct);
-    queryClient.setQueryData(["product", productId], updatedProduct);
-  };
 
   // ==========================================================================
   // HANDLERS
@@ -540,9 +608,29 @@ function ProductDetailsContent({
       ? Math.max(0, (product.upvotes_count || 1) - 1)
       : (product.upvotes_count || 0) + 1;
 
+    // Immediately update localStorage synchronously
+    if (typeof window !== 'undefined') {
+      try {
+        const rawUser = activeUser.id ? localStorage.getItem(`indihunt_upvotes_${activeUser.id}`) : null;
+        const rawGuest = localStorage.getItem('indihunt_upvotes');
+        const votes = new Set<string>(JSON.parse(rawUser || rawGuest || '[]'));
+        if (isCurrentlyUpvoted) {
+          votes.delete(product.id);
+        } else {
+          votes.add(product.id);
+        }
+        const nextArr = Array.from(votes);
+        localStorage.setItem('indihunt_upvotes', JSON.stringify(nextArr));
+        if (activeUser.id) {
+          localStorage.setItem(`indihunt_upvotes_${activeUser.id}`, JSON.stringify(nextArr));
+        }
+      } catch {}
+    }
+
     // Optimistically update product state in component and Query cache immediately
     const optimisticProduct = {
       ...product,
+      _userToggled: true,
       has_upvoted: !isCurrentlyUpvoted,
       upvotes_count: newCount,
     };
@@ -555,15 +643,17 @@ function ProductDetailsContent({
       {
         onSuccess: (res) => {
           if (res && typeof res.upvotes_count === 'number') {
-            setProduct({
-              ...optimisticProduct,
+            const confirmedUpvoted = typeof res.has_upvoted === 'boolean' ? res.has_upvoted : !isCurrentlyUpvoted;
+            setProduct((prev: any) => ({
+              ...(prev || optimisticProduct),
+              _userToggled: true,
+              has_upvoted: confirmedUpvoted,
               upvotes_count: res.upvotes_count,
-            });
+            }));
             // Publish the upvote event to both global feed and product room
             publish("feed", "product_upvoted", { productId: product.id, upvotes_count: res.upvotes_count });
             publish(`product:${product.id}`, "product_upvoted", { productId: product.id, upvotes_count: res.upvotes_count });
           }
-          loadData(true);
         },
         onError: () => {
           // Revert optimistic update on failure
@@ -592,7 +682,9 @@ function ProductDetailsContent({
     return makerTopLevel.length > 0 ? makerTopLevel[0].id : null;
   }, [comments, product?.maker_id]);
 
-  const isLoading = isProductLoading || (!product && (isQueryLoading || isPending));
+  // Always render immediately — no loading gate
+  const isLoading = false;
+
   const screenshots = product?.screenshots ?? [
     "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&h=450&q=80"
   ];
@@ -722,21 +814,26 @@ function ProductDetailsContent({
     setMeta("name", "twitter:image", firstGalleryImage);
   }, [product, firstGalleryImage]);
 
-  // ==========================================================================
-  // LOADING & ERROR STATES
-  // ==========================================================================
 
-  if (isLoading) {
+  // Show circular loader while data is being fetched (no SSR data available)
+  if (isPageLoading && !product) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col pt-[72px] sm:pt-[78px]">
+      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center gap-4 pt-[72px] sm:pt-[78px]">
         <Navbar />
-        <main className="flex-1 w-full min-h-[calc(100vh-84px)] flex items-center justify-center">
-          <CircularLoader label="Loading product details..." size="lg" center={false} />
-        </main>
+        <div className="flex flex-col items-center gap-5">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center">
+              <CircularLoader size="lg" center={false} />
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-sm font-semibold text-foreground">Loading product...</span>
+            <span className="text-xs text-muted-foreground">Fetching the latest data</span>
+          </div>
+        </div>
       </div>
     );
   }
-
 
   if (!product) {
     return (
@@ -833,6 +930,8 @@ function ProductDetailsContent({
                   comments={comments}
                   user={user}
                   setReportModalState={setReportModalState}
+                  isLoading={isCommentsLoading}
+                  sentinelRef={commentsSentinelRef}
                 />
               </div>
             )}
@@ -858,7 +957,7 @@ function ProductDetailsContent({
               <AlternativesTab
                 alternatives={alternatives}
                 setAlternatives={setAlternatives}
-                allProductsList={allProductsList}
+                allProductsList={effectiveAllProducts}
                 productId={productId}
                 product={product}
                 user={user}

@@ -1,5 +1,6 @@
 import { createBrowserClient as createClient } from '@supabase/ssr';
 import { cache as reactCache } from 'react';
+import { secureApiFetch, clearClientApiCache } from '@/lib/api/client';
 import {
   getCachedData as getRedisCache,
   setCachedData as setRedisCache,
@@ -103,9 +104,11 @@ const PERSIST_CACHE_TTL = 60 * 60 * 1000; // 60 minutes TTL in localStorage
 
 export function clearCache(keyPrefix?: string): void {
   if (keyPrefix) {
-    invalidateRedisPattern(`public_${keyPrefix}`).catch(() => {});
+    invalidateRedisPattern(`public_${keyPrefix}`).catch(() => { });
+    clearClientApiCache(`/t/${keyPrefix}`);
   } else {
-    invalidateRedisPattern('public_').catch(() => {});
+    invalidateRedisPattern('public_').catch(() => { });
+    clearClientApiCache();
   }
   if (typeof window === 'undefined') return;
   if (keyPrefix) {
@@ -275,7 +278,8 @@ export function getCachedProducts(currentUserId?: string): Product[] {
   if (typeof window !== 'undefined' && products.length > 0) {
     try {
       if (currentUserId) {
-        const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
+        const rawVotes = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
+        const votes: string[] = JSON.parse(rawVotes || '[]');
         const votedSet = new Set(votes);
         return products.map(p => ({
           ...p,
@@ -330,6 +334,123 @@ export const MOCK_PROFILES: Record<string, Profile> = {
     streak_count: 3
   }
 };
+
+export function normalizeProductUrl(rawUrl: string): string {
+  if (!rawUrl) return "";
+  try {
+    let url = rawUrl.trim().toLowerCase();
+    url = url.replace(/^https?:\/\//i, '');
+    url = url.replace(/^www\./i, '');
+    url = url.split('?')[0].split('#')[0];
+    url = url.replace(/\/+$/, '');
+    return url;
+  } catch {
+    return rawUrl ? rawUrl.trim().toLowerCase() : "";
+  }
+}
+
+export function extractDomainFromUrl(rawUrl: string): string {
+  const norm = normalizeProductUrl(rawUrl);
+  return norm.split('/')[0] || norm;
+}
+
+export async function checkProductUrlExists(
+  urlToCheck: string,
+  excludeProductId?: string
+): Promise<{ exists: boolean; product?: Product; message?: string }> {
+  if (!urlToCheck || !urlToCheck.trim()) {
+    return { exists: false };
+  }
+
+  const normalizedInput = normalizeProductUrl(urlToCheck);
+  const domainInput = extractDomainFromUrl(urlToCheck);
+
+  if (!normalizedInput) {
+    return { exists: false };
+  }
+
+  // 1. API route check
+  try {
+    const res = await secureApiFetch<Product[]>(`/t/products?check_url=${encodeURIComponent(normalizedInput)}&limit=20`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      const match = res.data.find(p => {
+        if (excludeProductId && (p.id === excludeProductId || getProductSlug(p.name) === excludeProductId)) {
+          return false;
+        }
+        if (p.is_deleted) return false;
+        const normExisting = normalizeProductUrl(p.website_url);
+        const domainExisting = extractDomainFromUrl(p.website_url);
+        return normExisting === normalizedInput || (domainInput.includes('.') && domainExisting === domainInput);
+      });
+
+      if (match) {
+        return {
+          exists: true,
+          product: match,
+          message: `This product (${match.name}) has already been launched on IndiHunt!`
+        };
+      }
+    }
+  } catch (err) { }
+
+  // 2. Direct Supabase check
+  if (supabase) {
+    try {
+      const { data: dbMatches } = await supabase
+        .from('products')
+        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)')
+        .or(`website_url.ilike.%${domainInput}%,website_url.ilike.%${normalizedInput}%`)
+        .limit(20);
+
+      if (dbMatches && dbMatches.length > 0) {
+        const match = dbMatches.find((p: any) => {
+          if (excludeProductId && (p.id === excludeProductId || getProductSlug(p.name) === excludeProductId)) {
+            return false;
+          }
+          if (p.is_deleted) return false;
+          const normExisting = normalizeProductUrl(p.website_url || '');
+          const domainExisting = extractDomainFromUrl(p.website_url || '');
+          return normExisting === normalizedInput || (domainInput.includes('.') && domainExisting === domainInput);
+        });
+
+        if (match) {
+          return {
+            exists: true,
+            product: match as Product,
+            message: `This product (${match.name}) has already been launched on IndiHunt!`
+          };
+        }
+      }
+    } catch (e) { }
+  }
+
+  // 3. Fallback: check local storage & mock products
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('indihunt_products');
+      const allLocal: Product[] = raw ? JSON.parse(raw) : [];
+      const match = allLocal.find(p => {
+        if (excludeProductId && (p.id === excludeProductId || getProductSlug(p.name) === excludeProductId)) {
+          return false;
+        }
+        if (p.is_deleted) return false;
+        const normExisting = normalizeProductUrl(p.website_url || '');
+        const domainExisting = extractDomainFromUrl(p.website_url || '');
+        return normExisting === normalizedInput || (domainInput.includes('.') && domainExisting === domainInput);
+      });
+
+      if (match) {
+        return {
+          exists: true,
+          product: match,
+          message: `This product (${match.name}) has already been launched on IndiHunt!`
+        };
+      }
+    } catch { }
+  }
+
+  return { exists: false };
+}
 
 export function calculateQualityScore(product: Partial<Product>, maker?: Profile): number {
   let score = 0;
@@ -480,18 +601,37 @@ export function evaluateFeaturing(product: Product, commentsCount = 0, makerProf
 
 export async function featureProduct(productId: string, action: 'feature' | 'unfeature'): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    const updates = action === 'feature'
-      ? { editor_pick: true, featured: true, featured_at: new Date().toISOString(), never_feature: false }
-      : { editor_pick: false, featured: false, never_feature: true }; // flag never_feature so it won't be auto-featured again
-
-    const { error } = await supabase
-      .from('products')
-      .update(updates)
-      .eq('id', productId);
-
-    return !error;
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean; featured: boolean }>(
+      `/t/products/${encodeURIComponent(productId)}/feature`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      }
+    );
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('indihunt_products');
+        if (cached) {
+          const products: Product[] = JSON.parse(cached);
+          const updated = products.map(p => {
+            if (p.id === productId) {
+              return {
+                ...p,
+                editor_pick: action === 'feature',
+                featured: action === 'feature',
+                featured_at: action === 'feature' ? new Date().toISOString() : undefined,
+                never_feature: action === 'unfeature'
+              };
+            }
+            return p;
+          });
+          localStorage.setItem('indihunt_products', JSON.stringify(updated));
+        }
+      }
+      return true;
+    }
+  } catch { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_products');
@@ -564,19 +704,10 @@ export const isGlobalPreLaunchWindow = isIndianPreLaunchWindow;
 // Helper to auto-promote past scheduled products to 'live' in Supabase & local cache
 export async function syncScheduledProducts(): Promise<void> {
   const now = new Date();
-  const nowIso = now.toISOString();
 
-  if (supabase) {
-    try {
-      await supabase
-        .from('products')
-        .update({ status: 'live' })
-        .eq('status', 'scheduled')
-        .lte('scheduled_for', nowIso);
-    } catch (e) {
-      console.warn('[syncScheduledProducts] Error syncing scheduled products:', e);
-    }
-  }
+  try {
+    await secureApiFetch('/t/products/sync-scheduled', { method: 'POST' });
+  } catch { }
 
   if (typeof window !== 'undefined') {
     try {
@@ -595,11 +726,11 @@ export async function syncScheduledProducts(): Promise<void> {
           localStorage.setItem('indihunt_products', JSON.stringify(updated));
         }
       }
-    } catch (e) { }
+    } catch { }
   }
 }
 
-// Helper to interact with Local Storage or Supabase
+// Helper to interact with Local Storage or API
 async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
   // 1. High-speed cache check for public/guest SSR (< 1ms)
   if (!currentUserId) {
@@ -609,111 +740,29 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
     }
   }
 
+  try {
+    const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}&limit=500` : '?limit=500';
+    const res = await secureApiFetch<Product[]>(`/t/products${query}`);
+    if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+      if (!currentUserId) {
+        setRedisCache('public_products', res.data, 300).catch(() => { });
+      }
+      return res.data;
+    }
+  } catch { }
+
+  // Direct Supabase fallback for SSR / server components
   if (supabase) {
     try {
-      const [productsRes, upvotesRes] = await Promise.all([
-        supabase
-          .from('products')
-          .select('*, maker:profiles!maker_id(*)')
-          .order('upvotes_count', { ascending: false }),
-        currentUserId
-          ? supabase
-              .from('upvotes')
-              .select('product_id')
-              .eq('user_id', currentUserId)
-          : Promise.resolve({ data: null, error: null } as any)
-      ]);
+      const { data: dbProducts } = await supabase
+        .from('products')
+        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
+        .order('created_at', { ascending: false });
 
-      const products = productsRes.data;
-      const error = productsRes.error;
-
-      if (error || !products || products.length === 0) {
-        return getCachedProducts(currentUserId);
+      if (dbProducts && dbProducts.length > 0) {
+        return dbProducts as Product[];
       }
-
-      const now = new Date();
-      const scheduledToPromote: string[] = [];
-
-      const visibleProducts = products.filter(p => {
-        if (p.is_deleted) return false;
-        if (p.scheduled_deletion_date) {
-          if (new Date(p.scheduled_deletion_date) <= now) return false;
-          if (p.maker_id !== currentUserId) return false;
-        }
-        if (p.status === 'draft') return false;
-        return true;
-      }).map(p => {
-        // Instant promotion: If scheduled time has arrived or passed, promote to 'live'
-        if (p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now) {
-          scheduledToPromote.push(p.id);
-          return {
-            ...p,
-            status: 'live' as const
-          };
-        }
-        return p;
-      });
-
-      // Background DB update: persist 'live' status into Supabase table
-      if (scheduledToPromote.length > 0 && supabase) {
-        try {
-          Promise.resolve(
-            supabase
-              .from('products')
-              .update({ status: 'live' })
-              .in('id', scheduledToPromote)
-          ).catch((err: any) => console.warn('[getProductsRaw] Background promo update error:', err));
-        } catch (e) {
-          console.warn('[getProductsRaw] Promo trigger error:', e);
-        }
-      }
-
-      let votedIds = new Set<string>();
-      if (currentUserId && upvotesRes.data) {
-        votedIds = new Set((upvotesRes.data as any[]).map(u => u.product_id));
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem(`indihunt_upvotes_${currentUserId}`, JSON.stringify(Array.from(votedIds)));
-            localStorage.setItem('indihunt_upvotes', JSON.stringify(Array.from(votedIds)));
-          } catch (e) {}
-        }
-      } else if (currentUserId) {
-        if (typeof window !== 'undefined') {
-          try {
-            const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-            if (raw) votedIds = new Set(JSON.parse(raw));
-          } catch (e) {}
-        }
-      }
-
-      const finalEvaluated = visibleProducts.map(p => {
-        const featInfo = evaluateFeaturing(p, p.comments_count, p.maker);
-        const hasUpvoted = votedIds.has(p.id);
-        const rawUpvotes = p.upvotes_count || 0;
-
-        return {
-          ...p,
-          upvotes_count: rawUpvotes,
-          real_upvotes_count: rawUpvotes,
-          fake_upvotes_count: 0,
-          featured: featInfo.featured,
-          quality_score: featInfo.quality_score,
-          engagement_score: featInfo.engagement_score,
-          featured_at: featInfo.featured_at,
-          has_upvoted: hasUpvoted
-        };
-      });
-
-      // Save public dataset to Redis/memory cache with 60s TTL
-      if (!currentUserId && finalEvaluated.length > 0) {
-        setRedisCache('public_products', finalEvaluated, 60).catch(() => {});
-      }
-
-      return finalEvaluated;
-    } catch (err) {
-      console.error('[getProductsRaw] Error:', err);
-      return getCachedProducts(currentUserId);
-    }
+    } catch { }
   }
 
   return getCachedProducts(currentUserId);
@@ -721,84 +770,129 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
 
 export const getProducts = getProductsRaw;
 
-export async function toggleUpvote(productId: string, userId: string): Promise<{ success: boolean; upvotes_count: number }> {
+export async function toggleUpvote(productId: string, userId: string): Promise<{ success: boolean; has_upvoted: boolean; upvotes_count: number; productId: string }> {
   clearCache();
-  if (supabase) {
-    // Block upvoting if product is scheduled in the future
-    const { data: product } = await supabase.from('products').select('status, scheduled_for').eq('id', productId).single();
-    if (product && product.status === 'scheduled' && product.scheduled_for && new Date(product.scheduled_for) > new Date()) {
-      const { data: currentCount } = await supabase.from('products').select('upvotes_count').eq('id', productId).single();
-      return { success: false, upvotes_count: currentCount?.upvotes_count || 0 };
-    }
 
-    // Check if upvote exists
-    const { data: existing } = await supabase
-      .from('upvotes')
-      .select('id')
-      .eq('product_id', productId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase.from('upvotes').delete().eq('id', existing.id);
-    } else {
-      await supabase.from('upvotes').insert({ product_id: productId, user_id: userId });
-    }
-
-    if (typeof window !== 'undefined') {
-      const rawUserVotes = localStorage.getItem(`indihunt_upvotes_${userId}`) || localStorage.getItem('indihunt_upvotes');
-      const votes: string[] = JSON.parse(rawUserVotes || '[]');
-      let nextVotes: string[];
-      if (existing) {
-        nextVotes = votes.filter(id => id !== productId);
-      } else {
-        nextVotes = Array.from(new Set([...votes, productId]));
+  try {
+    const res = await secureApiFetch<{ success: boolean; has_upvoted: boolean; upvotes_count: number; productId?: string }>(
+      `/t/products/${encodeURIComponent(productId)}/upvote`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
       }
-      localStorage.setItem('indihunt_upvotes', JSON.stringify(nextVotes));
-      localStorage.setItem(`indihunt_upvotes_${userId}`, JSON.stringify(nextVotes));
-    }
+    );
 
-    const { data: prod } = await supabase.from('products').select('upvotes_count').eq('id', productId).single();
-    return { success: true, upvotes_count: prod?.upvotes_count || 0 };
+    const data: any = res?.data || res;
+    if (res && res.success) {
+      const hasUpvoted = Boolean(data?.has_upvoted ?? res?.has_upvoted);
+      const upvotesCount = typeof data?.upvotes_count === 'number'
+        ? data.upvotes_count
+        : (typeof res?.upvotes_count === 'number' ? res.upvotes_count : 0);
+      const resolvedId = String(data?.productId || res?.productId || productId);
+
+      if (typeof window !== 'undefined') {
+        const rawUserVotes = (userId ? localStorage.getItem(`indihunt_upvotes_${userId}`) : null) || localStorage.getItem('indihunt_upvotes');
+        const votes: string[] = JSON.parse(rawUserVotes || '[]');
+        let nextVotes: string[];
+        if (hasUpvoted) {
+          nextVotes = Array.from(new Set([...votes, resolvedId, productId]));
+        } else {
+          nextVotes = votes.filter(id => id !== resolvedId && id !== productId);
+        }
+        localStorage.setItem('indihunt_upvotes', JSON.stringify(nextVotes));
+        if (userId) {
+          localStorage.setItem(`indihunt_upvotes_${userId}`, JSON.stringify(nextVotes));
+        }
+
+        // Keep indihunt_products in localStorage updated as well
+        try {
+          const rawProds = localStorage.getItem('indihunt_products');
+          if (rawProds) {
+            const prods = JSON.parse(rawProds);
+            if (Array.isArray(prods)) {
+              const updated = prods.map(p => {
+                if (p.id === resolvedId || p.id === productId) {
+                  return { ...p, upvotes_count: upvotesCount, has_upvoted: hasUpvoted };
+                }
+                return p;
+              });
+              localStorage.setItem('indihunt_products', JSON.stringify(updated));
+            }
+          }
+        } catch {}
+      }
+      return { success: true, has_upvoted: hasUpvoted, upvotes_count: upvotesCount, productId: resolvedId };
+    }
+  } catch (err) {
+    // fallback to local storage
   }
 
   // Fallback state
   if (typeof window !== 'undefined') {
     const products = await getProducts();
-    const targetProduct = products.find(p => p.id === productId);
+    const targetProduct = products.find(p => p.id === productId || getProductSlug(p.name) === productId);
     if (targetProduct && targetProduct.status === 'scheduled' && targetProduct.scheduled_for && new Date(targetProduct.scheduled_for) > new Date()) {
-      return { success: false, upvotes_count: targetProduct.upvotes_count || 0 };
+      return { success: false, has_upvoted: false, upvotes_count: targetProduct.upvotes_count || 0, productId };
     }
 
-    const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
-    const isVoted = votes.includes(productId);
+    const rawVotes = (userId && localStorage.getItem(`indihunt_upvotes_${userId}`)) || localStorage.getItem('indihunt_upvotes') || '[]';
+    const votes: string[] = JSON.parse(rawVotes);
+    const resolvedId = targetProduct?.id || productId;
+    const isVoted = votes.includes(resolvedId) || votes.includes(productId);
 
     let nextVotes: string[];
     if (isVoted) {
-      nextVotes = votes.filter(id => id !== productId);
+      nextVotes = votes.filter(id => id !== resolvedId && id !== productId);
     } else {
-      nextVotes = [...votes, productId];
+      nextVotes = Array.from(new Set([...votes, resolvedId, productId]));
     }
     localStorage.setItem('indihunt_upvotes', JSON.stringify(nextVotes));
+    if (userId) {
+      localStorage.setItem(`indihunt_upvotes_${userId}`, JSON.stringify(nextVotes));
+    }
 
     const updatedProducts = products.map(p => {
-      if (p.id === productId) {
+      if (p.id === resolvedId || p.id === productId) {
         const diff = isVoted ? -1 : 1;
-        return { ...p, upvotes_count: p.upvotes_count + diff };
+        return { ...p, upvotes_count: Math.max(0, (p.upvotes_count || 0) + diff), has_upvoted: !isVoted };
       }
       return p;
     });
     localStorage.setItem('indihunt_products', JSON.stringify(updatedProducts));
 
-    const count = updatedProducts.find(p => p.id === productId)?.upvotes_count || 0;
-    return { success: true, upvotes_count: count };
+    const count = updatedProducts.find(p => p.id === resolvedId || p.id === productId)?.upvotes_count || 0;
+    return { success: true, has_upvoted: !isVoted, upvotes_count: count, productId: resolvedId };
   }
 
-  return { success: false, upvotes_count: 0 };
+  return { success: false, has_upvoted: false, upvotes_count: 0, productId };
 }
 
 async function getCommentsRaw(productId?: string, threadId?: string): Promise<Comment[]> {
-  if (supabase) {
+  function buildTree(list: Comment[]): Comment[] {
+    const commentMap: Record<string, Comment> = {};
+    list.forEach(c => {
+      commentMap[c.id] = {
+        ...c,
+        replies: c.replies ? [...c.replies] : []
+      };
+    });
+
+    const roots: Comment[] = [];
+    list.forEach(c => {
+      const item = commentMap[c.id];
+      if (c.parent_id && commentMap[c.parent_id]) {
+        const parent = commentMap[c.parent_id];
+        if (!parent.replies!.some(r => r.id === c.id)) {
+          parent.replies!.push(item);
+        }
+      } else if (!c.parent_id) {
+        roots.push(item);
+      }
+    });
+    return roots;
+  }
+
+  try {
     let actualProductId = productId;
     if (productId) {
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
@@ -825,49 +919,15 @@ async function getCommentsRaw(productId?: string, threadId?: string): Promise<Co
       }
     }
 
-    let query = supabase.from('comments').select('*, user:profiles(*)');
-    if (actualProductId) {
-      query = query.eq('product_id', actualProductId);
-    } else if (actualThreadId) {
-      query = query.eq('thread_id', actualThreadId);
+    const queryParam = actualProductId ? `productId=${encodeURIComponent(actualProductId)}` : actualThreadId ? `threadId=${encodeURIComponent(actualThreadId)}` : '';
+    if (queryParam) {
+      const res = await secureApiFetch<Comment[]>(`/t/comments?${queryParam}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        return buildTree(res.data);
+      }
     }
-    const { data, error } = await query.order('created_at', { ascending: true });
-
-    if (error) {
-      console.error("Error fetching comments in getCommentsRaw:", {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      }, error);
-      return [];
-    }
-
-    function buildTree(list: Comment[]): Comment[] {
-      const commentMap: Record<string, Comment> = {};
-      list.forEach(c => {
-        commentMap[c.id] = {
-          ...c,
-          replies: c.replies ? [...c.replies] : []
-        };
-      });
-
-      const roots: Comment[] = [];
-      list.forEach(c => {
-        const item = commentMap[c.id];
-        if (c.parent_id && commentMap[c.parent_id]) {
-          const parent = commentMap[c.parent_id];
-          if (!parent.replies!.some(r => r.id === c.id)) {
-            parent.replies!.push(item);
-          }
-        } else if (!c.parent_id) {
-          roots.push(item);
-        }
-      });
-      return roots;
-    }
-
-    return buildTree(data || []);
+  } catch (err) {
+    // fallback
   }
 
   const cacheKey = productId ? `indihunt_comments_${productId}` : `indihunt_comments_thread_${threadId}`;
@@ -878,27 +938,7 @@ async function getCommentsRaw(productId?: string, threadId?: string): Promise<Co
     }
     try {
       const list: Comment[] = JSON.parse(cached);
-      const commentMap: Record<string, Comment> = {};
-      list.forEach(c => {
-        commentMap[c.id] = {
-          ...c,
-          replies: c.replies ? [...c.replies] : []
-        };
-      });
-
-      const roots: Comment[] = [];
-      list.forEach(c => {
-        const item = commentMap[c.id];
-        if (c.parent_id && commentMap[c.parent_id]) {
-          const parent = commentMap[c.parent_id];
-          if (!parent.replies!.some(r => r.id === c.id)) {
-            parent.replies!.push(item);
-          }
-        } else if (!c.parent_id) {
-          roots.push(item);
-        }
-      });
-      return roots;
+      return buildTree(list);
     } catch (e) {
       return [];
     }
@@ -935,24 +975,23 @@ export async function addComment(productId: string | null, userId: string, body:
     }
   }
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('comments')
-      .insert({
-        product_id: actualProductId || null,
-        thread_id: actualThreadId || null,
-        user_id: userId,
-        parent_id: parentId || null,
-        body
-      })
-      .select('*, user:profiles(*)')
-      .single();
+  try {
+    const res = await secureApiFetch<Comment>('/t/comments', {
+      method: 'POST',
+      body: JSON.stringify({
+        productId: actualProductId || null,
+        threadId: actualThreadId || null,
+        userId,
+        parentId: parentId || null,
+        body,
+      }),
+    });
 
-    if (error) {
-      console.error(error);
-      return null;
+    if (res && res.success && res.data) {
+      return res.data;
     }
-    return data;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback logic
@@ -1018,57 +1057,56 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
     is_maker: true
   };
 
-  if (supabase) {
-    // Check if product with same URL already exists (exclude soft-deleted products)
-    const { data: existing } = await supabase
-      .from('products')
-      .select('id')
-      .eq('website_url', product.website_url)
-      .eq('is_deleted', false)
-      .maybeSingle();
+  const dupCheck = await checkProductUrlExists(product.website_url);
+  if (dupCheck.exists) {
+    throw new Error(dupCheck.message || "This product has already been launched on IndiHunt!");
+  }
 
-    if (existing) {
-      throw new Error("This product has already been launched on IndiHunt!");
+  try {
+    const res = await secureApiFetch<Product>(
+      '/t/products',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ...product,
+          maker_id: userId,
+        }),
+      }
+    );
+
+    if (res && res.success && res.data) {
+      const prodData = res.data;
+      if (typeof window !== 'undefined') {
+        const products = await getProducts();
+        const nextProducts = [prodData, ...products];
+        localStorage.setItem('indihunt_products', JSON.stringify(nextProducts));
+        const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
+        localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, prodData.id]));
+      }
+      return prodData;
+    } else if (res && !res.success) {
+      throw new Error(res.error || "Failed to submit product launch.");
     }
-
-    let insertPayload: any = {
-      ...product,
-      maker_id: userId
-    };
-
-    let { data, error } = await supabase
-      .from('products')
-      .insert(insertPayload)
-      .select('*, maker:profiles!maker_id(*)')
-      .single();
-
-    if (error && (error.code === 'PGRST204' || error.message?.includes('funding_type'))) {
-      delete insertPayload.funding_type;
-      const retry = await supabase
-        .from('products')
-        .insert(insertPayload)
-        .select('*, maker:profiles!maker_id(*)')
-        .single();
-      data = retry.data;
-      error = retry.error;
+  } catch (err: any) {
+    if (err?.message?.includes("already been launched") || err?.message?.includes("violation")) {
+      throw err;
     }
-
-    if (error) {
-      console.error(error);
-      return null;
-    }
-    return data;
+    // fallback to local offline mode
   }
 
   if (typeof window !== 'undefined') {
     const products = await getProducts();
+    const normInput = normalizeProductUrl(product.website_url);
+    const domainInput = extractDomainFromUrl(product.website_url);
     // Exclude soft-deleted products from the URL duplicate check
-    const existing = products.find(p =>
-      p.website_url.toLowerCase() === product.website_url.toLowerCase() &&
-      !p.is_deleted
-    );
+    const existing = products.find(p => {
+      if (p.is_deleted) return false;
+      const normP = normalizeProductUrl(p.website_url || '');
+      const domainP = extractDomainFromUrl(p.website_url || '');
+      return normP === normInput || (domainInput.includes('.') && domainP === domainInput);
+    });
     if (existing) {
-      throw new Error("This product has already been launched on IndiHunt!");
+      throw new Error(`This product (${existing.name}) has already been launched on IndiHunt!`);
     }
 
     const newProduct: Product = {
@@ -1183,20 +1221,12 @@ export async function signOut() {
 async function getUserProfileRaw(userId: string) {
   if (!userId) return null;
   try {
-    const res = await fetch(`/t/profiles?userId=${encodeURIComponent(userId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.data) return data.data;
+    const res = await secureApiFetch<Profile>(`/t/profiles?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && res.data) {
+      return res.data;
     }
   } catch (err) {
-    console.error("getUserProfile API Error:", err);
-  }
-
-  if (supabase) {
-    try {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      if (profile) return profile;
-    } catch (e) { }
+    // fallback
   }
 
   const allUsers = await getAllUsersAdmin();
@@ -1213,25 +1243,12 @@ async function getUserProfileByUsernameRaw(username: string) {
   if (!cleaned) return null;
 
   try {
-    const res = await fetch(`/t/profiles?username=${encodeURIComponent(cleaned)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.data) return data.data;
+    const res = await secureApiFetch<Profile>(`/t/profiles?username=${encodeURIComponent(cleaned)}`);
+    if (res && res.success && res.data) {
+      return res.data;
     }
   } catch (err) {
-    console.error("getUserProfileByUsername API Error:", err);
-  }
-
-  // Direct Supabase client fallback (mirrors getUserProfileRaw pattern)
-  if (supabase) {
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .ilike('username', cleaned)
-        .maybeSingle();
-      if (profile) return profile;
-    } catch (e) { }
+    // fallback
   }
 
   const found = Object.values(MOCK_PROFILES).find(p => p.username.toLowerCase() === cleaned);
@@ -1267,23 +1284,18 @@ export async function updateUserProfile(userId: string, updates: any) {
 
   let resultData: any = null;
 
-  if (supabase) {
-    // 1. Direct Supabase update using client SDK
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (!error && data) {
-      resultData = data;
-    } else if (error) {
-      console.warn("Supabase profile update notice (syncing to local storage):", error.message || error);
+  try {
+    const res = await secureApiFetch<Profile>('/t/profiles', {
+      method: 'PUT',
+      body: JSON.stringify({ userId, updates }),
+    });
+    if (res && res.success && res.data) {
+      resultData = res.data;
     }
+  } catch (e) {
+    // fallback
   }
 
-  // 2. If Supabase update was skipped or failed due to missing DB columns/network, fallback to local storage
   if (!resultData) {
     let localCache: any = null;
     if (typeof window !== "undefined") {
@@ -1297,24 +1309,9 @@ export async function updateUserProfile(userId: string, updates: any) {
     syncLocalStorageProfile(resultData);
   }
 
-  // 3. Notify API endpoint with Auth Bearer token to purge & update Upstash Redis cache on server
-  try {
-    if (supabase) {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      await fetch('/t/profiles', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ userId, updates }),
-      }).catch(() => { });
-    }
-  } catch (e) { }
-
   return resultData;
 }
+
 
 export function getProductSlug(name: string): string {
   if (!name) return "";
@@ -1406,126 +1403,97 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
     if (cachedList && cachedList.length > 0) {
       const match = cachedList.find(p => p.id === id || getProductSlug(p.name) === normalizedKey);
       if (match) {
-        setRedisCache(`public_product_${normalizedKey}`, match, 120).catch(() => {});
-        setRedisCache(`public_product_${match.id}`, match, 120).catch(() => {});
+        setRedisCache(`public_product_${normalizedKey}`, match, 120).catch(() => { });
+        setRedisCache(`public_product_${match.id}`, match, 120).catch(() => { });
         return match;
       }
     }
   }
 
-  if (supabase) {
-    let targetProduct: any = null;
-    if (isUUID) {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*, maker:profiles!maker_id(*)')
-        .eq('id', id)
-        .limit(1)
-        .maybeSingle();
-      if (!error && data) {
-        targetProduct = data;
-      }
-    } else {
-      // Check memory/localStorage cache first for instant response (<1ms)
-      const cached = getCachedProducts(currentUserId);
-      const cachedMatch = cached.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
-      if (cachedMatch) {
-        targetProduct = cachedMatch;
-      } else {
-        // Single indexed lookup via the `slug` generated column (migration 100).
-        // Falls back to a name ilike only if the slug column doesn't exist yet on this DB.
-        const { data: slugMatch, error: slugError } = await supabase
+  // 2. Direct Supabase query during SSR / Server execution (0ms network loopback overhead)
+  if (typeof window === 'undefined' && supabase) {
+    try {
+      const DETAIL_COLUMNS = '*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)';
+      let dbProduct: any = null;
+      if (isUUID) {
+        const { data } = await supabase
           .from('products')
-          .select('*, maker:profiles!maker_id(*)')
-          .eq('slug', normalizedKey)
-          .limit(5);
-
-        if (!slugError && slugMatch && slugMatch.length > 0) {
-          // Tiebreak in JS in the (rare) case of slug collision
-          targetProduct = slugMatch.find(p => getProductSlug(p.name) === normalizedKey || p.id === id)
-            ?? slugMatch[0];
-        }
-
-        // Safety fallback: slug column may not exist on older DB (PGRST116 / column not found)
-        if (!targetProduct && (slugError || !slugMatch)) {
-          const cleanSearchName = id.replace(/-/g, ' ');
-          const { data: fallbackProducts } = await supabase
-            .from('products')
-            .select('*, maker:profiles!maker_id(*)')
-            .ilike('name', `%${cleanSearchName}%`)
-            .limit(30);
-
-          if (fallbackProducts && fallbackProducts.length > 0) {
-            targetProduct = fallbackProducts.find(p => getProductSlug(p.name) === normalizedKey || p.id === id);
-          }
-        }
-      }
-    }
-
-    if (targetProduct) {
-      if (targetProduct.status === 'scheduled' && targetProduct.scheduled_for && new Date(targetProduct.scheduled_for) <= new Date()) {
-        targetProduct.status = 'live';
-        Promise.resolve(
-          supabase.from('products').update({ status: 'live' }).eq('id', targetProduct.id)
-        ).catch(err => console.warn('[getProductById] Background promo update error:', err));
-      }
-
-      let hasUpvoted = false;
-      if (currentUserId) {
-        const { data: vote } = await supabase
-          .from('upvotes')
-          .select('id')
-          .eq('product_id', targetProduct.id)
-          .eq('user_id', currentUserId)
+          .select(DETAIL_COLUMNS)
+          .eq('id', id)
           .maybeSingle();
-        hasUpvoted = !!vote;
-      } else if (typeof window !== 'undefined') {
-        const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
-        hasUpvoted = votes.includes(targetProduct.id);
+        dbProduct = data;
       }
-
-      const featInfo = evaluateFeaturing(targetProduct, targetProduct.comments_count, targetProduct.maker);
-      const rawUpvotes = targetProduct.upvotes_count || 0;
-
-      const finalProduct: Product = {
-        ...targetProduct,
-        upvotes_count: rawUpvotes,
-        real_upvotes_count: rawUpvotes,
-        fake_upvotes_count: 0,
-        featured: featInfo.featured,
-        quality_score: featInfo.quality_score,
-        engagement_score: featInfo.engagement_score,
-        featured_at: featInfo.featured_at,
-        has_upvoted: hasUpvoted
-      };
-
-      if (!currentUserId) {
-        const productSlug = getProductSlug(finalProduct.name);
-        setRedisCache(`public_product_${normalizedKey}`, finalProduct, 120).catch(() => {});
-        setRedisCache(`public_product_${finalProduct.id}`, finalProduct, 120).catch(() => {});
-        if (productSlug !== normalizedKey) {
-          setRedisCache(`public_product_${productSlug}`, finalProduct, 120).catch(() => {});
+      if (!dbProduct) {
+        const decodedId = decodeURIComponent(id).toLowerCase().trim();
+        const { data: matched } = await supabase
+          .from('products')
+          .select(DETAIL_COLUMNS)
+          .or(`slug.eq.${normalizedKey},name.ilike.${decodedId}`)
+          .limit(1)
+          .maybeSingle();
+        dbProduct = matched;
+      }
+      if (dbProduct) {
+        if (currentUserId) {
+          const { data: upvote } = await supabase
+            .from('upvotes')
+            .select('id')
+            .eq('product_id', dbProduct.id)
+            .eq('user_id', currentUserId)
+            .maybeSingle();
+          dbProduct.has_upvoted = !!upvote;
+        } else {
+          dbProduct.has_upvoted = false;
         }
+        return dbProduct as Product;
       }
-
-      return finalProduct;
-    }
-    return null;
+    } catch { }
   }
 
+  try {
+    const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}` : '';
+    const res = await secureApiFetch<Product>(`/t/products/${encodeURIComponent(id)}${query}`);
+    if (res && res.data && res.data.id) {
+      if (!currentUserId) {
+        const productSlug = getProductSlug(res.data.name);
+        setRedisCache(`public_product_${normalizedKey}`, res.data, 120).catch(() => { });
+        setRedisCache(`public_product_${res.data.id}`, res.data, 120).catch(() => { });
+        if (productSlug !== normalizedKey) {
+          setRedisCache(`public_product_${productSlug}`, res.data, 120).catch(() => { });
+        }
+      }
+      return res.data;
+    }
+  } catch { }
+
   const products = await getProducts(currentUserId);
-  return products.find(p => p.id === id || getProductSlug(p.name) === normalizedKey) || null;
+  return products.find(p =>
+    p.id === id ||
+    getProductSlug(p.name).toLowerCase() === normalizedKey ||
+    ((p as any).slug && (p as any).slug.toLowerCase() === normalizedKey) ||
+    p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === normalizedKey
+  ) || null;
 }
 
 export const getProductById = reactCache(getProductByIdRaw);
 
 
-function getLocalThreadsFallback(): Thread[] {
+function getLocalThreadsFallback(currentUserId?: string): Thread[] {
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_threads');
     if (cached) {
       try {
-        return JSON.parse(cached);
+        const threads: Thread[] = JSON.parse(cached);
+        if (currentUserId) {
+          const rawVotes = localStorage.getItem(`indihunt_thread_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_thread_upvotes');
+          const votes: string[] = JSON.parse(rawVotes || '[]');
+          const votedSet = new Set(votes);
+          return threads.map(t => ({
+            ...t,
+            has_upvoted: votedSet.has(t.id)
+          }));
+        }
+        return threads;
       } catch (e) {
         console.error(e);
       }
@@ -1543,89 +1511,61 @@ async function getThreadsRaw(currentUserId?: string): Promise<Thread[]> {
     }
   }
 
-  if (supabase) {
-    try {
-      const { data: threads, error } = await supabase
-        .from('threads')
-        .select('*, user:profiles(*)')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn("[Supabase getThreads error - falling back to local]:", error.message || error);
-        return getLocalThreadsFallback();
+  try {
+    const url = `/t/threads${currentUserId ? `?userId=${encodeURIComponent(currentUserId)}` : ''}`;
+    const res = await secureApiFetch<Thread[]>(url);
+    if (res && res.success && Array.isArray(res.data)) {
+      if (!currentUserId && res.data.length > 0) {
+        setRedisCache('public_threads', res.data, 60).catch(() => { });
       }
-
-      if (currentUserId) {
-        const { data: votes } = await supabase
-          .from('thread_upvotes')
-          .select('thread_id')
-          .eq('user_id', currentUserId);
-        const votedIds = new Set(votes?.map(v => v.thread_id) || []);
-        return (threads || []).map(t => ({
-          ...t,
-          has_upvoted: votedIds.has(t.id)
-        }));
-      }
-
-      const result = threads || [];
-      if (result.length > 0) {
-        setRedisCache('public_threads', result, 60).catch(() => {});
-      }
-      return result;
-    } catch (e: any) {
-      console.warn("[Network ECONNRESET / Disconnect in getThreads]:", e?.message || e);
-      return getLocalThreadsFallback();
+      return res.data;
     }
+  } catch (err) {
+    // fallback to local storage
   }
 
-  return getLocalThreadsFallback();
+  return getLocalThreadsFallback(currentUserId);
 }
 
 export const getThreads = getThreadsRaw;
 
-async function getThreadByIdRaw(id: string): Promise<Thread | null> {
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-  if (supabase) {
-    if (isUUID) {
-      const { data, error } = await supabase
-        .from('threads')
-        .select('*, user:profiles(*)')
-        .eq('id', id)
-        .single();
-      if (!error && data) return data;
+async function getThreadByIdRaw(id: string, currentUserId?: string): Promise<Thread | null> {
+  try {
+    const url = `/t/threads/${encodeURIComponent(id)}${currentUserId ? `?userId=${encodeURIComponent(currentUserId)}` : ''}`;
+    const res = await secureApiFetch<Thread>(url);
+    if (res && res.success && res.data) {
+      return res.data;
     }
-
-    const { data: allThreads } = await supabase
-      .from('threads')
-      .select('*, user:profiles(*)');
-    if (allThreads) {
-      const found = allThreads.find(t => getProductSlug(t.title) === id.toLowerCase() || t.id === id);
-      if (found) return found;
-    }
-    return null;
+  } catch (err) {
+    // fallback
   }
-  const threads = await getThreads();
+
+  const threads = await getThreads(currentUserId);
   return threads.find(t => t.id === id || getProductSlug(t.title) === id.toLowerCase()) || null;
 }
 
 export const getThreadById = getThreadByIdRaw;
 
 export async function createThread(thread: Omit<Thread, 'id' | 'upvotes_count' | 'comments_count' | 'created_at'>, userId: string): Promise<Thread | null> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('threads')
-      .insert({
+  try {
+    const res = await secureApiFetch<Thread>('/t/threads', {
+      method: 'POST',
+      body: JSON.stringify({
         ...thread,
-        user_id: userId
-      })
-      .select('*, user:profiles(*)')
-      .single();
-    if (error) {
-      console.error(error);
-      return null;
+        userId,
+      }),
+    });
+
+    if (res && res.success && res.data) {
+      if (typeof window !== 'undefined') {
+        const threads = await getThreads();
+        const nextThreads = [res.data, ...threads];
+        localStorage.setItem('indihunt_threads', JSON.stringify(nextThreads));
+      }
+      return res.data;
     }
-    return data;
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -1648,28 +1588,49 @@ export async function createThread(thread: Omit<Thread, 'id' | 'upvotes_count' |
 }
 
 export async function toggleThreadUpvote(threadId: string, userId: string): Promise<{ success: boolean; upvotes_count: number }> {
-  if (supabase) {
-    const { data: existing } = await supabase
-      .from('thread_upvotes')
-      .select('id')
-      .eq('thread_id', threadId)
-      .eq('user_id', userId)
-      .maybeSingle();
+  clearCache('threads');
 
-    if (existing) {
-      await supabase.from('thread_upvotes').delete().eq('id', existing.id);
-    } else {
-      await supabase.from('thread_upvotes').insert({ thread_id: threadId, user_id: userId });
+  try {
+    const res = await secureApiFetch<{ success: boolean; has_upvoted: boolean; upvotes_count: number }>(
+      `/t/threads/${encodeURIComponent(threadId)}/upvote`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      }
+    );
+
+    const data: any = res?.data || res;
+    if (res && res.success) {
+      const hasUpvoted = Boolean(data?.has_upvoted ?? res?.has_upvoted);
+      const upvotesCount = typeof data?.upvotes_count === 'number'
+        ? data.upvotes_count
+        : (typeof res?.upvotes_count === 'number' ? res.upvotes_count : 0);
+
+      if (typeof window !== 'undefined') {
+        const rawVotes = localStorage.getItem(`indihunt_thread_upvotes_${userId}`) || localStorage.getItem('indihunt_thread_upvotes');
+        const votes: string[] = JSON.parse(rawVotes || '[]');
+        let nextVotes: string[];
+        if (hasUpvoted) {
+          nextVotes = Array.from(new Set([...votes, threadId]));
+        } else {
+          nextVotes = votes.filter(id => id !== threadId);
+        }
+        localStorage.setItem('indihunt_thread_upvotes', JSON.stringify(nextVotes));
+        if (userId) {
+          localStorage.setItem(`indihunt_thread_upvotes_${userId}`, JSON.stringify(nextVotes));
+        }
+      }
+      return { success: true, upvotes_count: upvotesCount };
     }
-
-    const { data: thread } = await supabase.from('threads').select('upvotes_count').eq('id', threadId).single();
-    return { success: true, upvotes_count: thread?.upvotes_count || 0 };
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
   if (typeof window !== 'undefined') {
     const threads = await getThreads();
-    const votes: string[] = JSON.parse(localStorage.getItem('indihunt_thread_upvotes') || '[]');
+    const rawVotes = (userId && localStorage.getItem(`indihunt_thread_upvotes_${userId}`)) || localStorage.getItem('indihunt_thread_upvotes') || '[]';
+    const votes: string[] = JSON.parse(rawVotes);
     const isVoted = votes.includes(threadId);
 
     let nextVotes: string[];
@@ -1679,11 +1640,14 @@ export async function toggleThreadUpvote(threadId: string, userId: string): Prom
       nextVotes = [...votes, threadId];
     }
     localStorage.setItem('indihunt_thread_upvotes', JSON.stringify(nextVotes));
+    if (userId) {
+      localStorage.setItem(`indihunt_thread_upvotes_${userId}`, JSON.stringify(nextVotes));
+    }
 
     const updatedThreads = threads.map(t => {
       if (t.id === threadId) {
         const diff = isVoted ? -1 : 1;
-        return { ...t, upvotes_count: t.upvotes_count + diff };
+        return { ...t, upvotes_count: Math.max(0, (t.upvotes_count || 0) + diff), has_upvoted: !isVoted };
       }
       return t;
     });
@@ -1698,47 +1662,30 @@ export async function toggleThreadUpvote(threadId: string, userId: string): Prom
 
 export async function fetchUrlMetadata(url: string): Promise<{ name: string; tagline: string; description: string; logo_url: string }> {
   try {
-    const res = await fetch("/t/scrape", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+    const res = await secureApiFetch<{ name: string; tagline: string; description: string; logo_url: string }>('/t/scrape', {
+      method: 'POST',
       body: JSON.stringify({ url })
     });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        return json.data;
-      }
-    }
-    if (!res.ok) {
-      const hostname = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
-      const capitalizedName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1);
+    if (res && res.success && res.data) {
       return {
-        name: capitalizedName || "New Launch",
-        tagline: `Awesome solutions built by ${capitalizedName} team`,
-        description: `Discover new possibilities with ${capitalizedName}.`,
-        logo_url: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80`
+        name: res.data.name || "New Launch",
+        tagline: res.data.tagline || "Awesome product launched on IndiHunt",
+        description: res.data.description || "",
+        logo_url: res.data.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80"
       };
     }
-    const data = await res.json();
-    return {
-      name: data.name || "New Launch",
-      tagline: data.tagline || "Awesome product launched on IndiHunt",
-      description: data.description || "",
-      logo_url: data.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80"
-    };
   } catch (error) {
     console.error("fetchUrlMetadata client error:", error);
-    const hostname = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
-    const capitalizedName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1);
-    return {
-      name: capitalizedName,
-      tagline: `Awesome solutions built by ${capitalizedName} team`,
-      description: `Discover new possibilities with ${capitalizedName}.`,
-      logo_url: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80`
-    };
   }
+
+  const hostname = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
+  const capitalizedName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1);
+  return {
+    name: capitalizedName || "New Launch",
+    tagline: `Awesome solutions built by ${capitalizedName} team`,
+    description: `Discover new possibilities with ${capitalizedName}.`,
+    logo_url: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80`
+  };
 }
 
 export async function updateProduct(productId: string, updates: Partial<Product>): Promise<Product | null> {
@@ -1763,48 +1710,20 @@ export async function updateProduct(productId: string, updates: Partial<Product>
 
   let updatedResult: Product | null = null;
 
-  if (supabase) {
-    try {
-      let targetId = productId;
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
-      if (!isUUID) {
-        const prod = await getProductById(productId);
-        if (prod) targetId = prod.id;
+  try {
+    const res = await secureApiFetch<Product>(
+      `/t/products/${encodeURIComponent(productId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(updatePayload),
       }
+    );
 
-      let { data, error } = await supabase
-        .from('products')
-        .update(updatePayload)
-        .eq('id', targetId)
-        .select('*, maker:profiles!maker_id(*)')
-        .single();
-
-      if (error && error.code === 'PGRST204') {
-        const colMatch = error.message?.match(/Could not find the '([^']+)' column/);
-        if (colMatch && colMatch[1]) {
-          delete updatePayload[colMatch[1]];
-        } else {
-          delete updatePayload.category;
-          delete updatePayload.funding_type;
-        }
-        const retry = await supabase
-          .from('products')
-          .update(updatePayload)
-          .eq('id', targetId)
-          .select('*, maker:profiles!maker_id(*)')
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
-
-      if (!error && data) {
-        updatedResult = data;
-      } else {
-        console.warn("Supabase updateProduct warning, using local fallback:", error);
-      }
-    } catch (err) {
-      console.warn("Supabase updateProduct error, using local fallback:", err);
+    if (res && res.success && res.data) {
+      updatedResult = res.data;
     }
+  } catch (err) {
+    // fallback to local storage
   }
 
   // Always update local storage and clear caches so UI, queries, and fallbacks remain in sync
@@ -1829,19 +1748,12 @@ export async function updateProduct(productId: string, updates: Partial<Product>
 
 export async function deleteProduct(productId: string): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('products')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-        .eq('id', productId);
-      if (error) {
-        console.error("Supabase deleteProduct error:", error);
-      }
-    } catch (e) {
-      console.error("Supabase deleteProduct exception:", e);
-    }
-  }
+
+  try {
+    await secureApiFetch(`/t/products/${encodeURIComponent(productId)}`, {
+      method: 'DELETE',
+    });
+  } catch (e) { }
 
   if (typeof window !== 'undefined') {
     try {
@@ -1858,17 +1770,12 @@ export async function deleteProduct(productId: string): Promise<boolean> {
 }
 
 export async function getProductMembers(productId: string): Promise<Profile[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('product_members')
-      .select('*, user:profiles(*)')
-      .eq('product_id', productId);
-    if (error) {
-      console.error("Error fetching product members:", error);
-      return [];
+  try {
+    const res = await secureApiFetch<Profile[]>(`/t/products/${encodeURIComponent(productId)}/members`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-    return (data || []).map(m => m.user).filter(Boolean) as Profile[];
-  }
+  } catch (e) { }
 
   // Fallback
   if (typeof window !== 'undefined') {
@@ -1886,34 +1793,27 @@ export async function getProductMembers(productId: string): Promise<Profile[]> {
 }
 
 export async function inviteProductMember(productId: string, usernameOrEmail: string): Promise<Profile | null> {
-  if (supabase) {
-    const isEmail = usernameOrEmail.includes('@');
-    let query = supabase.from('profiles').select('*');
-    if (isEmail) {
-      query = query.eq('work_email', usernameOrEmail.trim());
-    } else {
-      query = query.eq('username', usernameOrEmail.trim());
-    }
-
-    const { data: userProfile, error: findError } = await query.maybeSingle();
-    if (findError || !userProfile) {
+  try {
+    const profileRes = await secureApiFetch<Profile>(`/t/profiles?username=${encodeURIComponent(usernameOrEmail.trim())}`);
+    if (!profileRes.success || !profileRes.data) {
       throw new Error("User not found on IndiHunt.");
     }
+    const userProfile = profileRes.data;
 
-    const { error: insertError } = await supabase
-      .from('product_members')
-      .insert({
-        product_id: productId,
-        user_id: userProfile.id,
-        role: 'member'
-      });
+    const res = await secureApiFetch(`/t/products/${encodeURIComponent(productId)}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userId: userProfile.id, role: 'member' })
+    });
 
-    if (insertError) {
-      console.error("Error adding product member:", insertError);
-      throw new Error("This user is already a member of your product.");
+    if (!res.success) {
+      throw new Error(res.error || "This user is already a member of your product.");
     }
 
     return userProfile;
+  } catch (err: any) {
+    if (err?.message?.includes("not found") || err?.message?.includes("already a member")) {
+      throw err;
+    }
   }
 
   // Fallback
@@ -2105,17 +2005,13 @@ export async function deleteImage(bucketName: string, publicUrl: string): Promis
 
 // --- Reviews API ---
 async function getReviewsRaw(productId: string): Promise<Review[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*, user:profiles(*)')
-      .eq('product_id', productId)
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error("Error fetching reviews:", error);
-      return [];
+  try {
+    const res = await secureApiFetch<Review[]>(`/t/reviews?productId=${encodeURIComponent(productId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-    return data || [];
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -2155,12 +2051,12 @@ export async function addReview(
     is_maker: false
   };
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('reviews')
-      .insert({
-        product_id: productId,
-        user_id: userId,
+  try {
+    const res = await secureApiFetch<Review>('/t/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        productId,
+        userId,
         rating,
         body,
         easy_to_use: details?.easy_to_use,
@@ -2169,16 +2065,15 @@ export async function addReview(
         value_for_money: details?.value_for_money,
         pros: details?.pros || [],
         cons: details?.cons || [],
-        alternatives_vs: details?.alternatives_vs
-      })
-      .select('*, user:profiles(*)')
-      .single();
+        alternatives_vs: details?.alternatives_vs,
+      }),
+    });
 
-    if (error) {
-      console.error("Error adding review:", error);
-      return null;
+    if (res && res.success && res.data) {
+      return res.data;
     }
-    return data;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -2208,35 +2103,17 @@ export async function addReview(
   return null;
 }
 
+
 // --- Alternatives API ---
 export async function getAlternatives(productId: string, currentUserId?: string): Promise<AlternativeProduct[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('product_alternatives')
-      .select('*, alternative_product:products!product_alternatives_alternative_id_fkey(*, maker:profiles!maker_id(*))')
-      .eq('product_id', productId)
-      .order('votes_count', { ascending: false });
-
-    if (!error && data) {
-      let votedSet = new Set<string>();
-      if (currentUserId && data && data.length > 0) {
-        const altIds = data.map(item => item.id);
-        const { data: votes } = await supabase
-          .from('product_alternative_votes')
-          .select('alternative_id')
-          .eq('user_id', currentUserId)
-          .in('alternative_id', altIds);
-        if (votes) {
-          votedSet = new Set(votes.map(v => v.alternative_id));
-        }
-      }
-
-      return (data || []).map(item => ({
-        ...item,
-        has_voted: votedSet.has(item.id)
-      }));
+  try {
+    const url = `/t/alternatives?productId=${encodeURIComponent(productId)}${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ''}`;
+    const res = await secureApiFetch<AlternativeProduct[]>(url);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-    console.error("Error fetching alternatives from Supabase, attempting fallback:", error);
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -2274,24 +2151,23 @@ export async function getAlternatives(productId: string, currentUserId?: string)
 }
 
 export async function addAlternative(productId: string, alternativeId: string, userId: string): Promise<AlternativeProduct | null> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('product_alternatives')
-      .insert({
-        product_id: productId,
-        alternative_id: alternativeId,
-        created_by: userId,
-        votes_count: 1
-      })
-      .select('*, alternative_product:products!product_alternatives_alternative_id_fkey(*, maker:profiles!maker_id(*))')
-      .single();
+  clearCache();
+  try {
+    const res = await secureApiFetch<AlternativeProduct>('/t/alternatives', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'add',
+        productId,
+        alternativeProductId: alternativeId,
+        userId,
+      }),
+    });
 
-    if (error) {
-      console.error("Error adding alternative:", error);
-      return null;
+    if (res && res.success && res.data) {
+      return res.data;
     }
-    clearCache();
-    return data;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -2330,22 +2206,22 @@ export async function addAlternative(productId: string, alternativeId: string, u
 }
 
 export async function toggleAlternativeVote(alternativeId: string, productId: string, userId: string): Promise<{ success: boolean; votes_count: number }> {
-  if (supabase) {
-    const { data: existing } = await supabase
-      .from('product_alternative_votes')
-      .select('id')
-      .eq('alternative_id', alternativeId)
-      .eq('user_id', userId)
-      .maybeSingle();
+  try {
+    const res = await secureApiFetch<{ success: boolean; votes_count: number; has_voted: boolean }>('/t/alternatives', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'vote',
+        productId,
+        alternativeId,
+        userId,
+      }),
+    });
 
-    if (existing) {
-      await supabase.from('product_alternative_votes').delete().eq('id', existing.id);
-    } else {
-      await supabase.from('product_alternative_votes').insert({ alternative_id: alternativeId, user_id: userId });
+    if (res && res.success) {
+      return { success: true, votes_count: res.votes_count || 0 };
     }
-
-    const { data: alt } = await supabase.from('product_alternatives').select('votes_count').eq('id', alternativeId).single();
-    return { success: true, votes_count: alt?.votes_count || 0 };
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -2379,33 +2255,16 @@ export async function toggleAlternativeVote(alternativeId: string, productId: st
   return { success: false, votes_count: 0 };
 }
 
+
 // --- Product specific forum threads ---
 export async function getProductThreads(productId: string, currentUserId?: string): Promise<Thread[]> {
-  if (supabase) {
-    const { data: threads, error } = await supabase
-      .from('threads')
-      .select('*, user:profiles(*)')
-      .eq('product_id', productId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error("Error fetching product threads:", error);
-      return [];
+  try {
+    const url = `/t/threads?productId=${encodeURIComponent(productId)}${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ''}`;
+    const res = await secureApiFetch<Thread[]>(url);
+    if (res && res.data && Array.isArray(res.data)) {
+      return res.data;
     }
-
-    if (currentUserId && threads && threads.length > 0) {
-      const { data: votes } = await supabase
-        .from('thread_upvotes')
-        .select('thread_id')
-        .eq('user_id', currentUserId);
-      const votedIds = new Set(votes?.map(v => v.thread_id) || []);
-      return threads.map(t => ({
-        ...t,
-        has_upvoted: votedIds.has(t.id)
-      }));
-    }
-    return threads || [];
-  }
+  } catch { }
 
   // Fallback
   if (typeof window !== 'undefined') {
@@ -2439,24 +2298,20 @@ export async function createProductThread(
   thread: Omit<Thread, 'id' | 'upvotes_count' | 'comments_count' | 'created_at'>,
   userId: string
 ): Promise<Thread | null> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('threads')
-      .insert({
+  try {
+    const res = await secureApiFetch<Thread>('/t/threads', {
+      method: 'POST',
+      body: JSON.stringify({
         ...thread,
-        product_id: productId,
-        user_id: userId
+        productId,
+        userId
       })
-      .select('*, user:profiles(*)')
-      .single();
-
-    if (error) {
-      console.error("Error creating product thread:", error);
-      return null;
+    });
+    if (res && res.data && res.data.id) {
+      clearCache();
+      return res.data;
     }
-    clearCache();
-    return data;
-  }
+  } catch { }
 
   // Fallback
   if (typeof window !== 'undefined') {
@@ -2480,18 +2335,14 @@ export async function createProductThread(
 }
 
 export async function deleteProductThread(threadId: string, productId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('threads')
-      .delete()
-      .eq('id', threadId);
-
-    if (error) {
-      console.error("Error deleting product thread:", error);
-      return false;
+  try {
+    const res = await secureApiFetch<{ deleted: boolean }>(`/t/threads/${encodeURIComponent(threadId)}`, {
+      method: 'DELETE'
+    });
+    if (res && res.deleted) {
+      return true;
     }
-    return true;
-  }
+  } catch { }
 
   // Fallback
   if (typeof window !== 'undefined') {
@@ -2511,20 +2362,15 @@ export async function reportProduct(
   reason: string,
   description?: string
 ): Promise<{ success: boolean; alreadyReported?: boolean }> {
-  if (supabase) {
-    // Use upsert so duplicate reports are silently ignored (no 23505 error log)
-    const { error } = await supabase
-      .from('reports')
-      .upsert(
-        { product_id: productId, user_id: userId || null, reason, description: description || null },
-        { onConflict: 'product_id,user_id', ignoreDuplicates: true }
-      );
-    if (error) {
-      console.error('Error reporting product:', error);
-      return { success: false };
+  try {
+    const res = await secureApiFetch<{ success: boolean; alreadyReported?: boolean }>('/t/reports', {
+      method: 'POST',
+      body: JSON.stringify({ productId, userId, reason, description }),
+    });
+    if (res && res.success) {
+      return res;
     }
-    return { success: true, alreadyReported: false };
-  }
+  } catch { }
 
   // Fallback
   if (typeof window !== 'undefined') {
@@ -2555,16 +2401,19 @@ export async function reportProduct(
 // --- Investor details & Shoutouts API ---
 
 export async function submitProductInvestorDetails(details: ProductInvestorDetails): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('product_investor_details')
-      .insert(details);
-    if (error) {
-      console.error("Error submitting investor details:", error.message || error, error.details || "", error.hint || "");
-      return false;
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(
+      `/t/products/${encodeURIComponent(details.product_id)}/investor-details`,
+      {
+        method: 'POST',
+        body: JSON.stringify(details),
+      }
+    );
+    if (res && res.success) {
+      return true;
     }
-    return true;
-  }
+  } catch { }
+
   // Local storage mock
   if (typeof window !== 'undefined') {
     const cached = JSON.parse(localStorage.getItem('indihunt_investor_details') || '{}');
@@ -2660,21 +2509,19 @@ export async function submitProductShoutouts(
     }).catch(() => { });
   }
 
-  // 3. Insert into Supabase product_shoutouts for valid DB UUIDs
-  if (supabase && resolvedShoutouts.length > 0) {
-    const validDbShoutouts = resolvedShoutouts.filter(s =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.shouted_product_id)
-    );
-
-    if (validDbShoutouts.length > 0) {
-      await supabase.from('product_shoutouts').delete().eq('product_id', productId);
-      const { error } = await supabase
-        .from('product_shoutouts')
-        .insert(validDbShoutouts);
-      if (error) {
-        console.warn("Supabase insert product_shoutouts warning:", error.message || error);
-      }
+  // 3. Send to API endpoint
+  try {
+    if (resolvedShoutouts.length > 0) {
+      await secureApiFetch('/t/shoutouts', {
+        method: 'POST',
+        body: JSON.stringify({
+          productId,
+          shoutouts: resolvedShoutouts,
+        }),
+      });
     }
+  } catch (e) {
+    // fallback
   }
 
   clearCache();
@@ -2682,13 +2529,15 @@ export async function submitProductShoutouts(
 }
 
 export async function getProductShoutouts(productId: string): Promise<ProductShoutout[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('product_shoutouts')
-      .select('*, shouted_product:products!product_id(*)')
-      .eq('shouted_product_id', productId);
-    if (!error && data) return data;
+  try {
+    const res = await secureApiFetch<ProductShoutout[]>(`/t/shoutouts?shouted_product_id=${encodeURIComponent(productId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    // fallback
   }
+
   // Local storage mock
   if (typeof window !== 'undefined') {
     const shoutouts: any[] = JSON.parse(localStorage.getItem('indihunt_shoutouts') || '[]');
@@ -2705,15 +2554,15 @@ export async function getProductShoutouts(productId: string): Promise<ProductSho
 export async function getProductShoutoutsGiven(productId: string): Promise<ProductShoutout[]> {
   let dbShoutouts: any[] = [];
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('product_shoutouts')
-      .select('*, shouted_product:products!shouted_product_id(*)')
-      .eq('product_id', productId);
-    if (!error && data && data.length > 0) {
-      dbShoutouts = data;
+  try {
+    const res = await secureApiFetch<any[]>(`/t/shoutouts?productId=${encodeURIComponent(productId)}`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      dbShoutouts = res.data;
     }
+  } catch (err) {
+    // fallback
   }
+
 
   if (typeof window !== 'undefined') {
     const shoutouts: any[] = JSON.parse(localStorage.getItem('indihunt_shoutouts') || '[]');
@@ -2772,20 +2621,19 @@ export async function getProductShoutoutsGiven(productId: string): Promise<Produ
 }
 
 export async function rescheduleProductLaunch(productId: string, date: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('products')
-      .update({
-        scheduled_for: date,
-        status: 'scheduled'
-      })
-      .eq('id', productId);
-    if (error) {
-      console.error("Error rescheduling product launch:", error);
-      return false;
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(
+      `/t/products/${encodeURIComponent(productId)}/reschedule`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ date }),
+      }
+    );
+    if (res && res.success) {
+      return true;
     }
-    return true;
-  }
+  } catch { }
+
   // Local storage mock
   if (typeof window !== 'undefined') {
     const products = await getProducts();
@@ -2808,12 +2656,9 @@ export async function rescheduleProductLaunch(productId: string, date: string): 
 // --- Follows API ---
 export async function getProductFollowers(productId: string): Promise<Profile[]> {
   try {
-    const res = await fetch(`/t/product-follows?productId=${encodeURIComponent(productId)}`);
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        return json.data;
-      }
+    const res = await secureApiFetch<Profile[]>(`/t/product-follows?productId=${encodeURIComponent(productId)}`);
+    if (res.success && Array.isArray(res.data)) {
+      return res.data;
     }
   } catch (error) {
     console.error("Error fetching product followers from /t/product-follows:", error);
@@ -2853,18 +2698,14 @@ export async function isFollowingProduct(productId: string, userId: string): Pro
 
 export async function toggleFollowProduct(productId: string, userId: string, isCurrentlyFollowing: boolean): Promise<boolean> {
   try {
-    const res = await fetch('/t/product-follows', {
+    const res = await secureApiFetch<{ isFollowing: boolean }>('/t/product-follows', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ productId, userId }),
     });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        return json.data.isFollowing;
-      }
-      return !isCurrentlyFollowing;
+    if (res.success && res.data) {
+      return res.data.isFollowing;
     }
+    return !isCurrentlyFollowing;
   } catch (error) {
     console.error("Error toggling product follow via /t/product-follows:", error);
   }
@@ -2885,19 +2726,17 @@ export async function toggleFollowProduct(productId: string, userId: string, isC
 }
 
 export async function isFollowingUser(followerId: string, followingId: string): Promise<boolean> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('user_follows')
-      .select('id')
-      .eq('follower_id', followerId)
-      .eq('following_id', followingId)
-      .maybeSingle();
-    if (error) {
-      console.error(error);
-      return false;
+  try {
+    const res = await secureApiFetch<{ isFollowing: boolean }>(
+      `/t/user-follows?followerId=${encodeURIComponent(followerId)}&followingId=${encodeURIComponent(followingId)}`
+    );
+    if (res && res.success && res.data) {
+      return !!res.data.isFollowing;
     }
-    return !!data;
+  } catch (e) {
+    // fallback
   }
+
   // Fallback
   if (typeof window !== 'undefined') {
     const follows = JSON.parse(localStorage.getItem('indihunt_user_follows') || '[]');
@@ -2907,30 +2746,28 @@ export async function isFollowingUser(followerId: string, followingId: string): 
 }
 
 export async function toggleFollowUser(followerId: string, followingId: string, isCurrentlyFollowing: boolean): Promise<boolean> {
-  if (supabase) {
-    if (isCurrentlyFollowing) {
-      const { error } = await supabase
-        .from('user_follows')
-        .delete()
-        .eq('follower_id', followerId)
-        .eq('following_id', followingId);
-      if (error) {
-        console.error(error);
-        return false;
-      }
+  try {
+    const res = await secureApiFetch<{ isFollowing: boolean }>('/t/user-follows', {
+      method: 'POST',
+      body: JSON.stringify({ followerId, followingId, isCurrentlyFollowing }),
+    });
+
+    if (res && res.success && res.data) {
       clearCache(`user_profile_${followerId}`);
-      return true;
-    } else {
-      const { error } = await supabase
-        .from('user_follows')
-        .insert({ follower_id: followerId, following_id: followingId });
-      if (error) {
-        console.error(error);
-        return false;
+      if (typeof window !== 'undefined') {
+        let follows = JSON.parse(localStorage.getItem('indihunt_user_follows') || '[]');
+        const key = `${followerId}_${followingId}`;
+        if (!res.data.isFollowing) {
+          follows = follows.filter((f: string) => f !== key);
+        } else {
+          follows.push(key);
+        }
+        localStorage.setItem('indihunt_user_follows', JSON.stringify(follows));
       }
-      clearCache(`user_profile_${followerId}`);
-      return true;
+      return res.data.isFollowing;
     }
+  } catch (e) {
+    // fallback
   }
 
   // Fallback
@@ -2948,25 +2785,16 @@ export async function toggleFollowUser(followerId: string, followingId: string, 
   return false;
 }
 
+
 // --- Collections API ---
 export async function getUserCollections(userId: string): Promise<Collection[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('collections')
-      .select('*, collection_products(product_id, products(*, maker:profiles!maker_id(*)))')
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error("Error fetching collections:", error);
-      return [];
+  try {
+    const res = await secureApiFetch<Collection[]>(`/t/collections?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-
-    return (data || []).map((col: any) => ({
-      ...col,
-      products: (col.collection_products || [])
-        .map((cp: any) => cp.products)
-        .filter(Boolean) as Product[]
-    }));
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -2979,18 +2807,21 @@ export async function getUserCollections(userId: string): Promise<Collection[]> 
 }
 
 export async function createCollection(name: string, description: string, userId: string): Promise<Collection | null> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('collections')
-      .insert({ name, description, user_id: userId })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error creating collection:", error);
-      return null;
+  try {
+    const res = await secureApiFetch<Collection>('/t/collections', {
+      method: 'POST',
+      body: JSON.stringify({ name, description, userId }),
+    });
+    if (res && res.success && res.data) {
+      if (typeof window !== 'undefined') {
+        const cacheKey = `indihunt_collections_${userId}`;
+        const collections = await getUserCollections(userId);
+        localStorage.setItem(cacheKey, JSON.stringify([res.data, ...collections]));
+      }
+      return res.data;
     }
-    return data;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3012,16 +2843,16 @@ export async function createCollection(name: string, description: string, userId
 }
 
 export async function addProductToCollection(collectionId: string, productId: string, userId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('collection_products')
-      .insert({ collection_id: collectionId, product_id: productId });
-
-    if (error) {
-      console.error("Error adding product to collection:", error);
-      return false;
+  try {
+    const res = await secureApiFetch(`/t/collections/${encodeURIComponent(collectionId)}/products`, {
+      method: 'POST',
+      body: JSON.stringify({ productId }),
+    });
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3051,18 +2882,15 @@ export async function addProductToCollection(collectionId: string, productId: st
 }
 
 export async function deleteCollection(collectionId: string, userId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('collections')
-      .delete()
-      .eq('id', collectionId)
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error("Error deleting collection:", error);
-      return false;
+  try {
+    const res = await secureApiFetch(`/t/collections?id=${encodeURIComponent(collectionId)}&userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3077,18 +2905,15 @@ export async function deleteCollection(collectionId: string, userId: string): Pr
 }
 
 export async function removeProductFromCollection(collectionId: string, productId: string, userId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('collection_products')
-      .delete()
-      .eq('collection_id', collectionId)
-      .eq('product_id', productId);
-
-    if (error) {
-      console.error("Error removing product from collection:", error);
-      return false;
+  try {
+    const res = await secureApiFetch(`/t/collections/${encodeURIComponent(collectionId)}/products?productId=${encodeURIComponent(productId)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3112,17 +2937,13 @@ export async function removeProductFromCollection(collectionId: string, productI
 
 // --- Stacks API ---
 export async function getUserStack(userId: string): Promise<Product[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('user_stacks')
-      .select('product:products(*, maker:profiles!maker_id(*))')
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error("Error fetching user stack:", error);
-      return [];
+  try {
+    const res = await secureApiFetch<Product[]>(`/t/user-stacks?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-    return (data || []).map((s: any) => s.product).filter(Boolean) as Product[];
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3138,16 +2959,16 @@ export async function getUserStack(userId: string): Promise<Product[]> {
 }
 
 export async function addProductToStack(productId: string, userId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('user_stacks')
-      .insert({ user_id: userId, product_id: productId });
-
-    if (error) {
-      console.error("Error adding product to stack:", error);
-      return false;
+  try {
+    const res = await secureApiFetch('/t/user-stacks', {
+      method: 'POST',
+      body: JSON.stringify({ userId, productId }),
+    });
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3164,18 +2985,15 @@ export async function addProductToStack(productId: string, userId: string): Prom
 }
 
 export async function removeProductFromStack(productId: string, userId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('user_stacks')
-      .delete()
-      .eq('user_id', userId)
-      .eq('product_id', productId);
-
-    if (error) {
-      console.error("Error removing product from stack:", error);
-      return false;
+  try {
+    const res = await secureApiFetch(`/t/user-stacks?userId=${encodeURIComponent(userId)}&productId=${encodeURIComponent(productId)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   // Fallback
@@ -3192,6 +3010,7 @@ export async function removeProductFromStack(productId: string, userId: string):
   return false;
 }
 
+
 // ─── Comment Upvotes ─────────────────────────────────────────────────────────
 
 /**
@@ -3202,41 +3021,31 @@ export async function toggleCommentUpvote(
   commentId: string,
   userId: string
 ): Promise<{ upvotes_count: number; has_upvoted: boolean } | null> {
-  if (!supabase) return null;
+  try {
+    const res = await secureApiFetch<{ success: boolean; has_upvoted: boolean; upvotes_count: number }>(
+      `/t/comments/${encodeURIComponent(commentId)}/upvote`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      }
+    );
 
-  // Check if user already upvoted
-  const { data: existing } = await supabase
-    .from('comment_upvotes')
-    .select('id')
-    .eq('comment_id', commentId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (existing) {
-    // Remove upvote
-    await supabase
-      .from('comment_upvotes')
-      .delete()
-      .eq('comment_id', commentId)
-      .eq('user_id', userId);
-  } else {
-    // Add upvote
-    await supabase
-      .from('comment_upvotes')
-      .insert({ comment_id: commentId, user_id: userId });
+    const data: any = res?.data || res;
+    if (res && res.success) {
+      const count = typeof data?.upvotes_count === 'number'
+        ? data.upvotes_count
+        : (typeof res?.upvotes_count === 'number' ? res.upvotes_count : 0);
+      const hasUpvoted = Boolean(data?.has_upvoted ?? res?.has_upvoted);
+      return {
+        upvotes_count: count,
+        has_upvoted: hasUpvoted,
+      };
+    }
+  } catch (err) {
+    // fallback
   }
 
-  // Return fresh count
-  const { data: comment } = await supabase
-    .from('comments')
-    .select('upvotes_count')
-    .eq('id', commentId)
-    .single();
-
-  return {
-    upvotes_count: comment?.upvotes_count ?? 0,
-    has_upvoted: !existing
-  };
+  return { upvotes_count: 0, has_upvoted: false };
 }
 
 // ─── Comment Reports ──────────────────────────────────────────────────────────
@@ -3250,24 +3059,6 @@ export async function reportComment(
   reason: string = 'spam',
   description?: string
 ): Promise<{ success: boolean; alreadyReported?: boolean }> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('comment_reports')
-      .upsert(
-        { comment_id: commentId, user_id: userId, reason, description: description || null },
-        { onConflict: 'comment_id,user_id' }
-      );
-
-    if (error) {
-      if (error.code === '23505') {
-        return { success: false, alreadyReported: true };
-      }
-      console.error("Error reporting comment:", error);
-      return { success: false };
-    }
-    return { success: true };
-  }
-
   // Fallback
   if (typeof window !== 'undefined') {
     const key = 'indihunt_comment_reports';
@@ -3302,18 +3093,17 @@ export async function updateComment(
   newBody: string
 ): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    const { error } = await supabase
-      .from('comments')
-      .update({ body: newBody })
-      .eq('id', commentId)
-      .eq('user_id', userId);
+  try {
+    const res = await secureApiFetch(`/t/comments/${encodeURIComponent(commentId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId, body: newBody }),
+    });
 
-    if (error) {
-      console.error("Error updating comment:", error);
-      return false;
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -3354,18 +3144,16 @@ export async function deleteComment(
   userId: string
 ): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    const { error } = await supabase
-      .from('comments')
-      .delete()
-      .eq('id', commentId)
-      .eq('user_id', userId);
+  try {
+    const res = await secureApiFetch(`/t/comments/${encodeURIComponent(commentId)}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
 
-    if (error) {
-      console.error("Error deleting comment:", error);
-      return false;
+    if (res && res.success) {
+      return true;
     }
-    return true;
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -3407,17 +3195,20 @@ export async function deleteComment(
  * Fetch top users by karma_points (KP Leaderboard)
  */
 export async function getKarmaLeaderboard(limit: number = 20): Promise<Profile[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, full_name, avatar_url, bio, headline, karma_points, followers_count, is_verified, is_maker')
-    .order('karma_points', { ascending: false })
-    .limit(limit);
-  if (error) {
-    console.error('Error fetching karma leaderboard:', error);
-    return [];
+  try {
+    const res = await secureApiFetch<Profile[]>(`/t/leaderboard/karma?limit=${limit}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    // fallback
   }
-  return (data as Profile[]) ?? [];
+
+  const allUsers = await getAllUsersAdmin();
+  return allUsers
+    .slice()
+    .sort((a, b) => (b.karma_points || 0) - (a.karma_points || 0))
+    .slice(0, limit);
 }
 
 /**
@@ -3425,18 +3216,19 @@ export async function getKarmaLeaderboard(limit: number = 20): Promise<Profile[]
  */
 export async function getStreakLeaderboard(limit: number = 20): Promise<Profile[]> {
   try {
-    const res = await fetch(`/t/leaderboard/streak?limit=${limit}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        return data.data as Profile[];
-      }
-      return (data.leaderboard as Profile[]) || [];
+    const res = await secureApiFetch<Profile[]>(`/t/leaderboard/streak?limit=${limit}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
   } catch (error) {
-    console.error('Error fetching streak leaderboard via API:', error);
+    // fallback
   }
-  return [];
+
+  const allUsers = await getAllUsersAdmin();
+  return allUsers
+    .slice()
+    .sort((a, b) => (b.streak_count || 0) - (a.streak_count || 0))
+    .slice(0, limit);
 }
 
 /**
@@ -3444,46 +3236,36 @@ export async function getStreakLeaderboard(limit: number = 20): Promise<Profile[
  * Should be called when the user loads the app and has been active for >= 60 seconds.
  */
 export async function updateUserStreak(userId: string): Promise<{ streak_count: number; last_active_date: string | null } | null> {
-  if (!supabase) return null;
+  try {
+    const res = await secureApiFetch<{ streak_count: number; last_active_date: string | null }>('/t/user-streak', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
 
-  // Call the DB function
-  await supabase.rpc('update_user_streak', { p_user_id: userId });
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+  } catch (e) {
+    // fallback
+  }
 
-  // Return updated profile streak data
-  const { data } = await supabase
-    .from('profiles')
-    .select('streak_count, last_active_date')
-    .eq('id', userId)
-    .single();
-
-  return data ?? null;
+  return { streak_count: 1, last_active_date: new Date().toISOString() };
 }
+
 
 // --- Campaign Helper Functions ---
 
 export async function getLaunchInsights(dateStr?: string): Promise<LaunchInsightsData> {
-  // 1. Resolve active products
-  let activeProducts: Product[] = [];
-  if (supabase) {
-    const { data } = await supabase
-      .from('products')
-      .select('*, maker:profiles!maker_id(*)')
-      .order('upvotes_count', { ascending: false });
-    if (data) {
-      const now = new Date();
-      activeProducts = (data as Product[]).filter(p => {
-        if (p.status === 'draft') return false;
-        if (p.status === 'scheduled' && p.scheduled_for) {
-          return new Date(p.scheduled_for) <= now;
-        }
-        return true;
-      });
+  try {
+    const query = dateStr ? `?date=${encodeURIComponent(dateStr)}` : '';
+    const res = await secureApiFetch<LaunchInsightsData>(`/t/launch-insights${query}`);
+    if (res && res.data && res.data.products) {
+      return res.data;
     }
-  }
+  } catch { }
 
-  if (activeProducts.length === 0) {
-    activeProducts = await getProducts();
-  }
+  // 1. Resolve active products from fallback
+  let activeProducts = await getProducts();
 
   // Filter for products launched on today's date
   const targetDateObj = dateStr ? new Date(dateStr) : new Date();
@@ -3645,27 +3427,6 @@ export async function getLaunchInsights(dateStr?: string): Promise<LaunchInsight
   let topCommentUser: Profile | null = null;
   let topCommentProduct: Product | null = null;
 
-  if (supabase) {
-    try {
-      const activeProductIds = activeProducts.map(p => p.id);
-      const { data: commentsData } = await supabase
-        .from('comments')
-        .select('*, user:profiles(*)')
-        .in('product_id', activeProductIds)
-        .order('upvotes_count', { ascending: false })
-        .limit(1);
-
-      if (commentsData && commentsData.length > 0) {
-        const c = commentsData[0];
-        topCommentObj = c as Comment;
-        topCommentUser = c.user as Profile;
-        topCommentProduct = activeProducts.find(p => p.id === c.product_id) || activeProducts[0];
-      }
-    } catch (err) {
-      console.error("Error fetching top comment for analytics", err);
-    }
-  }
-
   // Check local storage comments for today's active products
   if (typeof window !== 'undefined') {
     for (const p of activeProducts) {
@@ -3743,41 +3504,41 @@ export async function getLaunchInsights(dateStr?: string): Promise<LaunchInsight
 }
 
 export async function getFollowedForums(userId: string): Promise<string[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('forum_follows')
-      .select('forum_id')
-      .eq('user_id', userId);
-    if (!error && data) {
-      return data.map(item => item.forum_id);
+  try {
+    const res = await secureApiFetch<string[]>(`/t/forum-follows?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-  }
+  } catch (err) { }
+
   const cached = typeof window !== 'undefined' ? localStorage.getItem(`bh_forum_follows_${userId}`) : null;
   return cached ? JSON.parse(cached) : [];
 }
 
 export async function toggleFollowForum(forumId: string, userId: string): Promise<{ success: boolean; followed: boolean }> {
-  if (supabase) {
-    const { data: existing } = await supabase
-      .from('forum_follows')
-      .select('id')
-      .eq('forum_id', forumId)
-      .eq('user_id', userId)
-      .maybeSingle();
+  try {
+    const res = await secureApiFetch<{ success: boolean; followed: boolean }>(
+      '/t/forum-follows',
+      {
+        method: 'POST',
+        body: JSON.stringify({ forumId, userId }),
+      }
+    );
 
-    if (existing) {
-      const { error } = await supabase
-        .from('forum_follows')
-        .delete()
-        .eq('id', existing.id);
-      return { success: !error, followed: false };
-    } else {
-      const { error } = await supabase
-        .from('forum_follows')
-        .insert({ forum_id: forumId, user_id: userId });
-      return { success: !error, followed: true };
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        const list = await getFollowedForums(userId);
+        let updatedList: string[];
+        if (res.followed) {
+          updatedList = Array.from(new Set([...list, forumId]));
+        } else {
+          updatedList = list.filter(id => id !== forumId);
+        }
+        localStorage.setItem(`bh_forum_follows_${userId}`, JSON.stringify(updatedList));
+      }
+      return { success: true, followed: !!res.followed };
     }
-  }
+  } catch (err) { }
 
   const list = await getFollowedForums(userId);
   const isFollowed = list.includes(forumId);
@@ -3794,50 +3555,24 @@ export async function toggleFollowForum(forumId: string, userId: string): Promis
 }
 
 export async function getForumFollowersCount(forumId: string): Promise<number> {
-  if (supabase) {
-    const { count, error } = await supabase
-      .from('forum_follows')
-      .select('id', { count: 'exact', head: true })
-      .eq('forum_id', forumId);
-    if (!error && count !== null) return count;
-  }
+  try {
+    const res = await secureApiFetch<{ count: number }>(`/t/forum-follows?forumId=${encodeURIComponent(forumId)}`);
+    if (res && res.success && typeof res.data?.count === 'number') {
+      return res.data.count;
+    }
+  } catch (err) { }
+
   return 12;
 }
 
 export async function recordView(itemId: string, itemType: 'product' | 'thread' | 'comment' | 'review', userId?: string): Promise<boolean> {
-  if (supabase) {
-    try {
-      const { error } = await supabase.rpc('record_view', {
-        p_item_type: itemType,
-        p_item_id: itemId,
-        p_viewer_id: userId || null
-      });
-      if (!error) return true;
-      console.warn("RPC record_view failed, attempting direct update:", error);
-    } catch (e) {
-      console.error("Error executing RPC record_view:", e);
-    }
-
-    // Direct fallback update via supabase if RPC is not deployed yet
-    try {
-      if (itemType === 'product') {
-        const { data } = await supabase.from('products').select('views_count').eq('id', itemId).single();
-        const nextCount = (data?.views_count || 0) + 1;
-        await supabase.from('products').update({ views_count: nextCount }).eq('id', itemId);
-      } else if (itemType === 'thread') {
-        const { data } = await supabase.from('threads').select('views_count').eq('id', itemId).single();
-        const nextCount = (data?.views_count || 0) + 1;
-        await supabase.from('threads').update({ views_count: nextCount }).eq('id', itemId);
-      } else if (itemType === 'review') {
-        const { data } = await supabase.from('reviews').select('views').eq('id', itemId).single();
-        const nextCount = (data?.views || 0) + 1;
-        await supabase.from('reviews').update({ views: nextCount }).eq('id', itemId);
-      }
-      return true;
-    } catch (err) {
-      console.error("Direct update failed:", err);
-    }
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean }>('/t/views', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType, userId }),
+    });
+    if (res && res.success) return true;
+  } catch (err) { }
 
   // Fallback storage update
   if (typeof window !== 'undefined') {
@@ -3873,9 +3608,7 @@ export async function recordView(itemId: string, itemType: 'product' | 'thread' 
         }
       }
       return true;
-    } catch (e) {
-      console.error("Fallback view tracking failed:", e);
-    }
+    } catch (e) { }
   }
   return false;
 }
@@ -3966,14 +3699,12 @@ Product Hunt resets at 12:01 AM PST (which is 12:31 PM IST). You want to launch 
 async function getStoriesRaw(search?: string): Promise<Story[]> {
   try {
     const url = search ? `/t/stories?search=${encodeURIComponent(search)}` : `/t/stories`;
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) return data.data;
-      if (data.stories && Array.isArray(data.stories)) return data.stories;
+    const res = await secureApiFetch<Story[]>(url);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
   } catch (err) {
-    console.error("Error fetching stories via API:", err);
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -3996,26 +3727,24 @@ export const getStories = withCache('stories', getStoriesRaw);
 export async function createStory(storyData: Partial<Story>): Promise<Story | null> {
   clearCache('stories');
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('stories')
-      .insert({
+  try {
+    const res = await secureApiFetch<Story>('/t/stories', {
+      method: 'POST',
+      body: JSON.stringify({
         title: storyData.title,
         content: storyData.content,
         category: storyData.category || 'General',
         image_url: storyData.image_url || null,
         user_id: storyData.user_id,
         excerpt: storyData.excerpt || (storyData.content ? storyData.content.substring(0, 150) + '...' : ''),
-        published_at: new Date().toISOString()
-      })
-      .select('*, user:profiles(*)')
-      .single();
+      }),
+    });
 
-    if (!error && data) {
-      return data;
-    } else if (error) {
-      console.error("Error creating story directly:", error);
+    if (res && res.success && res.data) {
+      return res.data;
     }
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -4042,13 +3771,15 @@ export async function createStory(storyData: Partial<Story>): Promise<Story | nu
 
 export async function deleteStory(storyId: string): Promise<boolean> {
   clearCache('stories');
-  if (supabase) {
-    const { error } = await supabase
-      .from('stories')
-      .delete()
-      .eq('id', storyId);
-    if (!error) return true;
-    console.error("Error deleting story:", error);
+  try {
+    const res = await secureApiFetch(`/t/stories/${encodeURIComponent(storyId)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      return true;
+    }
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -4062,37 +3793,32 @@ export async function deleteStory(storyId: string): Promise<boolean> {
 }
 
 export async function getStoryComments(storyId: string): Promise<StoryComment[]> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('story_comments')
-        .select('*, user:profiles(*)')
-        .eq('story_id', storyId)
-        .order('created_at', { ascending: true });
-      if (!error && data) {
-        const roots = data.filter(c => !c.parent_id);
-        const childMap = data.reduce((acc, c) => {
-          if (c.parent_id) {
-            acc[c.parent_id] = acc[c.parent_id] || [];
-            acc[c.parent_id].push(c);
-          }
-          return acc;
-        }, {} as Record<string, StoryComment[]>);
+  try {
+    const res = await secureApiFetch<StoryComment[]>(`/t/stories/${encodeURIComponent(storyId)}/comments`);
+    if (res && res.success && Array.isArray(res.data)) {
+      const data = res.data;
+      const roots = data.filter(c => !c.parent_id);
+      const childMap = data.reduce((acc, c) => {
+        if (c.parent_id) {
+          acc[c.parent_id] = acc[c.parent_id] || [];
+          acc[c.parent_id].push(c);
+        }
+        return acc;
+      }, {} as Record<string, StoryComment[]>);
 
-        const populate = (comments: StoryComment[]) => {
-          comments.forEach(c => {
-            if (childMap[c.id]) {
-              c.replies = childMap[c.id];
-              populate(childMap[c.id]);
-            }
-          });
-        };
-        populate(roots);
-        return roots;
-      }
-    } catch (err) {
-      console.error("Error fetching story comments:", err);
+      const populate = (comments: StoryComment[]) => {
+        comments.forEach(c => {
+          if (childMap[c.id]) {
+            c.replies = childMap[c.id];
+            populate(childMap[c.id]);
+          }
+        });
+      };
+      populate(roots);
+      return roots;
     }
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -4122,22 +3848,17 @@ export async function getStoryComments(storyId: string): Promise<StoryComment[]>
 }
 
 export async function addStoryComment(storyId: string, userId: string, body: string, parentId?: string | null): Promise<StoryComment | null> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('story_comments')
-        .insert({
-          story_id: storyId,
-          user_id: userId,
-          body,
-          parent_id: parentId || null
-        })
-        .select('*, user:profiles(*)')
-        .single();
-      if (!error && data) return data;
-    } catch (err) {
-      console.error("Error adding story comment:", err);
+  try {
+    const res = await secureApiFetch<StoryComment>(`/t/stories/${encodeURIComponent(storyId)}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, body, parentId: parentId || null }),
+    });
+
+    if (res && res.success && res.data) {
+      return res.data;
     }
+  } catch (err) {
+    // fallback
   }
 
   if (typeof window !== 'undefined') {
@@ -4347,18 +4068,34 @@ export async function scheduleProductDeletion(productId: string, reason: string,
   const scheduledDate = new Date();
   scheduledDate.setDate(scheduledDate.getDate() + 7);
 
-  if (supabase) {
-    const { error } = await supabase
-      .from('products')
-      .update({
-        scheduled_deletion_date: scheduledDate.toISOString(),
-        deletion_reason: reason,
-        deleted_by: userId
-      })
-      .eq('id', productId);
-    if (!error) return true;
-    console.error("Error scheduling product deletion:", error);
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean; scheduled_deletion_date: string }>(
+      `/t/products/${encodeURIComponent(productId)}/deletion`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason, userId }),
+      }
+    );
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('indihunt_products') || '[]';
+        const list: Product[] = JSON.parse(cached);
+        const updated = list.map(p => {
+          if (p.id === productId) {
+            return {
+              ...p,
+              scheduled_deletion_date: res.scheduled_deletion_date || scheduledDate.toISOString(),
+              deletion_reason: reason,
+              deleted_by: userId
+            };
+          }
+          return p;
+        });
+        localStorage.setItem('indihunt_products', JSON.stringify(updated));
+      }
+      return true;
+    }
+  } catch { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_products') || '[]';
@@ -4382,18 +4119,29 @@ export async function scheduleProductDeletion(productId: string, reason: string,
 
 export async function cancelProductDeletion(productId: string): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    const { error } = await supabase
-      .from('products')
-      .update({
-        scheduled_deletion_date: null,
-        deletion_reason: null,
-        deleted_by: null
-      })
-      .eq('id', productId);
-    if (!error) return true;
-    console.error("Error cancelling product deletion:", error);
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean; cancelled: boolean }>(
+      `/t/products/${encodeURIComponent(productId)}/deletion`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('indihunt_products') || '[]';
+        const list: Product[] = JSON.parse(cached);
+        const updated = list.map(p => {
+          if (p.id === productId) {
+            const { scheduled_deletion_date, deletion_reason, deleted_by, ...rest } = p;
+            return rest;
+          }
+          return p;
+        });
+        localStorage.setItem('indihunt_products', JSON.stringify(updated));
+      }
+      return true;
+    }
+  } catch { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_products') || '[]';
@@ -4419,15 +4167,12 @@ export function getCachedStories(search?: string): Story[] {
 // --- Self-Serve Advertising Platform Types & DB Operations ---
 
 export async function getAdCampaigns(userId: string): Promise<AdCampaign[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('ad_campaigns')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (!error && data) return data;
-    console.error("Error fetching ad campaigns:", error);
-  }
+  try {
+    const res = await secureApiFetch<AdCampaign[]>(`/t/ads/campaigns?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
@@ -4476,40 +4221,33 @@ function seedAdEvents(campaignId: string, maxCpc: number) {
 }
 
 export async function createAdCampaign(campaign: Omit<AdCampaign, 'id' | 'target_impressions' | 'delivered_impressions' | 'impressions' | 'clicks' | 'created_at'>): Promise<AdCampaign | null> {
-  const budget = Math.max(Number(campaign.total_budget) || 1000, 1);
-  const cpmRate = campaign.cpm_rate || 10.00;
-  const newCampFields = {
-    ...campaign,
-    total_budget: budget,
-    daily_limit: Math.min(Number(campaign.daily_limit) || 10, budget),
-    cpm_rate: cpmRate,
-    target_impressions: (budget / cpmRate) * 1000,
-    delivered_impressions: 0,
-    impressions: 0,
-    clicks: 0,
-  };
-
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('ad_campaigns')
-      .insert(newCampFields)
-      .select('*')
-      .single();
-    if (!error && data) return data;
-    console.error("Error creating ad campaign:", error);
-  }
+  try {
+    const res = await secureApiFetch<AdCampaign>('/t/ads/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(campaign),
+    });
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
     const list: AdCampaign[] = JSON.parse(cached);
     const generatedId = `ad-${Date.now()}`;
+    const budget = Math.max(Number(campaign.total_budget) || 1000, 1);
+    const cpmRate = campaign.cpm_rate || 10.00;
     const { clicks, impressions } = seedAdEvents(generatedId, 0.30);
     const newCamp: AdCampaign = {
-      ...newCampFields,
-      id: generatedId,
-      clicks,
-      impressions,
+      ...campaign,
+      total_budget: budget,
+      daily_limit: Math.min(Number(campaign.daily_limit) || 10, budget),
+      cpm_rate: cpmRate,
+      target_impressions: (budget / cpmRate) * 1000,
       delivered_impressions: impressions,
+      impressions,
+      clicks,
+      id: generatedId,
       created_at: new Date().toISOString()
     };
     list.push(newCamp);
@@ -4520,16 +4258,15 @@ export async function createAdCampaign(campaign: Omit<AdCampaign, 'id' | 'target
 }
 
 export async function updateAdCampaignStatus(campaignId: string, status: AdCampaign['status']): Promise<AdCampaign | null> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('ad_campaigns')
-      .update({ status })
-      .eq('id', campaignId)
-      .select('*')
-      .single();
-    if (!error && data) return data;
-    console.error("Error updating ad campaign status:", error);
-  }
+  try {
+    const res = await secureApiFetch<AdCampaign>('/t/ads/campaigns', {
+      method: 'PUT',
+      body: JSON.stringify({ id: campaignId, status }),
+    });
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
@@ -4549,25 +4286,15 @@ export async function updateAdCampaignStatus(campaignId: string, status: AdCampa
 }
 
 export async function addAdBudget(campaignId: string, amount: number): Promise<AdCampaign | null> {
-  if (supabase) {
-    const { data: current } = await supabase.from('ad_campaigns').select('*').eq('id', campaignId).single();
-    if (current) {
-      const nextTotal = Number(current.total_budget || 0) + amount;
-      const extraImpressions = Math.floor((amount / (Number(current.cpm_rate) || 10)) * 1000);
-      const nextTarget = Number(current.target_impressions || 0) + extraImpressions;
-      const { data, error } = await supabase
-        .from('ad_campaigns')
-        .update({
-          total_budget: nextTotal,
-          target_impressions: nextTarget,
-          status: 'active'
-        })
-        .eq('id', campaignId)
-        .select('*')
-        .single();
-      if (!error && data) return data as AdCampaign;
+  try {
+    const res = await secureApiFetch<AdCampaign>('/t/ads/campaigns', {
+      method: 'PUT',
+      body: JSON.stringify({ id: campaignId, addBudget: amount }),
+    });
+    if (res && res.success && res.data) {
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
@@ -4594,14 +4321,12 @@ export async function addAdBudget(campaignId: string, amount: number): Promise<A
 }
 
 export async function deleteAdCampaign(campaignId: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase
-      .from('ad_campaigns')
-      .delete()
-      .eq('id', campaignId);
-    if (!error) return true;
-    console.error("Error deleting ad campaign:", error);
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(`/t/ads/campaigns?id=${encodeURIComponent(campaignId)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) return true;
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
@@ -4614,32 +4339,24 @@ export async function deleteAdCampaign(campaignId: string): Promise<boolean> {
 }
 
 export async function getActiveAdsPool(excludeProductId?: string): Promise<AdCampaign[]> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('ad_campaigns')
-        .select('*')
-        .eq('status', 'active');
-
-      if (!error && data && data.length > 0) {
-        const valid = (data as AdCampaign[]).filter(c => {
-          if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) {
-            return false;
-          }
-          return excludeProductId ? c.product_id !== excludeProductId : true;
-        });
-        return valid;
-      }
-    } catch (e) {
-      // Silently fall back to localStorage
+  try {
+    const res = await secureApiFetch<AdCampaign[]>('/t/ads/campaigns?all=true');
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      const valid = (res.data as AdCampaign[]).filter(c => {
+        if (c.status !== 'active') return false;
+        if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) {
+          return false;
+        }
+        return excludeProductId ? c.product_id !== excludeProductId : true;
+      });
+      return valid;
     }
-  }
+  } catch (e) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
     try {
       const list: AdCampaign[] = JSON.parse(cached);
-      // Auto-cleanup exhausted campaigns
       const valid = list.filter(c => !c.target_impressions || (c.delivered_impressions || 0) < c.target_impressions);
       if (valid.length !== list.length) {
         localStorage.setItem('indihunt_ad_campaigns', JSON.stringify(valid));
@@ -4699,14 +4416,12 @@ export async function getPromotedProducts(existingProducts?: Product[]): Promise
 }
 
 export async function getAdCampaignEvents(campaignId: string): Promise<AdEvent[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('ad_events')
-      .select('*')
-      .eq('campaign_id', campaignId)
-      .order('created_at', { ascending: true });
-    if (!error && data) return data;
-  }
+  try {
+    const res = await secureApiFetch<AdEvent[]>(`/t/ads/events?campaignId=${encodeURIComponent(campaignId)}`);
+    if (res && res.data && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem(`indihunt_ad_events_${campaignId}`) || '[]';
@@ -4780,27 +4495,112 @@ export async function performVectorSearch(
 
   const queryVector = computeTextEmbeddingVector(q);
 
-  // Fetch all entities
-  const [products, threads, profiles] = await Promise.all([
-    getProducts(),
-    getThreads(),
-    getAllUsersAdmin(),
-  ]);
+  // 1. Fetch Candidate Products across DB API (with search param) + localStorage + cache
+  let candidateProducts: Product[] = [];
+  try {
+    const [searchRes, allRecent] = await Promise.all([
+      secureApiFetch<Product[]>(`/t/products?q=${encodeURIComponent(q)}&limit=100`),
+      getProducts(),
+    ]);
+
+    const map = new Map<string, Product>();
+    if (searchRes && searchRes.success && Array.isArray(searchRes.data)) {
+      searchRes.data.forEach(p => map.set(p.id, p));
+    }
+    if (Array.isArray(allRecent)) {
+      allRecent.forEach(p => {
+        if (!map.has(p.id)) map.set(p.id, p);
+      });
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('indihunt_products');
+        if (raw) {
+          const localProds: Product[] = JSON.parse(raw);
+          localProds.forEach(p => {
+            if (!map.has(p.id)) map.set(p.id, p);
+          });
+        }
+      } catch { }
+    }
+    candidateProducts = Array.from(map.values()).filter(p => !p.is_deleted);
+  } catch {
+    candidateProducts = await getProducts();
+  }
+
+  // 2. Fetch Candidate Threads across DB API + localStorage
+  let candidateThreads: Thread[] = [];
+  try {
+    const [searchThreadsRes, allRecentThreads] = await Promise.all([
+      secureApiFetch<Thread[]>(`/t/threads?q=${encodeURIComponent(q)}&limit=100`),
+      getThreads(),
+    ]);
+
+    const map = new Map<string, Thread>();
+    if (searchThreadsRes && searchThreadsRes.success && Array.isArray(searchThreadsRes.data)) {
+      searchThreadsRes.data.forEach(t => map.set(t.id, t));
+    }
+    if (Array.isArray(allRecentThreads)) {
+      allRecentThreads.forEach(t => {
+        if (!map.has(t.id)) map.set(t.id, t);
+      });
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('indihunt_threads');
+        if (raw) {
+          const localThreads: Thread[] = JSON.parse(raw);
+          localThreads.forEach(t => {
+            if (!map.has(t.id)) map.set(t.id, t);
+          });
+        }
+      } catch { }
+    }
+    candidateThreads = Array.from(map.values());
+  } catch {
+    candidateThreads = await getThreads();
+  }
+
+  // 3. Fetch Candidate Profiles across DB API + Admin users
+  const qClean = q.replace(/^@/, "");
+  let candidateProfiles: Profile[] = [];
+  try {
+    const [searchProfilesRes, allAdminProfiles] = await Promise.all([
+      secureApiFetch<Profile[]>(`/t/profiles?q=${encodeURIComponent(qClean)}`),
+      getAllUsersAdmin(),
+    ]);
+
+    const map = new Map<string, Profile>();
+    if (searchProfilesRes && searchProfilesRes.success && Array.isArray(searchProfilesRes.data)) {
+      searchProfilesRes.data.forEach(u => map.set(u.id, u));
+    }
+    if (Array.isArray(allAdminProfiles)) {
+      allAdminProfiles.forEach(u => {
+        if (!map.has(u.id)) map.set(u.id, u);
+      });
+    }
+    candidateProfiles = Array.from(map.values());
+  } catch {
+    candidateProfiles = await getAllUsersAdmin();
+  }
 
   // 1. Vector match products
-  const productResults: VectorSearchResult<Product>[] = products
+  const productResults: VectorSearchResult<Product>[] = candidateProducts
     .map((p) => {
       const textToEmbed = `${p.name} ${p.tagline} ${p.description || ""} ${(p.tags || []).join(" ")}`;
       const itemVector = computeTextEmbeddingVector(textToEmbed);
       let vectorScore = calculateCosineSimilarity(queryVector, itemVector);
 
-      // Lexical exact / prefix boost
-      const nameLower = p.name.toLowerCase();
-      const taglineLower = p.tagline.toLowerCase();
+      // Lexical exact / prefix / substring boost
+      const nameLower = (p.name || '').toLowerCase();
+      const taglineLower = (p.tagline || '').toLowerCase();
+      const descLower = (p.description || '').toLowerCase();
       if (nameLower === q) vectorScore = 1.0;
+      else if (nameLower.startsWith(q)) vectorScore = Math.max(vectorScore, 0.95);
       else if (nameLower.includes(q)) vectorScore = Math.max(vectorScore, 0.85 + (q.length / nameLower.length) * 0.15);
-      else if (taglineLower.includes(q)) vectorScore = Math.max(vectorScore, 0.70);
-      else if ((p.tags || []).some(t => t.toLowerCase().includes(q))) vectorScore = Math.max(vectorScore, 0.65);
+      else if (taglineLower.includes(q)) vectorScore = Math.max(vectorScore, 0.75);
+      else if ((p.tags || []).some(t => t.toLowerCase().includes(q))) vectorScore = Math.max(vectorScore, 0.70);
+      else if (descLower.includes(q)) vectorScore = Math.max(vectorScore, 0.60);
 
       return {
         item: p,
@@ -4812,16 +4612,17 @@ export async function performVectorSearch(
     .sort((a, b) => b.vectorScore - a.vectorScore);
 
   // 2. Vector match threads
-  const threadResults: VectorSearchResult<Thread>[] = threads
+  const threadResults: VectorSearchResult<Thread>[] = candidateThreads
     .map((t) => {
       const textToEmbed = `${t.title} ${t.body} ${t.category || ""}`;
       const itemVector = computeTextEmbeddingVector(textToEmbed);
       let vectorScore = calculateCosineSimilarity(queryVector, itemVector);
 
-      const titleLower = t.title.toLowerCase();
+      const titleLower = (t.title || '').toLowerCase();
       if (titleLower === q) vectorScore = 1.0;
+      else if (titleLower.startsWith(q)) vectorScore = Math.max(vectorScore, 0.95);
       else if (titleLower.includes(q)) vectorScore = Math.max(vectorScore, 0.85);
-      else if (t.body.toLowerCase().includes(q)) vectorScore = Math.max(vectorScore, 0.65);
+      else if ((t.body || '').toLowerCase().includes(q)) vectorScore = Math.max(vectorScore, 0.65);
 
       return {
         item: t,
@@ -4833,8 +4634,7 @@ export async function performVectorSearch(
     .sort((a, b) => b.vectorScore - a.vectorScore);
 
   // 3. Vector match users
-  const qClean = q.replace(/^@/, "");
-  const userResults: VectorSearchResult<Profile>[] = profiles
+  const userResults: VectorSearchResult<Profile>[] = candidateProfiles
     .map((u) => {
       const fullName = u.full_name || "";
       const username = u.username || "";
@@ -4850,6 +4650,7 @@ export async function performVectorSearch(
       const userLower = username.toLowerCase();
       const nameLower = fullName.toLowerCase();
       if (userLower === qClean || nameLower === qClean) vectorScore = 1.0;
+      else if (userLower.startsWith(qClean) || nameLower.startsWith(qClean)) vectorScore = Math.max(vectorScore, 0.95);
       else if (userLower.includes(qClean) || nameLower.includes(qClean)) vectorScore = Math.max(vectorScore, 0.85);
       else if (bio.toLowerCase().includes(qClean) || headline.toLowerCase().includes(qClean) || role.toLowerCase().includes(qClean)) vectorScore = Math.max(vectorScore, 0.65);
 
@@ -4924,16 +4725,34 @@ export async function updateThread(
   updates: { title?: string; body?: string; category?: string }
 ): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    const { error } = await supabase
-      .from('threads')
-      .update(updates)
-      .eq('id', threadId)
-      .eq('user_id', userId);
-    if (error) {
-      console.error("Error updating thread:", error);
+
+  try {
+    const res = await secureApiFetch(`/t/threads/${encodeURIComponent(threadId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        userId,
+        ...updates,
+      }),
+    });
+
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('indihunt_threads');
+        if (cached) {
+          try {
+            const threadsList: Thread[] = JSON.parse(cached);
+            const updated = threadsList.map(t =>
+              t.id === threadId && (t.user_id === userId || !t.user_id)
+                ? { ...t, ...updates }
+                : t
+            );
+            localStorage.setItem('indihunt_threads', JSON.stringify(updated));
+          } catch (e) { }
+        }
+      }
+      return true;
     }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_threads');
@@ -4946,9 +4765,7 @@ export async function updateThread(
             : t
         );
         localStorage.setItem('indihunt_threads', JSON.stringify(updated));
-      } catch (e) {
-        console.error("Error updating thread in localStorage:", e);
-      }
+      } catch (e) { }
     }
   }
   return true;
@@ -4956,16 +4773,12 @@ export async function updateThread(
 
 export async function deleteThread(threadId: string, userId: string): Promise<boolean> {
   clearCache();
-  if (supabase) {
-    const { error } = await supabase
-      .from('threads')
-      .delete()
-      .eq('id', threadId)
-      .eq('user_id', userId);
-    if (error) {
-      console.error("Error deleting thread:", error);
-    }
-  }
+
+  try {
+    await secureApiFetch(`/t/threads/${encodeURIComponent(threadId)}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_threads');
@@ -4974,9 +4787,7 @@ export async function deleteThread(threadId: string, userId: string): Promise<bo
         const threadsList: Thread[] = JSON.parse(cached);
         const filtered = threadsList.filter(t => !(t.id === threadId && (t.user_id === userId || !t.user_id)));
         localStorage.setItem('indihunt_threads', JSON.stringify(filtered));
-      } catch (e) {
-        console.error("Error deleting thread in localStorage:", e);
-      }
+      } catch (e) { }
     }
   }
   return true;
@@ -4990,20 +4801,15 @@ export async function reportThread(
   reason: string,
   description?: string
 ): Promise<{ success: boolean; alreadyReported?: boolean }> {
-  if (supabase) {
-    // Use upsert so duplicate reports are silently ignored (no 23505 error log)
-    const { error } = await supabase
-      .from('thread_reports')
-      .upsert(
-        { thread_id: threadId, user_id: userId, reason, description: description || null },
-        { onConflict: 'thread_id,user_id', ignoreDuplicates: true }
-      );
-    if (error) {
-      console.error('Error reporting thread:', error);
-      return { success: false };
+  try {
+    const res = await secureApiFetch<{ success: boolean; alreadyReported?: boolean }>('/t/reports', {
+      method: 'POST',
+      body: JSON.stringify({ threadId, userId, reason, description }),
+    });
+    if (res && res.success) {
+      return res;
     }
-    return { success: true, alreadyReported: false };
-  }
+  } catch { }
 
   if (typeof window !== 'undefined') {
     const key = 'indihunt_thread_reports';
@@ -5022,7 +4828,7 @@ export async function reportThread(
       };
       list.push(newReport);
       localStorage.setItem(key, JSON.stringify(list));
-      return { success: true };
+      return { success: true, alreadyReported: false };
     } catch (e) {
       console.error("Error reporting thread in localStorage:", e);
     }
@@ -5071,46 +4877,50 @@ export const MOCK_NOTIFICATIONS: NotificationItem[] = [
 ];
 
 export async function getNotifications(userId?: string): Promise<NotificationItem[]> {
-  if (supabase && userId) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select(`
-        id, user_id, type, actor_id, entity_type, entity_id, data, read, created_at,
-        actor:profiles!actor_id(username, full_name, avatar_url)
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (!error && data && data.length > 0) {
-      return data.map((n: any) => {
-        const d = n.data ?? {};
-        return {
-          id: n.id,
-          user_id: n.user_id,
-          type: n.type,
-          actor_id: n.actor_id,
-          actor_name: n.actor?.full_name || n.actor?.username || d.actor_name || 'Someone',
-          actor_username: n.actor?.username,
-          actor_avatar: n.actor?.avatar_url || d.actor_avatar || '',
-          secondary_avatar: d.secondary_avatar,
-          entity_type: n.entity_type,
-          entity_id: n.entity_id,
-          product_name: d.product_name,
-          product_logo: d.product_logo,
-          thread_title: d.thread_title,
-          category: d.category,
-          reason_text: d.reason_text,
-          body_text: d.body_text,
-          action_url: d.action_url,
-          action_label: d.action_label,
-          data: d,
-          read: n.read,
-          created_at: n.created_at,
-        } as NotificationItem;
-      });
-    }
-    if (error) console.error('[getNotifications] error:', error.message);
+  if (userId) {
+    try {
+      const res = await secureApiFetch<any[]>(`/t/notifications?userId=${encodeURIComponent(userId)}&limit=50`);
+      const rows = res?.data;
+      if (rows && Array.isArray(rows) && rows.length > 0) {
+        const mapped = rows.map((n: any) => {
+          const d = n.data ?? {};
+          return {
+            id: n.id,
+            user_id: n.user_id,
+            type: n.type,
+            actor_id: n.actor_id,
+            actor_name: n.actor?.full_name || n.actor?.username || d.actor_name || 'Someone',
+            actor_username: n.actor?.username,
+            actor_avatar: n.actor?.avatar_url || d.actor_avatar || '',
+            secondary_avatar: d.secondary_avatar,
+            entity_type: n.entity_type,
+            entity_id: n.entity_id,
+            product_name: d.product_name,
+            product_logo: d.product_logo,
+            thread_title: d.thread_title,
+            category: d.category,
+            reason_text: d.reason_text,
+            body_text: d.body_text,
+            action_url: d.action_url,
+            action_label: d.action_label,
+            data: d,
+            read: n.read,
+            created_at: n.created_at,
+          } as NotificationItem;
+        });
+        // Persist to localStorage so offline/fallback path works
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`indihunt_notifications_${userId}`, JSON.stringify(mapped));
+          } catch (e) {}
+        }
+        return mapped;
+      }
+      // rows empty (no notifications in DB yet) — return empty, not mock
+      if (res?.success && rows && Array.isArray(rows) && rows.length === 0) {
+        return [];
+      }
+    } catch { }
   }
 
   if (typeof window !== 'undefined') {
@@ -5121,13 +4931,19 @@ export async function getNotifications(userId?: string): Promise<NotificationIte
     }
   }
 
-  return MOCK_NOTIFICATIONS;
+  // Only show mock notifications to guests (no userId)
+  if (!userId) return MOCK_NOTIFICATIONS;
+  return [];
 }
 
+
 export async function markNotificationAsRead(notifId: string, userId?: string): Promise<boolean> {
-  if (supabase && userId) {
-    await supabase.from('notifications').update({ read: true }).eq('id', notifId);
-  }
+  try {
+    await secureApiFetch('/t/notifications', {
+      method: 'PUT',
+      body: JSON.stringify({ id: notifId, userId }),
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const key = `indihunt_notifications_${userId || 'guest'}`;
@@ -5145,8 +4961,13 @@ export async function markNotificationAsRead(notifId: string, userId?: string): 
 }
 
 export async function markAllNotificationsAsRead(userId?: string): Promise<boolean> {
-  if (supabase && userId) {
-    await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
+  if (userId) {
+    try {
+      await secureApiFetch('/t/notifications', {
+        method: 'PUT',
+        body: JSON.stringify({ markAll: true, userId }),
+      });
+    } catch (err) { }
   }
 
   if (typeof window !== 'undefined') {
@@ -5186,16 +5007,13 @@ export const DEFAULT_USER_NOTIFICATION_SETTINGS: UserNotificationSettings = {
 };
 
 export async function getUserNotificationSettings(userId?: string): Promise<UserNotificationSettings> {
-  if (supabase && userId) {
-    const { data, error } = await supabase
-      .from('user_notification_settings')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    if (!error && data) {
-      return data as UserNotificationSettings;
-    }
+  if (userId) {
+    try {
+      const res = await secureApiFetch<UserNotificationSettings>(`/t/notifications/settings?userId=${encodeURIComponent(userId)}`);
+      if (res && res.success && res.data) {
+        return res.data;
+      }
+    } catch (err) { }
   }
 
   if (typeof window !== 'undefined') {
@@ -5223,11 +5041,15 @@ export async function updateUserNotificationSettings(
     updated_at: new Date().toISOString(),
   };
 
-  if (supabase && userId) {
-    await supabase
-      .from('user_notification_settings')
-      .upsert(updated, { onConflict: 'user_id' });
-  }
+  try {
+    const res = await secureApiFetch<UserNotificationSettings>('/t/notifications/settings', {
+      method: 'PUT',
+      body: JSON.stringify(updated),
+    });
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const key = `indihunt_notif_settings_${userId || 'guest'}`;
@@ -5274,9 +5096,19 @@ export async function addNotification(item: Partial<NotificationItem>): Promise<
     created_at: item.created_at || new Date().toISOString(),
   };
 
-  if (supabase && userId) {
-    await supabase.from('notifications').insert(newNotif);
-  }
+  try {
+    await secureApiFetch('/t/notifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        actorId: (item as any).actor_id,
+        title: item.product_name || item.thread_title || (item as any).title || 'New Notification',
+        message: item.body_text || item.reason_text || (item as any).message || '',
+        type: item.type,
+        link: item.action_url || (item as any).link
+      }),
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const key = `indihunt_notifications_${userId}`;
@@ -5299,12 +5131,12 @@ export async function addNotification(item: Partial<NotificationItem>): Promise<
  */
 export async function deactivateUserAccount(userId: string): Promise<boolean> {
   const now = new Date().toISOString();
-  if (supabase && userId) {
-    await supabase.from('profiles').update({
-      is_deactivated: true,
-      deactivated_at: now,
-    }).eq('id', userId);
-  }
+  try {
+    await secureApiFetch('/t/account', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deactivate', userId }),
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_profiles');
@@ -5327,25 +5159,12 @@ export async function deactivateUserAccount(userId: string): Promise<boolean> {
 export async function deleteUserAccount(userId: string): Promise<boolean> {
   const now = new Date().toISOString();
 
-  if (supabase && userId) {
-    try {
-      const { error } = await supabase.rpc('anonymize_and_delete_account', { target_user_id: userId });
-      if (error) {
-        await supabase.from('profiles').update({
-          full_name: 'Deleted User',
-          username: `deleted_${userId.substring(0, 8)}`,
-          bio: null,
-          avatar_url: null,
-          location: null,
-          website: null,
-          is_deactivated: true,
-          deleted_at: now,
-        }).eq('id', userId);
-      }
-    } catch (e) {
-      console.error('Error deleting account:', e);
-    }
-  }
+  try {
+    await secureApiFetch('/t/account', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', userId }),
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_profiles');
@@ -5382,12 +5201,12 @@ export function isAdminUser(profile?: Profile | null): boolean {
  * Fetch all registered users for Admin Dashboard
  */
 export async function getAllUsersAdmin(): Promise<Profile[]> {
-  if (supabase) {
-    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (!error && data) {
-      return data as Profile[];
+  try {
+    const res = await secureApiFetch<Profile[]>('/t/admin/users');
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_profiles');
@@ -5413,12 +5232,13 @@ export async function getAllProductsAdmin(): Promise<Product[]> {
  * Update user role (e.g. 'user' -> 'admin')
  */
 export async function updateUserRole(userId: string, newRole: string): Promise<boolean> {
-  if (supabase && userId) {
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
-    if (error) {
-      console.error('Error updating user role:', error);
-    }
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean }>('/t/admin/users', {
+      method: 'PATCH',
+      body: JSON.stringify({ userId, role: newRole }),
+    });
+    if (res && res.success) return true;
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_profiles');
@@ -5438,9 +5258,11 @@ export async function updateUserRole(userId: string, newRole: string): Promise<b
  * Admin delete/suspend product
  */
 export async function deleteProductAdmin(productId: string): Promise<boolean> {
-  if (supabase && productId) {
-    await supabase.from('products').delete().eq('id', productId);
-  }
+  try {
+    await secureApiFetch(`/t/products/${encodeURIComponent(productId)}`, {
+      method: 'DELETE',
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_products');
@@ -5460,35 +5282,25 @@ export async function deleteProductAdmin(productId: string): Promise<boolean> {
  * Delete product by user (only if product has not launched yet and user is maker)
  */
 export async function deleteProductByUser(productId: string, userId: string): Promise<boolean> {
-  if (supabase && productId && userId) {
-    const { data: product, error: fetchError } = await supabase
-      .from('products')
-      .select('maker_id, scheduled_for')
-      .eq('id', productId)
-      .single();
-
-    if (fetchError || !product) {
-      console.error('Error fetching product for deletion:', fetchError);
-      return false;
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(`/t/products/${encodeURIComponent(productId)}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('indihunt_products');
+        if (cached) {
+          try {
+            const list: Product[] = JSON.parse(cached);
+            const filtered = list.filter(p => p.id !== productId);
+            localStorage.setItem('indihunt_products', JSON.stringify(filtered));
+          } catch (e) { }
+        }
+        clearCache('products');
+      }
+      return true;
     }
-
-    if (product.maker_id !== userId) {
-      console.error('Only the maker can delete this product');
-      return false;
-    }
-
-    const scheduledTime = product.scheduled_for ? new Date(product.scheduled_for).getTime() : 0;
-    if (scheduledTime <= Date.now()) {
-      console.error('Cannot delete product after it has launched');
-      return false;
-    }
-
-    const { error } = await supabase.from('products').delete().eq('id', productId);
-    if (error) {
-      console.error('Error deleting product from DB:', error);
-      return false;
-    }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_products');
@@ -5507,9 +5319,7 @@ export async function deleteProductByUser(productId: string, userId: string): Pr
           const filtered = list.filter(p => p.id !== productId);
           localStorage.setItem('indihunt_products', JSON.stringify(filtered));
         }
-      } catch (e) {
-        console.error('Error in local storage deletion:', e);
-      }
+      } catch (e) { }
     }
     clearCache('products');
   }
@@ -5611,26 +5421,33 @@ export const INDIE_PAGE_THEMES: { id: string; name: string; bg: string; sidebar:
 
 export async function getIndiePage(username: string): Promise<{ profile: Profile; products: Product[] } | null> {
   if (!username) return null;
+  const cleanUser = username.replace(/^@/, '').toLowerCase().trim();
 
   let profile: Profile | null = null;
 
-  if (supabase) {
-    profile = await getUserProfileByUsername(username);
-  }
+  try {
+    profile = await getUserProfileByUsername(cleanUser);
+  } catch (e) { }
 
   // Check for local storage profile override for instant theme & font updates
   if (typeof window !== 'undefined') {
     try {
       const profiles: Profile[] = JSON.parse(localStorage.getItem('indihunt_profiles') || '[]');
-      const localProf = profiles.find(p => p.username?.toLowerCase() === username.toLowerCase());
-      if (localProf) {
-        profile = profile ? { ...profile, ...localProf } : localProf;
+      const localProf = profiles.find(p => p.username?.toLowerCase() === cleanUser);
+      const currentProf = JSON.parse(localStorage.getItem('indihunt_profile') || 'null');
+      const currentUser = JSON.parse(localStorage.getItem('indihunt_user') || 'null');
+      const resolvedProf = localProf ||
+        (currentProf && currentProf.username?.toLowerCase() === cleanUser ? currentProf : null) ||
+        (currentUser && currentUser.username?.toLowerCase() === cleanUser ? currentUser : null);
+
+      if (resolvedProf) {
+        profile = profile ? { ...profile, ...resolvedProf } : resolvedProf;
       }
     } catch (e) { }
   }
 
   // Fallback for sonu.hs9557 or default handles
-  if (!profile && (username.toLowerCase() === "sonu.hs9557" || username.toLowerCase() === "himanshu")) {
+  if (!profile && (cleanUser === "sonu.hs9557" || cleanUser === "himanshu")) {
     profile = {
       id: "usr-sonu-hs9557",
       username: "sonu.hs9557",
@@ -5648,46 +5465,73 @@ export async function getIndiePage(username: string): Promise<{ profile: Profile
   }
 
   if (!profile) return null;
-
   if (profile.indie_page_enabled === false) return null;
 
-  let productsList: Product[] = [];
+  const productMap = new Map<string, Product>();
 
-  if (supabase) {
-    // Fetch maker products + member products
-    const [ownResult, memberResult] = await Promise.all([
-      supabase.from("products").select("*").eq("maker_id", profile.id),
-      supabase.from("product_members").select("products(*)").eq("user_id", profile.id),
-    ]);
+  // 1. Fetch user products via API
+  try {
+    const userProducts = await getUserProducts(profile.id);
+    if (Array.isArray(userProducts)) {
+      userProducts.forEach(p => {
+        if (p && p.id && !p.is_deleted && p.status !== 'draft') {
+          productMap.set(p.id, p);
+        }
+      });
+    }
+  } catch (err) { }
 
-    const ownProducts = ownResult?.data || [];
-    const memberProducts = (memberResult?.data || [])
-      .map((m: any) => m.products)
-      .filter((p): p is Product => !!p);
-
-    const combined = [...ownProducts, ...memberProducts];
-    const uniqueProducts = combined.filter(
-      (value, index, self) => self.findIndex(p => p.id === value.id) === index
-    );
-
-    // Only show live products (not drafts/scheduled)
-    const now = new Date();
-    productsList = uniqueProducts.filter(p => {
-      if (p.status === 'draft') return false;
-      if (p.status === 'scheduled' && p.scheduled_for) {
-        return new Date(p.scheduled_for) <= now;
-      }
-      return true;
-    }) as Product[];
-  } else if (typeof window !== 'undefined') {
+  // 2. Fetch from localStorage to include any locally created products
+  if (typeof window !== 'undefined') {
     try {
-      const allProducts: Product[] = JSON.parse(localStorage.getItem('indihunt_products') || '[]');
-      productsList = allProducts.filter(p => p.maker_id === profile!.id);
+      const allLocal: Product[] = JSON.parse(localStorage.getItem('indihunt_products') || '[]');
+      allLocal.forEach(p => {
+        if (
+          p &&
+          p.id &&
+          !p.is_deleted &&
+          p.status !== 'draft' &&
+          (
+            p.maker_id === profile!.id ||
+            p.maker?.id === profile!.id ||
+            p.maker?.username?.toLowerCase() === cleanUser ||
+            (p as any).maker_username?.toLowerCase() === cleanUser
+          )
+        ) {
+          productMap.set(p.id, p);
+        }
+      });
     } catch (e) { }
   }
 
-  // Ensure sonu.hs9557 has 1 Maker product and 1 Hunter product
-  if (username.toLowerCase() === "sonu.hs9557" && productsList.length < 2) {
+  // 3. Fallback to all products filter if map is still empty
+  if (productMap.size === 0) {
+    try {
+      const allProds = await getProducts(profile.id);
+      if (allProds && allProds.length > 0) {
+        allProds.forEach(p => {
+          if (
+            p &&
+            p.id &&
+            !p.is_deleted &&
+            p.status !== 'draft' &&
+            (
+              p.maker_id === profile!.id ||
+              p.maker?.id === profile!.id ||
+              p.maker?.username?.toLowerCase() === cleanUser
+            )
+          ) {
+            productMap.set(p.id, p);
+          }
+        });
+      }
+    } catch (err) { }
+  }
+
+  let productsList = Array.from(productMap.values());
+
+  // Only if zero products exist anywhere for mock demo user, provide starter demos
+  if (productsList.length === 0 && (cleanUser === "sonu.hs9557" || cleanUser === "himanshu")) {
     const makerProd: Product = {
       id: "prod-sonu-maker-1",
       name: "IndiHunt",
@@ -5706,25 +5550,7 @@ export async function getIndiePage(username: string): Promise<{ profile: Profile
       role: "maker"
     } as any;
 
-    const hunterProd: Product = {
-      id: "prod-sonu-hunter-1",
-      name: "VibeCoder AI",
-      tagline: "AI-powered voice & code assistant for modern developers",
-      description: "Accelerate your coding workflow with real-time AI pair programming.",
-      logo_url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&h=120&q=80",
-      website_url: "https://vibecoder.ai",
-      maker_id: "maker-other-101",
-      maker: { id: "maker-other-101", username: "vibecoder", full_name: "VibeCoder Team", avatar_url: "" },
-      category: "Artificial Intelligence",
-      upvotes_count: 95,
-      comments_count: 12,
-      status: "published",
-      created_at: new Date(Date.now() - 86400000).toISOString(),
-      worked_on_launch: false,
-      role: "hunter"
-    } as any;
-
-    productsList = [makerProd, hunterProd];
+    productsList = [makerProd];
   }
 
   productsList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -5741,22 +5567,12 @@ export async function getUserPolarPayments(userId: string): Promise<PaymentRecor
 }
 
 export async function getUserPayments(userId: string): Promise<PaymentRecord[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (!error && data) return data as PaymentRecord[];
-
-    // Fallback to polar_payments if table not migrated
-    const { data: legacyData } = await supabase
-      .from('polar_payments')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    if (legacyData) return legacyData as PaymentRecord[];
-  }
+  try {
+    const res = await secureApiFetch<PaymentRecord[]>(`/t/payments?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_payments') || localStorage.getItem('indihunt_polar_payments') || '[]';
@@ -5767,15 +5583,12 @@ export async function getUserPayments(userId: string): Promise<PaymentRecord[]> 
 }
 
 export async function getAdBudgetTransactions(campaignId: string): Promise<AdBudgetTransaction[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('ad_budget_transactions')
-      .select('*')
-      .eq('campaign_id', campaignId)
-      .order('created_at', { ascending: false });
-    if (!error && data) return data as AdBudgetTransaction[];
-    console.error("Error fetching ad budget transactions:", error);
-  }
+  try {
+    const res = await secureApiFetch<AdBudgetTransaction[]>(`/t/payments?campaignId=${encodeURIComponent(campaignId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_budget_tx') || '[]';
@@ -5790,65 +5603,16 @@ export async function getAllPolarPayments(): Promise<PaymentRecord[]> {
 }
 
 export async function getAllPayments(): Promise<PaymentRecord[]> {
-  const result: PaymentRecord[] = [];
-
-  if (supabase) {
-    // 1. Fetch real payments records (fallback to polar_payments)
-    const { data: dbPayments } = await supabase
-      .from('payments')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (dbPayments && dbPayments.length > 0) {
-      result.push(...(dbPayments as PaymentRecord[]));
-    } else {
-      const { data: legacyPayments } = await supabase
-        .from('polar_payments')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (legacyPayments) {
-        result.push(...(legacyPayments as PaymentRecord[]));
-      }
+  try {
+    const res = await secureApiFetch<PaymentRecord[]>('/t/payments?all=true');
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-
-    // 2. Fetch real ad_campaigns records and synthesize payment items
-    const { data: dbCampaigns, error: campErr } = await supabase
-      .from('ad_campaigns')
-      .select('*, user:profiles!user_id(username, full_name)')
-      .order('created_at', { ascending: false });
-
-    if (!campErr && dbCampaigns) {
-      const existingPayCampaignIds = new Set(result.map(p => p.campaign_id).filter(Boolean));
-      for (const c of dbCampaigns as any[]) {
-        if (!existingPayCampaignIds.has(c.id) && c.total_budget > 0) {
-          result.push({
-            id: `pay_ad_${c.id}`,
-            user_id: c.user?.username || c.user_id,
-            campaign_id: c.id,
-            dodo_payment_id: c.dodo_payment_id || `dodo_${c.id}`,
-            amount: Number(c.total_budget || 0),
-            currency: "usd",
-            status: c.status === "paused_by_admin" ? "pending" : "succeeded",
-            payment_method: "dodo",
-            metadata: {
-              campaignName: c.name,
-              headline: c.headline,
-              type: "ad_campaign"
-            },
-            created_at: c.created_at || new Date().toISOString()
-          });
-        }
-      }
-    }
-
-    if (result.length > 0) {
-      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      return result;
-    }
-  }
+  } catch (err) { }
 
   // LocalStorage Fallback
   if (typeof window !== 'undefined') {
+    const result: PaymentRecord[] = [];
     const cachedPayments = localStorage.getItem('indihunt_payments') || localStorage.getItem('indihunt_polar_payments');
     if (cachedPayments) {
       try {
@@ -5856,40 +5620,10 @@ export async function getAllPayments(): Promise<PaymentRecord[]> {
         result.push(...list);
       } catch (e) { }
     }
-
-    const cachedCampaigns = localStorage.getItem('indihunt_ad_campaigns');
-    if (cachedCampaigns) {
-      try {
-        const list: AdCampaign[] = JSON.parse(cachedCampaigns);
-        const existingIds = new Set(result.map(p => p.campaign_id).filter(Boolean));
-        for (const c of list) {
-          if (!existingIds.has(c.id) && c.total_budget > 0) {
-            result.push({
-              id: `pay_ad_${c.id}`,
-              user_id: c.user_id,
-              campaign_id: c.id,
-              dodo_payment_id: `dodo_${c.id}`,
-              amount: Number(c.total_budget || 0),
-              currency: "usd",
-              status: "succeeded",
-              payment_method: "dodo",
-              metadata: {
-                campaignName: c.name,
-                headline: c.headline,
-                type: "ad_campaign",
-                target_impressions: c.target_impressions,
-                delivered: c.delivered_impressions
-              },
-              created_at: c.created_at || new Date().toISOString()
-            });
-          }
-        }
-      } catch (e) { }
-    }
+    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return result;
   }
-
-  result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  return result;
+  return [];
 }
 
 export async function recordPolarPayment(payment: Partial<PaymentRecord>): Promise<PaymentRecord> {
@@ -5913,26 +5647,17 @@ export async function recordPayment(payment: Partial<PaymentRecord>): Promise<Pa
     created_at: new Date().toISOString()
   };
 
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('payments')
-      .insert(newRecord)
-      .select('*')
-      .single();
-    if (!error && data) return data as PaymentRecord;
-
-    // Fallback: write to polar_payments only if payments table insert failed
-    // (e.g. table not yet migrated on this DB instance)
-    const { data: legacyData } = await supabase
-      .from('polar_payments')
-      .insert(newRecord)
-      .select('*')
-      .single();
-    if (legacyData) return legacyData as PaymentRecord;
-  }
+  try {
+    const res = await secureApiFetch<PaymentRecord>('/t/payments', {
+      method: 'POST',
+      body: JSON.stringify(newRecord),
+    });
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
-    // Read from either key for backward compat; write only to the canonical key
     const cached = localStorage.getItem('indihunt_payments') || localStorage.getItem('indihunt_polar_payments');
     let list: PaymentRecord[] = cached ? JSON.parse(cached) : [];
     list.unshift(newRecord);
@@ -5943,25 +5668,15 @@ export async function recordPayment(payment: Partial<PaymentRecord>): Promise<Pa
 }
 
 export async function updatePaymentStatusInDb(paymentId: string, status: "succeeded" | "pending" | "failed" | "refunded", notes?: string): Promise<boolean> {
-  if (supabase) {
-    const { error: updateError } = await supabase
-      .from('payments')
-      .update({ status, metadata: { notes, updated_at: new Date().toISOString() } })
-      .eq('id', paymentId);
-
-    // Only touch polar_payments if the payments update failed
-    // (i.e. this DB hasn't migrated yet)
-    if (updateError) {
-      await supabase
-        .from('polar_payments')
-        .update({ status, metadata: { notes, updated_at: new Date().toISOString() } })
-        .eq('id', paymentId);
-    }
-    return true;
-  }
+  try {
+    const res = await secureApiFetch<{ success: boolean }>('/t/payments', {
+      method: 'PUT',
+      body: JSON.stringify({ paymentId, status, notes }),
+    });
+    if (res && res.success) return true;
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
-    // Read from either key for backward compat; write only to the canonical key
     const cached = localStorage.getItem('indihunt_payments') || localStorage.getItem('indihunt_polar_payments');
     let list: PaymentRecord[] = cached ? JSON.parse(cached) : [];
     list = list.map(p => p.id === paymentId ? { ...p, status, metadata: { ...p.metadata, notes } } : p);
@@ -5972,16 +5687,12 @@ export async function updatePaymentStatusInDb(paymentId: string, status: "succee
 }
 
 export async function getAllAdCampaignsAllUsers(): Promise<AdCampaign[]> {
-  if (supabase) {
-    const { data, error } = await supabase
-      .from('ad_campaigns')
-      .select('*, user:profiles!user_id(username, full_name)')
-      .order('created_at', { ascending: false });
-    if (!error && data && data.length > 0) return data as any;
-    if (error) {
-      console.error("Error fetching all ad campaigns:", error);
+  try {
+    const res = await secureApiFetch<AdCampaign[]>('/t/ads/campaigns?all=true');
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns');
@@ -5997,11 +5708,19 @@ export async function getAllAdCampaignsAllUsers(): Promise<AdCampaign[]> {
 }
 
 export async function getTopHuntersData(timeframe: string = "all_time"): Promise<Hunter[]> {
-  const cacheKey = `public_top_hunters_${timeframe}`;
+  const cacheKey = `public_top_hunters_${timeframe}_v2`;
   const cachedHunters = await getRedisCache<Hunter[]>(cacheKey);
   if (cachedHunters && Array.isArray(cachedHunters) && cachedHunters.length > 0) {
     return cachedHunters;
   }
+
+  try {
+    const res = await secureApiFetch<Hunter[]>(`/t/leaderboard/top-hunters?timeRange=${encodeURIComponent(timeframe)}&limit=100`);
+    if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+      setRedisCache(cacheKey, res.data, 60).catch(() => { });
+      return res.data;
+    }
+  } catch { }
 
   const now = Date.now();
   let timeLimitMs = 0;
@@ -6013,76 +5732,6 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
   let products = getCachedProducts();
   if (timeLimitMs > 0) {
     products = products.filter(p => p.created_at && (now - new Date(p.created_at).getTime() <= timeLimitMs));
-  }
-
-  // Map products by maker username / ID
-  const statsByMakerKey = new Map<string, { hunts: number; upvotes: number; comments: number; firsts: number }>();
-  products.forEach(p => {
-    const key = (p.maker?.username || p.maker?.id || p.maker_id || '').toLowerCase();
-    if (key) {
-      const curr = statsByMakerKey.get(key) || { hunts: 0, upvotes: 0, comments: 0, firsts: 0 };
-      curr.hunts += 1;
-      curr.upvotes += (p.upvotes_count || 0);
-      curr.comments += (p.comments_count || 0);
-      if (p.featured || (p.quality_score && p.quality_score >= 75)) {
-        curr.firsts += 1;
-      }
-      statsByMakerKey.set(key, curr);
-    }
-  });
-
-  if (supabase) {
-    try {
-      const { data: dbProfiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('karma_points', { ascending: false })
-        .limit(50);
-
-      if (dbProfiles && dbProfiles.length > 0) {
-        let realHunters: Hunter[] = dbProfiles
-          .filter((p: any) =>
-            !p.id?.startsWith('usr_mock_') &&
-            p.username && p.username !== 'anon' &&
-            p.full_name !== 'Anonymous Hunter'
-          )
-          .map((p: any) => {
-            const key = (p.username || p.id || '').toLowerCase();
-            const stat = statsByMakerKey.get(key) || { hunts: 0, upvotes: 0, comments: 0, firsts: 0 };
-            const hunts = stat.hunts || p.hunts_count || 1;
-            const upvotes = stat.upvotes || p.upvotes_count || (p.karma_points ? p.karma_points * 12 : 15);
-            const comments = stat.comments || p.comments_count || Math.max(1, Math.floor(upvotes / 10));
-            const firsts = stat.firsts || p.first_places_count || (hunts > 2 ? 1 : 0);
-            return {
-              id: p.id,
-              name: p.full_name || p.username || 'Indie Maker',
-              username: p.username || 'maker',
-              avatar_url: p.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-              bio: p.bio || p.headline || 'IndiHunt Hunter & Builder',
-              hunts_count: hunts,
-              upvotes_count: upvotes,
-              comments_count: comments,
-              first_places_count: firsts,
-              avg_upvotes: Math.round(upvotes / hunts),
-              avg_comments: Math.round(comments / hunts),
-              is_verified: !!p.is_verified,
-              created_at: p.created_at
-            };
-          });
-
-        if (timeLimitMs > 0) {
-          realHunters = realHunters.filter(h => !h.created_at || (now - new Date(h.created_at).getTime() <= timeLimitMs));
-        }
-
-        realHunters.sort((a, b) => b.hunts_count - a.hunts_count || b.upvotes_count - a.upvotes_count);
-        if (realHunters.length > 0) {
-          setRedisCache(cacheKey, realHunters, 60).catch(() => {});
-          return realHunters;
-        }
-      }
-    } catch (e) {
-      console.error("Error fetching top hunters from DB:", e);
-    }
   }
 
   // Fallback: derive directly from cached products and profiles
@@ -6125,7 +5774,7 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
 
   realHuntersList.sort((a, b) => b.hunts_count - a.hunts_count || b.upvotes_count - a.upvotes_count);
   if (realHuntersList.length > 0) {
-    setRedisCache(cacheKey, realHuntersList, 60).catch(() => {});
+    setRedisCache(cacheKey, realHuntersList, 60).catch(() => { });
   }
   return realHuntersList;
 }
@@ -6134,28 +5783,57 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
 // BILLBOARD ADS (Landing Page Banners)
 // ==========================================
 
-export async function getBillboardAds(adminMode: boolean = false): Promise<BillboardAd[]> {
-  if (!adminMode) {
-    const cached = await getRedisCache<BillboardAd[]>('public_billboards');
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      return cached;
-    }
+export const DEFAULT_BILLBOARDS: BillboardAd[] = [
+  {
+    id: "bb_supabase_default",
+    title: "Supabase — The Open Source Firebase Alternative",
+    image_url: "/supabase_ad_banner.webp",
+    destination_url: "https://supabase.com",
+    is_active: true,
+    views_count: 1420,
+    clicks_count: 88,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: "bb_indihunt_default",
+    title: "Launch & Advertise Your Product on IndiHunt",
+    image_url: "/indihunt_horizontal_banner.webp",
+    destination_url: "/advertise",
+    is_active: true,
+    views_count: 2310,
+    clicks_count: 145,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: "bb_community_default",
+    title: "Join 5,000+ Indian Builders & Makers Community",
+    image_url: "/indihunt_origin.webp",
+    destination_url: "/discussions",
+    is_active: true,
+    views_count: 1890,
+    clicks_count: 112,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: "bb_best_products_default",
+    title: "Explore India's Top Rated Products & SaaS Tools",
+    image_url: "/og-image.webp",
+    destination_url: "/best-products",
+    is_active: true,
+    views_count: 3120,
+    clicks_count: 204,
+    created_at: new Date().toISOString()
   }
+];
 
-  if (supabase) {
-    let query = supabase.from('billboard_ads').select('*').order('created_at', { ascending: false });
-    if (!adminMode) {
-      query = query.eq('is_active', true);
+export async function getBillboardAds(adminMode: boolean = false): Promise<BillboardAd[]> {
+  try {
+    const res = await secureApiFetch<BillboardAd[] | { ads: BillboardAd[] }>(`/t/billboards?admin=${adminMode ? 'true' : 'false'}`);
+    if (res && res.success && res.data) {
+      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
+      if (Array.isArray((res.data as any).ads) && (res.data as any).ads.length > 0) return (res.data as any).ads;
     }
-    const { data, error } = await query;
-    if (!error && data) {
-      const ads = data as BillboardAd[];
-      if (!adminMode && ads.length > 0) {
-        setRedisCache('public_billboards', ads, 60).catch(() => {});
-      }
-      return ads;
-    }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     try {
@@ -6163,22 +5841,26 @@ export async function getBillboardAds(adminMode: boolean = false): Promise<Billb
       if (cached) {
         let ads: BillboardAd[] = JSON.parse(cached);
         if (!adminMode) ads = ads.filter(a => a.is_active);
-        return ads;
+        if (ads.length > 0) return ads;
       }
     } catch (e) { }
   }
-  return [];
+  return adminMode ? [] : DEFAULT_BILLBOARDS;
 }
 
 export async function createBillboardAd(ad: Partial<BillboardAd>): Promise<BillboardAd | null> {
-  if (supabase) {
-    const { data, error } = await supabase.from('billboard_ads').insert(ad).select('*').single();
-    if (!error && data) {
-      updateLocalBillboardsCache(data, 'create');
-      return data as BillboardAd;
+  try {
+    const res = await secureApiFetch<BillboardAd>('/t/billboards', {
+      method: 'POST',
+      body: JSON.stringify(ad),
+    });
+    if (res && res.success && res.data) {
+      updateLocalBillboardsCache(res.data, 'create');
+      return res.data;
     }
-    console.error("Error creating billboard", error);
-  } else if (typeof window !== 'undefined') {
+  } catch (err) { }
+
+  if (typeof window !== 'undefined') {
     const newAd: BillboardAd = {
       id: `ad_${Date.now()}`,
       title: ad.title,
@@ -6194,14 +5876,18 @@ export async function createBillboardAd(ad: Partial<BillboardAd>): Promise<Billb
 }
 
 export async function updateBillboardAd(id: string, updates: Partial<BillboardAd>): Promise<BillboardAd | null> {
-  if (supabase) {
-    const { data, error } = await supabase.from('billboard_ads').update(updates).eq('id', id).select('*').single();
-    if (!error && data) {
-      updateLocalBillboardsCache(data, 'update');
-      return data as BillboardAd;
+  try {
+    const res = await secureApiFetch<BillboardAd>('/t/billboards', {
+      method: 'PUT',
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (res && res.success && res.data) {
+      updateLocalBillboardsCache(res.data, 'update');
+      return res.data;
     }
-    console.error("Error updating billboard", error);
-  } else if (typeof window !== 'undefined') {
+  } catch (err) { }
+
+  if (typeof window !== 'undefined') {
     const current = await getBillboardAds(true);
     const existing = current.find(a => a.id === id);
     if (existing) {
@@ -6214,14 +5900,17 @@ export async function updateBillboardAd(id: string, updates: Partial<BillboardAd
 }
 
 export async function deleteBillboardAd(id: string): Promise<boolean> {
-  if (supabase) {
-    const { error } = await supabase.from('billboard_ads').delete().eq('id', id);
-    if (!error) {
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(`/t/billboards?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
       updateLocalBillboardsCache({ id } as BillboardAd, 'delete');
       return true;
     }
-    console.error("Error deleting billboard", error);
-  } else if (typeof window !== 'undefined') {
+  } catch (err) { }
+
+  if (typeof window !== 'undefined') {
     updateLocalBillboardsCache({ id } as BillboardAd, 'delete');
     return true;
   }
@@ -6276,14 +5965,12 @@ function updateLocalBillboardsCache(ad: BillboardAd, action: 'create' | 'update'
 // ==========================================
 
 export async function incrementProductClicks(productId: string): Promise<void> {
-  if (supabase) {
-    try {
-      const { data } = await supabase.from('products').select('clicks_count').eq('id', productId).single();
-      if (data) {
-        await supabase.from('products').update({ clicks_count: (data.clicks_count || 0) + 1 }).eq('id', productId);
-      }
-    } catch (e) { }
-  }
+  try {
+    await secureApiFetch<{ success: boolean }>('/t/views', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: productId, type: 'click' }),
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     try {
@@ -6489,7 +6176,6 @@ export async function placeLeaderboardBid(bid: {
   bidAmount: number;
   userEmail?: string;
 }): Promise<{ success: boolean; message: string; checkoutUrl?: string }> {
-  console.log("Mock placeLeaderboardBid called with:", bid);
   return { success: false, message: "Bidding is currently disabled." };
 }
 
@@ -6520,21 +6206,13 @@ function saveLocalJobs(jobs: JobPosting[]) {
 
 // Fetch all jobs
 export async function getJobs(includeInactive = false): Promise<JobPosting[]> {
-  if (supabase) {
-    try {
-      let query = supabase.from('jobs').select('*').order('created_at', { ascending: false });
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
-      }
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        saveLocalJobs(data as JobPosting[]);
-        return data as JobPosting[];
-      }
-    } catch (err) {
-      console.error('[getJobs] Supabase error, using fallback:', err);
+  try {
+    const res = await secureApiFetch<JobPosting[]>(`/t/jobs?includeInactive=${includeInactive ? 'true' : 'false'}`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      saveLocalJobs(res.data);
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   const local = getLocalJobs();
   return includeInactive ? local : local.filter(j => j.is_active);
@@ -6543,14 +6221,12 @@ export async function getJobs(includeInactive = false): Promise<JobPosting[]> {
 // Fetch single job by ID
 export async function getJobById(id: string): Promise<JobPosting | null> {
   if (!id) return null;
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('jobs').select('*').eq('id', id).maybeSingle();
-      if (!error && data) return data as JobPosting;
-    } catch (err) {
-      console.error('[getJobById] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<JobPosting>(`/t/jobs/${encodeURIComponent(id)}`);
+    if (res && res.success && res.data) {
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   const local = getLocalJobs();
   return local.find(j => j.id === id) || null;
@@ -6558,6 +6234,21 @@ export async function getJobById(id: string): Promise<JobPosting | null> {
 
 // Create Job (Admin)
 export async function createJob(input: JobPostingInput): Promise<{ success: boolean; data?: JobPosting; error?: string }> {
+  try {
+    const res = await secureApiFetch<JobPosting>('/t/jobs', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    if (res && res.success && res.data) {
+      const local = getLocalJobs();
+      saveLocalJobs([res.data, ...local]);
+      return { success: true, data: res.data };
+    }
+    if (res && !res.success) {
+      return { success: false, error: res.error };
+    }
+  } catch (err) { }
+
   const newJob: JobPosting = {
     id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     title: input.title,
@@ -6575,33 +6266,6 @@ export async function createJob(input: JobPostingInput): Promise<{ success: bool
     updated_at: new Date().toISOString(),
   };
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('jobs').insert([{
-        title: newJob.title,
-        department: newJob.department,
-        location: newJob.location,
-        type: newJob.type,
-        experience: newJob.experience,
-        stipend_salary: newJob.stipend_salary,
-        description: newJob.description,
-        responsibilities: newJob.responsibilities,
-        requirements: newJob.requirements,
-        perks: newJob.perks,
-        is_active: newJob.is_active
-      }]).select().single();
-
-      if (!error && data) {
-        const local = getLocalJobs();
-        saveLocalJobs([data as JobPosting, ...local]);
-        return { success: true, data: data as JobPosting };
-      }
-    } catch (err: any) {
-      console.error('[createJob] Supabase insert error:', err);
-    }
-  }
-
-  // Local fallback
   const local = getLocalJobs();
   const updated = [newJob, ...local];
   saveLocalJobs(updated);
@@ -6610,25 +6274,19 @@ export async function createJob(input: JobPostingInput): Promise<{ success: bool
 
 // Update Job (Admin)
 export async function updateJob(id: string, updates: Partial<JobPostingInput>): Promise<{ success: boolean; data?: JobPosting; error?: string }> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('jobs').update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      }).eq('id', id).select().single();
-
-      if (!error && data) {
-        const local = getLocalJobs();
-        const updated = local.map(j => j.id === id ? (data as JobPosting) : j);
-        saveLocalJobs(updated);
-        return { success: true, data: data as JobPosting };
-      }
-    } catch (err: any) {
-      console.error('[updateJob] Supabase update error:', err);
+  try {
+    const res = await secureApiFetch<JobPosting>(`/t/jobs/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+    if (res && res.success && res.data) {
+      const local = getLocalJobs();
+      const updated = local.map(j => j.id === id ? res.data! : j);
+      saveLocalJobs(updated);
+      return { success: true, data: res.data };
     }
-  }
+  } catch (err) { }
 
-  // Local fallback
   const local = getLocalJobs();
   let updatedJob: JobPosting | undefined;
   const updated = local.map(j => {
@@ -6648,18 +6306,16 @@ export async function updateJob(id: string, updates: Partial<JobPostingInput>): 
 
 // Delete Job (Admin)
 export async function deleteJob(id: string): Promise<{ success: boolean; error?: string }> {
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('jobs').delete().eq('id', id);
-      if (!error) {
-        const local = getLocalJobs();
-        saveLocalJobs(local.filter(j => j.id !== id));
-        return { success: true };
-      }
-    } catch (err: any) {
-      console.error('[deleteJob] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(`/t/jobs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      const local = getLocalJobs();
+      saveLocalJobs(local.filter(j => j.id !== id));
+      return { success: true };
     }
-  }
+  } catch (err) { }
 
   const local = getLocalJobs();
   saveLocalJobs(local.filter(j => j.id !== id));
@@ -6745,6 +6401,18 @@ export async function submitJobApplication(input: JobApplicationInput): Promise<
     return { success: false, error: "Please fill in all required fields." };
   }
 
+  try {
+    const res = await secureApiFetch<JobApplication>('/t/job-applications', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    if (res && res.success && res.data) {
+      const local = getLocalApplications();
+      saveLocalApplications([res.data, ...local]);
+      return { success: true, data: res.data };
+    }
+  } catch (err) { }
+
   const newApp: JobApplication = {
     id: `app_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     job_id: input.job_id || null,
@@ -6770,39 +6438,6 @@ export async function submitJobApplication(input: JobApplicationInput): Promise<
     updated_at: new Date().toISOString()
   };
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('job_applications').insert([{
-        job_id: newApp.job_id,
-        role_title: newApp.role_title,
-        full_name: newApp.full_name,
-        email: newApp.email,
-        phone_number: newApp.phone_number,
-        current_location: newApp.current_location,
-        linkedin_url: newApp.linkedin_url,
-        github_url: newApp.github_url,
-        portfolio_url: newApp.portfolio_url,
-        twitter_url: newApp.twitter_url,
-        current_ctc: newApp.current_ctc,
-        expected_ctc: newApp.expected_ctc,
-        experience_years: newApp.experience_years,
-        notice_period: newApp.notice_period,
-        cover_note: newApp.cover_note,
-        resume_url: newApp.resume_url,
-        resume_filename: newApp.resume_filename,
-        status: newApp.status
-      }]).select().single();
-
-      if (!error && data) {
-        const local = getLocalApplications();
-        saveLocalApplications([data as JobApplication, ...local]);
-        return { success: true, data: data as JobApplication };
-      }
-    } catch (err: any) {
-      console.error('[submitJobApplication] Supabase error, falling back to local storage:', err);
-    }
-  }
-
   // Local fallback
   const local = getLocalApplications();
   saveLocalApplications([newApp, ...local]);
@@ -6811,17 +6446,13 @@ export async function submitJobApplication(input: JobApplicationInput): Promise<
 
 // Get All Job Applications (Admin)
 export async function getJobApplications(): Promise<JobApplication[]> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('job_applications').select('*').order('created_at', { ascending: false });
-      if (!error && data) {
-        saveLocalApplications(data as JobApplication[]);
-        return data as JobApplication[];
-      }
-    } catch (err: any) {
-      console.error('[getJobApplications] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<JobApplication[]>('/t/job-applications');
+    if (res && res.success && Array.isArray(res.data)) {
+      saveLocalApplications(res.data);
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   return getLocalApplications();
 }
@@ -6832,21 +6463,17 @@ export async function updateJobApplicationStatus(
   status: JobApplicationStatus,
   admin_notes?: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (supabase) {
-    try {
-      const payload: any = { status, updated_at: new Date().toISOString() };
-      if (admin_notes !== undefined) payload.admin_notes = admin_notes;
-
-      const { error } = await supabase.from('job_applications').update(payload).eq('id', id);
-      if (!error) {
-        const local = getLocalApplications();
-        saveLocalApplications(local.map(a => a.id === id ? { ...a, status, admin_notes: admin_notes ?? a.admin_notes } : a));
-        return { success: true };
-      }
-    } catch (err: any) {
-      console.error('[updateJobApplicationStatus] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<{ success: boolean }>('/t/job-applications', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, status, admin_notes }),
+    });
+    if (res && res.success) {
+      const local = getLocalApplications();
+      saveLocalApplications(local.map(a => a.id === id ? { ...a, status, admin_notes: admin_notes ?? a.admin_notes } : a));
+      return { success: true };
     }
-  }
+  } catch (err) { }
 
   const local = getLocalApplications();
   saveLocalApplications(local.map(a => a.id === id ? { ...a, status, admin_notes: admin_notes ?? a.admin_notes } : a));
@@ -6855,18 +6482,16 @@ export async function updateJobApplicationStatus(
 
 // Delete Job Application (Admin)
 export async function deleteJobApplication(id: string): Promise<{ success: boolean; error?: string }> {
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('job_applications').delete().eq('id', id);
-      if (!error) {
-        const local = getLocalApplications();
-        saveLocalApplications(local.filter(a => a.id !== id));
-        return { success: true };
-      }
-    } catch (err: any) {
-      console.error('[deleteJobApplication] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(`/t/job-applications?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      const local = getLocalApplications();
+      saveLocalApplications(local.filter(a => a.id !== id));
+      return { success: true };
     }
-  }
+  } catch (err) { }
 
   const local = getLocalApplications();
   saveLocalApplications(local.filter(a => a.id !== id));
@@ -7038,21 +6663,13 @@ function saveLocalLaunchTags(tags: LaunchTag[]) {
 
 // Fetch all launch tags
 export async function getLaunchTags(includeInactive = false): Promise<LaunchTag[]> {
-  if (supabase) {
-    try {
-      let query = supabase.from('launch_tags').select('*').order('name', { ascending: true });
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
-      }
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        saveLocalLaunchTags(data as LaunchTag[]);
-        return data as LaunchTag[];
-      }
-    } catch (err) {
-      console.error('[getLaunchTags] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<LaunchTag[]>('/t/launch-tags');
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      saveLocalLaunchTags(res.data);
+      return res.data;
     }
-  }
+  } catch (err) { }
 
   const local = getLocalLaunchTags();
   return includeInactive ? local : local.filter(t => t.is_active);
@@ -7063,6 +6680,18 @@ export async function createLaunchTag(input: LaunchTagInput): Promise<{ success:
   if (!input.name || !input.name.trim()) {
     return { success: false, error: "Tag name is required." };
   }
+
+  try {
+    const res = await secureApiFetch<LaunchTag>('/t/launch-tags', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    if (res && res.success && res.data) {
+      const local = getLocalLaunchTags();
+      saveLocalLaunchTags([...local, res.data]);
+      return { success: true, data: res.data };
+    }
+  } catch (err) { }
 
   const name = input.name.trim();
   const slug = input.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -7078,30 +6707,6 @@ export async function createLaunchTag(input: LaunchTagInput): Promise<{ success:
     updated_at: new Date().toISOString()
   };
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('launch_tags').insert([{
-        name: newTag.name,
-        slug: newTag.slug,
-        category: newTag.category,
-        icon: newTag.icon,
-        is_popular: newTag.is_popular,
-        is_active: newTag.is_active
-      }]).select().single();
-
-      if (!error && data) {
-        const local = getLocalLaunchTags();
-        saveLocalLaunchTags([...local, data as LaunchTag]);
-        return { success: true, data: data as LaunchTag };
-      }
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } catch (err: any) {
-      console.error('[createLaunchTag] Supabase error:', err);
-    }
-  }
-
   const local = getLocalLaunchTags();
   if (local.some(t => t.name.toLowerCase() === name.toLowerCase())) {
     return { success: false, error: "A tag with this name already exists." };
@@ -7113,25 +6718,17 @@ export async function createLaunchTag(input: LaunchTagInput): Promise<{ success:
 
 // Update Launch Tag (Admin)
 export async function updateLaunchTag(id: string, updates: Partial<LaunchTagInput>): Promise<{ success: boolean; data?: LaunchTag; error?: string }> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('launch_tags').update({
-        ...updates,
-        updated_at: new Date().toISOString()
-      }).eq('id', id).select().single();
-
-      if (!error && data) {
-        const local = getLocalLaunchTags();
-        saveLocalLaunchTags(local.map(t => t.id === id ? (data as LaunchTag) : t));
-        return { success: true, data: data as LaunchTag };
-      }
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } catch (err: any) {
-      console.error('[updateLaunchTag] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<LaunchTag>('/t/launch-tags', {
+      method: 'PUT',
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (res && res.success && res.data) {
+      const local = getLocalLaunchTags();
+      saveLocalLaunchTags(local.map(t => t.id === id ? res.data! : t));
+      return { success: true, data: res.data };
     }
-  }
+  } catch (err) { }
 
   const local = getLocalLaunchTags();
   let updatedTag: LaunchTag | undefined;
@@ -7148,21 +6745,16 @@ export async function updateLaunchTag(id: string, updates: Partial<LaunchTagInpu
 
 // Delete Launch Tag (Admin)
 export async function deleteLaunchTag(id: string): Promise<{ success: boolean; error?: string }> {
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('launch_tags').delete().eq('id', id);
-      if (!error) {
-        const local = getLocalLaunchTags();
-        saveLocalLaunchTags(local.filter(t => t.id !== id));
-        return { success: true };
-      }
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } catch (err: any) {
-      console.error('[deleteLaunchTag] Supabase error:', err);
+  try {
+    const res = await secureApiFetch<{ success: boolean }>(`/t/launch-tags?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (res && res.success) {
+      const local = getLocalLaunchTags();
+      saveLocalLaunchTags(local.filter(t => t.id !== id));
+      return { success: true };
     }
-  }
+  } catch (err) { }
 
   const local = getLocalLaunchTags();
   saveLocalLaunchTags(local.filter(t => t.id !== id));
@@ -7186,26 +6778,15 @@ export async function getScheduledProductCounts(): Promise<Record<string, number
     }
   };
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, scheduled_for, status')
-        .eq('status', 'scheduled')
-        .not('scheduled_for', 'is', null);
-
-      if (!error && data) {
-        data.forEach((p: any) => {
-          if (p.scheduled_for) {
-            const key = toDateKey(p.scheduled_for);
-            if (key) counts[key] = (counts[key] || 0) + 1;
-          }
-        });
-        return counts;
+  const prods = await getProducts();
+  if (prods && prods.length > 0) {
+    prods.forEach((p: any) => {
+      if (p.status === 'scheduled' && p.scheduled_for) {
+        const key = toDateKey(p.scheduled_for);
+        if (key) counts[key] = (counts[key] || 0) + 1;
       }
-    } catch (err) {
-      console.warn('[getScheduledProductCounts] Supabase error:', err);
-    }
+    });
+    return counts;
   }
 
   // Local storage fallback
@@ -7223,9 +6804,7 @@ export async function getScheduledProductCounts(): Promise<Record<string, number
           });
         }
       }
-    } catch (e) {
-      console.warn('[getScheduledProductCounts] localStorage fallback error:', e);
-    }
+    } catch (e) { }
   }
 
   return counts;
@@ -7248,21 +6827,12 @@ export async function getPaymentGatewayConfig(): Promise<PaymentGatewayConfig> {
     updated_at: new Date().toISOString()
   };
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('platform_settings')
-        .select('value')
-        .eq('key', 'payment_gateways')
-        .maybeSingle();
-
-      if (!error && data?.value) {
-        return { ...defaultConfig, ...data.value };
-      }
-    } catch (e) {
-      console.warn('[getPaymentGatewayConfig] Supabase error:', e);
+  try {
+    const res = await secureApiFetch<any>('/t/platform-settings?key=payment_gateways');
+    if (res && res.success && res.data) {
+      return { ...defaultConfig, ...res.data };
     }
-  }
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     try {
@@ -7287,18 +6857,12 @@ export async function setPaymentGatewayConfig(updates: Partial<PaymentGatewayCon
     updated_at: new Date().toISOString()
   };
 
-  if (supabase) {
-    try {
-      await supabase
-        .from('platform_settings')
-        .upsert(
-          { key: 'payment_gateways', value: updated, updated_at: updated.updated_at },
-          { onConflict: 'key' }
-        );
-    } catch (e) {
-      console.warn('[setPaymentGatewayConfig] Supabase error:', e);
-    }
-  }
+  try {
+    await secureApiFetch('/t/platform-settings', {
+      method: 'PUT',
+      body: JSON.stringify({ key: 'payment_gateways', value: updated }),
+    });
+  } catch (err) { }
 
   if (typeof window !== 'undefined') {
     try {
@@ -7526,5 +7090,143 @@ export function calculateProductRank(
     nextProd: cIdx >= 0 && cIdx < cohort.length - 1 ? cohort[cIdx + 1] : null
   };
 }
+
+export async function getUserProducts(userId: string): Promise<Product[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Product[]>(`/t/products?makerId=${encodeURIComponent(userId)}&limit=100`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      return res.data.filter(p => !p.is_deleted);
+    }
+  } catch (e) { }
+
+  try {
+    const allProds = await getProducts(userId);
+    const matched = allProds.filter(p => (p.maker_id === userId || p.maker?.id === userId) && !p.is_deleted);
+    if (matched.length > 0) return matched;
+  } catch (e) { }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = getCachedProducts();
+      return cached.filter(p => (p.maker_id === userId || p.maker?.id === userId) && !p.is_deleted);
+    } catch (e) { }
+  }
+
+  return [];
+}
+
+export async function getUserUpvotedProductIds(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<{ product_id: string }[]>(`/t/upvotes?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data.map(u => u.product_id);
+    }
+  } catch (err) {
+    console.warn('[getUserUpvotedProductIds] API call failed:', err);
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(`indihunt_upvotes_${userId}`) || localStorage.getItem('indihunt_upvotes');
+      if (raw) return JSON.parse(raw);
+    } catch { }
+  }
+  return [];
+}
+
+export async function getUserUpvotedProducts(userId: string): Promise<Product[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Product[]>(`/t/upvotes?userId=${encodeURIComponent(userId)}&withProducts=true`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserUpvotedProducts] API call failed:', err);
+  }
+  return [];
+}
+
+export async function getUserReviewsList(userId: string): Promise<Review[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Review[]>(`/t/reviews?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserReviewsList] API call failed:', err);
+  }
+  return [];
+}
+
+export async function getUserThreadsList(userId: string): Promise<Thread[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Thread[]>(`/t/threads?authorId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserThreadsList] API call failed:', err);
+  }
+  return [];
+}
+
+export async function getUserFollowersList(userId: string): Promise<Profile[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Profile[]>(`/t/user-follows?userId=${encodeURIComponent(userId)}&type=followers`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserFollowersList] API call failed:', err);
+  }
+  return [];
+}
+
+export async function getUserFollowingList(userId: string): Promise<Profile[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Profile[]>(`/t/user-follows?userId=${encodeURIComponent(userId)}&type=following`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserFollowingList] API call failed:', err);
+  }
+  return [];
+}
+
+export async function getUserFollowedProductsList(userId: string): Promise<Product[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<Product[]>(`/t/product-follows?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserFollowedProductsList] API call failed:', err);
+  }
+  return [];
+}
+
+export async function getUserPactsList(userId: string): Promise<any[]> {
+  if (!userId) return [];
+  try {
+    const res = await secureApiFetch<any[]>(`/t/pacts?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserPactsList] API call failed:', err);
+  }
+  return [];
+}
+
+
 
 

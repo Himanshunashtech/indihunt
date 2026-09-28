@@ -103,8 +103,15 @@ export const metadata: Metadata = {
     }
   },
   icons: {
-    icon: "/favicon.webp",
-    apple: "/apple-touch-icon.webp",
+    icon: [
+      { url: "/favicon.webp", type: "image/webp" },
+      { url: "/icons/icon-192.webp", sizes: "192x192", type: "image/webp" },
+      { url: "/icons/icon-512.webp", sizes: "512x512", type: "image/webp" }
+    ],
+    apple: [
+      { url: "/apple-touch-icon.webp", sizes: "180x180", type: "image/webp" }
+    ],
+    shortcut: "/favicon.webp",
   },
   category: "technology",
   other: {
@@ -145,11 +152,12 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
         {/* PWA Manifest & App Icons */}
         <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" href="/favicon.webp" type="image/webp" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.webp" type="image/webp" sizes="180x180" />
         <meta name="theme-color" content="#ff5722" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="IndiHunt" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.webp" />
         <Script
           src="https://datafa.st/js/script.js"
           data-website-id="dfid_cfvbmWLBry28V107JfzQ8"

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/supabase/admin';
 import { getCachedData, setCachedData } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return apiSuccess();
+    return apiSuccessSecure();
   } catch (err: any) {
     return apiFailure(err?.message || 'Failed to process ad event', 500);
   }

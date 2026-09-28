@@ -4,9 +4,11 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { supabase, Profile, getUserProfile, getKarmaLeaderboard, toggleFollowUser, isFollowingUser } from "@/lib/supabase";
 import { UserHoverCard } from "@/components/UserHoverCard";
+
+const ITEMS_PER_PAGE = 20;
 
 export default function LeaderboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -16,6 +18,7 @@ export default function LeaderboardPage() {
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
   const [followLoadingMap, setFollowLoadingMap] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   const tabs = [
     { id: "week", label: "Last week", sub: "Jun 22—28" },
@@ -32,8 +35,8 @@ export default function LeaderboardPage() {
         if (prof) setProfile(prof);
       }
 
-      // Load leaderboard
-      const data = await getKarmaLeaderboard(50);
+      // Load leaderboard (up to 100)
+      const data = await getKarmaLeaderboard(100);
       setLeaders(data);
 
       // Load following state for each leader
@@ -53,6 +56,11 @@ export default function LeaderboardPage() {
     });
   }, []);
 
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setCurrentPage(1);
+  };
+
   const handleFollow = async (leaderId: string) => {
     if (!user) return;
     setFollowLoadingMap(prev => ({ ...prev, [leaderId]: true }));
@@ -67,6 +75,31 @@ export default function LeaderboardPage() {
     const reviews = Math.max(25, Math.round(total * (0.12 + (index % 4) * 0.04)));
     const maker = Math.max(0, total - comments - reviews);
     return { comments, reviews, maker, total };
+  };
+
+  const totalPages = Math.max(1, Math.ceil(leaders.length / ITEMS_PER_PAGE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedLeaders = leaders.slice(
+    (validCurrentPage - 1) * ITEMS_PER_PAGE,
+    validCurrentPage * ITEMS_PER_PAGE
+  );
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (validCurrentPage > 3) pages.push("...");
+      const start = Math.max(2, validCurrentPage - 1);
+      const end = Math.min(totalPages - 1, validCurrentPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (validCurrentPage < totalPages - 2) pages.push("...");
+      if (!pages.includes(totalPages)) pages.push(totalPages);
+    }
+    return pages;
   };
 
   return (
@@ -91,7 +124,7 @@ export default function LeaderboardPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex flex-col items-start px-4 py-2 rounded-2xl border text-left transition-all duration-200 cursor-pointer ${
                   isActive 
                     ? "bg-card border-[#ff5733] text-[#ff5733] shadow-xs" 
@@ -120,9 +153,10 @@ export default function LeaderboardPage() {
               No makers have earned Karma Points yet.
             </div>
           ) : (
-            leaders.map((leader, i) => {
+            paginatedLeaders.map((leader, i) => {
               const kp = leader.karma_points ?? Math.max(862 - i * 45, 120);
               const { comments, reviews, maker, total } = getPointsBreakdown(kp, i);
+              const globalRank = (validCurrentPage - 1) * ITEMS_PER_PAGE + i + 1;
               const isCurrentUser = user && user.id === leader.id;
 
               const commentsPct = Math.max(3, Math.round((comments / total) * 100));
@@ -164,7 +198,7 @@ export default function LeaderboardPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <UserHoverCard user={leader}>
                             <span className="text-base font-medium text-foreground/90 hover:text-[#ff5733] transition-colors truncate block">
-                              {i + 1}. {leader.full_name}
+                              {globalRank}. {leader.full_name}
                             </span>
                           </UserHoverCard>
                           
@@ -244,6 +278,102 @@ export default function LeaderboardPage() {
             })
           )}
         </div>
+
+        {/* ── Numeric Pagination ── */}
+        {totalPages > 1 && (
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Showing <span className="font-semibold text-foreground">{(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}</span> to{" "}
+              <span className="font-semibold text-foreground">{Math.min(validCurrentPage * ITEMS_PER_PAGE, leaders.length)}</span> of{" "}
+              <span className="font-semibold text-foreground">{leaders.length}</span> members
+            </p>
+
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+              {/* First Page */}
+              <button
+                onClick={() => {
+                  setCurrentPage(1);
+                  if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                disabled={validCurrentPage === 1}
+                className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                title="First Page"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+
+              {/* Previous Page */}
+              <button
+                onClick={() => {
+                  setCurrentPage(prev => Math.max(1, prev - 1));
+                  if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                disabled={validCurrentPage === 1}
+                className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* Page Numbers */}
+              {getPageNumbers().map((pageNum, idx) => {
+                if (typeof pageNum === "string") {
+                  return (
+                    <span
+                      key={`dots-${idx}`}
+                      className="px-2 py-1 text-muted-foreground font-medium select-none"
+                    >
+                      ...
+                    </span>
+                  );
+                }
+                const isActive = pageNum === validCurrentPage;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => {
+                      setCurrentPage(pageNum);
+                      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-[#ff5733] text-white font-semibold shadow-xs"
+                        : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              {/* Next Page */}
+              <button
+                onClick={() => {
+                  setCurrentPage(prev => Math.min(totalPages, prev + 1));
+                  if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                disabled={validCurrentPage === totalPages}
+                className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                title="Next Page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Last Page */}
+              <button
+                onClick={() => {
+                  setCurrentPage(totalPages);
+                  if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                disabled={validCurrentPage === totalPages}
+                className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                title="Last Page"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>

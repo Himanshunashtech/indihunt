@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect, RedirectType } from "next/navigation";
-import { getProductById, getProducts, calculateProductRank, getReviews, getAlternatives, getProductSlug } from "@/lib/supabase";
+import { getProductById, calculateProductRank, getProductSlug } from "@/lib/supabase";
 import ProductDetailPageClient from "./ProductDetailPageClient";
 
 export const revalidate = 60; // ISR: Revalidate page data at most every 60 seconds
@@ -58,21 +58,18 @@ export default async function ProductDetailPage({ params }: PageProps) {
     redirect(`/products/${slug}`, RedirectType.replace);
   }
 
-  const [reviews, alternatives] = await Promise.all([
-    getReviews(product.id).catch(() => []),
-    getAlternatives(product.id).catch(() => [])
-  ]);
-
-  // Fast server-side rank fallback from current product
+  // Fast server-side rank fallback — full product pool loaded client-side from cache.
+  // Reviews and alternatives are intentionally NOT fetched here — they load lazily
+  // on the client when the respective tab is opened, keeping SSR fast.
   const rankDetails = calculateProductRank(product, [product]);
 
   return (
     <ProductDetailPageClient
       id={id}
       initialProduct={product}
-      initialAllProducts={[product]}
-      initialReviews={reviews}
-      initialAlternatives={alternatives}
+      initialAllProducts={[]}
+      initialReviews={[]}
+      initialAlternatives={[]}
       initialRank={rankDetails.rank}
       initialRankLabel={rankDetails.rankLabel}
       initialIsTopHunt={rankDetails.isTopHunt}

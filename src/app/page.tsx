@@ -1,19 +1,23 @@
 import { getProducts, getThreads, getTopHuntersData, getBillboardAds, getPromotedProducts, supabase, getProductSlug, compareProductsForRanking, getISTStartOfDay, Product } from "@/lib/supabase";
 import HomePageClient from "./HomePageClient";
 
-export const revalidate = 60; // ISR: Revalidate page data at most every 60 seconds
+export const revalidate = 30; // ISR: Revalidate every 30s (faster L1 cache hit rate)
 
 const SITE_URL = "https://indihunt.in";
 
 export default async function Home() {
-  // Concurrently fetch all homepage datasets on the server
-  const [products, threads, topHunters, billboardAds, promotedProducts] = await Promise.all([
+  // Only fetch the two critical above-the-fold datasets on the server.
+  // Non-critical sidebar data (topHunters, billboardAds, promotedProducts) is
+  // fetched client-side after first paint — keeps SSR under 100ms.
+  const [products, threads] = await Promise.all([
     getProducts().catch(() => [] as Product[]),
-    getThreads().catch(() => []),
-    getTopHuntersData("all_time").catch(() => []),
-    getBillboardAds(false).catch(() => []),
-    getPromotedProducts().catch(() => [] as Product[])
+    getThreads().catch(() => [])
   ]);
+
+  // Empty stubs — HomePageClient will fetch these after first paint
+  const topHunters: any[] = [];
+  const billboardAds: any[] = [];
+  const promotedProducts: Product[] = [];
 
   // Group live products strictly by their launch date in Indian Standard Time (IST)
   const now = new Date();

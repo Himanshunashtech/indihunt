@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/supabase/admin';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -167,7 +167,7 @@ async function handleVerification(data: Record<string, any>) {
       if (newCamp) savedCampaign = newCamp;
     }
 
-    return apiSuccess({
+    return apiSuccessSecure({
       status: 'verified',
       campaign: savedCampaign,
       paymentId,

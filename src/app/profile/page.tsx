@@ -36,6 +36,14 @@ import {
   supabase,
   getUserProfile,
   getUserProfileByUsername,
+  getUserProducts,
+  getUserUpvotedProducts,
+  getUserReviewsList,
+  getUserThreadsList,
+  getUserFollowersList,
+  getUserFollowingList,
+  getUserFollowedProductsList,
+  getUserPactsList,
   signOut,
   Profile,
   Product,
@@ -358,7 +366,7 @@ function ProfileContent({
     try {
       const sessionPromise = supabase ? supabase.auth.getSession() : Promise.resolve({ data: { session: null } });
 
-      // Run all primary fetches in parallel (16 concurrent queries)
+      // Run all primary fetches in parallel via secure internal API endpoints
       const [
         prof,
         cols,
@@ -366,16 +374,15 @@ function ProfileContent({
         allProds,
         sessionResult,
         camps,
-        ownProductsResult,
-        memberProductsResult,
-        followsRowsResult,
-        followingRowsResult,
-        prodFollowingRowsResult,
-        threadsResult,
-        upvotesResult,
-        reviewsResult,
+        ownProducts,
+        directFollowerProfs,
+        directFollowingProfs,
+        followedProds,
+        userThs,
+        upvotedProds,
+        userRevs,
         allStories,
-        pactsResult,
+        dbPacts,
         leaderboardData
       ] = await Promise.all([
         getUserProfile(uid),
@@ -383,17 +390,16 @@ function ProfileContent({
         getUserStack(uid),
         getProducts(),
         sessionPromise,
-        supabase ? getAdCampaigns(uid) : Promise.resolve([] as AdCampaign[]),
-        supabase ? supabase.from("products").select("*").eq("maker_id", uid) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("product_members").select("products(*)").eq("user_id", uid) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("user_follows").select("follower_id").eq("following_id", uid) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("user_follows").select("following_id").eq("follower_id", uid) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("product_follows").select("product:products(*, maker:profiles!maker_id(*))").eq("user_id", uid) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("threads").select("*").eq("user_id", uid).order("created_at", { ascending: false }) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("upvotes").select("products(*)").eq("user_id", uid) : Promise.resolve({ data: [] as any[], error: null as any }),
-        supabase ? supabase.from("reviews").select("*, product:products(*)").eq("user_id", uid).order("created_at", { ascending: false }) : Promise.resolve({ data: [] as any[], error: null as any }),
+        getAdCampaigns(uid),
+        getUserProducts(uid),
+        getUserFollowersList(uid),
+        getUserFollowingList(uid),
+        getUserFollowedProductsList(uid),
+        getUserThreadsList(uid),
+        getUserUpvotedProducts(uid),
+        getUserReviewsList(uid),
         getStories(),
-        supabase ? supabase.from("pacts").select("*, product_1(id, name, scheduled_for, logo_url), product_2(id, name, scheduled_for, logo_url), user_1(id, full_name, avatar_url), user_2(id, full_name, avatar_url)").or(`user_1.eq.${uid},user_2.eq.${uid}`) : Promise.resolve({ data: [] as any[], error: null as any }),
+        getUserPactsList(uid),
         getKarmaLeaderboard(100)
       ]);
 
@@ -403,10 +409,10 @@ function ProfileContent({
       setAvailableProducts(allProds);
 
       // Compute dynamic real Karma Points (KP)
-      const ownProdsCount = (ownProductsResult?.data || []).length;
-      const threadsCount = (threadsResult?.data || []).length;
-      const upvotesCount = (upvotesResult?.data || []).length;
-      const reviewsCount = (reviewsResult?.data || []).length;
+      const ownProdsCount = (ownProducts || []).length;
+      const threadsCount = (userThs || []).length;
+      const upvotesCount = (upvotedProds || []).length;
+      const reviewsCount = (userRevs || []).length;
 
       const dynamicKP = prof?.karma_points || Math.max(
         (ownProdsCount * 15) + (threadsCount * 5) + (reviewsCount * 5) + (upvotesCount * 2) + 12,
@@ -435,14 +441,7 @@ function ProfileContent({
       }
 
       // Process products (maker + member)
-      const ownProducts = ownProductsResult?.data || [];
-      const memberProducts = memberProductsResult?.data || [];
-      const memberProdsList = (memberProducts || [])
-        .map((m: any) => m.products)
-        .filter((p): p is Product => !!p);
-
-      const combined = [...(ownProducts || []), ...memberProdsList];
-      let uniqueProducts = combined.filter(
+      let uniqueProducts = (ownProducts || []).filter(
         (value, index, self) => self.findIndex(p => p.id === value.id) === index
       );
 
@@ -461,200 +460,53 @@ function ProfileContent({
       uniqueProducts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setProducts(uniqueProducts as Product[]);
 
-      if (supabase) {
-        // Fetch followers list using the ids we retrieved in parallel
-        const followsRows = followsRowsResult?.data || [];
-        const followerIds = followsRows.map((f: { follower_id: string }) => f.follower_id);
+      setFollowersList(directFollowerProfs || []);
+      setFollowingList(directFollowingProfs || []);
+      setFollowedProducts(followedProds || []);
+      setUserThreads(userThs || []);
+      setUserUpvotes(upvotedProds || []);
+      setUserReviews(userRevs || []);
 
-        let directFollowerProfs: Profile[] = [];
-        if (followerIds.length > 0) {
-          const { data: profs } = await supabase
-            .from("profiles")
-            .select("*")
-            .in("id", followerIds);
-          directFollowerProfs = profs || [];
-        }
+      const userSts = (allStories || []).filter(s => s.user_id === uid);
+      setUserStories(userSts);
 
-        const myProductIds = uniqueProducts.map(p => p.id);
-        let productFollowerProfs: Profile[] = [];
-        if (myProductIds.length > 0) {
-          const { data: prodFollows } = await supabase
-            .from("product_follows")
-            .select("user:profiles(*)")
-            .in("product_id", myProductIds);
-          if (prodFollows) {
-            productFollowerProfs = prodFollows.map((pf: any) => pf.user).filter(Boolean) as Profile[];
-          }
-        }
+      // Process Pacts
+      try {
+        if (dbPacts && Array.isArray(dbPacts) && dbPacts.length > 0) {
+          const formatted = dbPacts.map((pact: any) => {
+            const isUser1 = pact.user_1?.id === uid || pact.user_1 === uid;
+            const partner = isUser1 ? pact.user_2 : pact.user_1;
+            const yourProduct = isUser1 ? pact.product_1 : pact.product_2;
+            const theirProduct = isUser1 ? pact.product_2 : pact.product_1;
 
-        const combinedFollowers = [...directFollowerProfs, ...productFollowerProfs];
-        const uniqueFollowers = combinedFollowers.filter(
-          (value, index, self) => self.findIndex(p => p.id === value.id) === index
-        );
-        setFollowersList(uniqueFollowers);
-
-        // Fetch following list using the ids we retrieved in parallel
-        const followingRows = followingRowsResult?.data || [];
-        const followingIds = followingRows.map(f => f.following_id);
-
-        let directFollowingProfs: Profile[] = [];
-        if (followingIds.length > 0) {
-          const { data: profs } = await supabase
-            .from("profiles")
-            .select("*")
-            .in("id", followingIds);
-          directFollowingProfs = profs || [];
-        }
-        setFollowingList(directFollowingProfs);
-
-        // Process followed products
-        const prodFollowingRows = prodFollowingRowsResult?.data || [];
-        const followedProds = (prodFollowingRows || [])
-          .map((pf: any) => pf.product)
-          .filter(Boolean) as Product[];
-        setFollowedProducts(followedProds);
-
-        // Process threads, upvotes and reviews
-        setUserThreads(threadsResult?.data || []);
-
-        const upvotesData = upvotesResult?.data || [];
-        const upvotedProds = (upvotesData || [])
-          .map((u: any) => u.products)
-          .filter((p): p is Product => !!p);
-        setUserUpvotes(upvotedProds);
-
-        setUserReviews(reviewsResult?.data || []);
-
-        // Process stories
-        const userSts = allStories.filter(s => s.user_id === uid);
-        setUserStories(userSts);
-
-        // Process Pacts
-        try {
-          const dbPacts = pactsResult?.data || [];
-          const dbError = pactsResult?.error;
-
-          if (!dbError && dbPacts && dbPacts.length > 0) {
-            const formatted = dbPacts.map((pact: any) => {
-              const isUser1 = pact.user_1.id === uid;
-              const partner = isUser1 ? pact.user_2 : pact.user_1;
-              const yourProduct = isUser1 ? pact.product_1 : pact.product_2;
-              const theirProduct = isUser1 ? pact.product_2 : pact.product_1;
-
-              return {
-                id: pact.id,
-                partnerName: partner.full_name || "Builder",
-                partnerTrust: "100 TRUST",
-                partnerAvatar: partner.avatar_url || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=80&q=80",
-                pactSince: new Date(pact.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
-                description: `A two-way upvote on IndiHunt. Show up when their day comes — they'll show up for yours.`,
-                yourLaunch: {
-                  name: yourProduct.name,
-                  logoUrl: yourProduct.logo_url,
-                  date: new Date(yourProduct.scheduled_for || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                  status: "they-upvoted"
-                },
-                theirLaunch: {
-                  name: theirProduct.name,
-                  logoUrl: theirProduct.logo_url,
-                  date: new Date(theirProduct.scheduled_for || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                  status: pact.status === "completed" ? "you-upvoted" : "you-upvote"
-                }
-              };
-            });
-            setPacts(formatted);
-          } else {
-            // Dynamic fallback calculation directly from upvotes & products tables:
-            // Find products launched by the current user
-            const { data: myProducts } = await supabase
-              .from("products")
-              .select("id, name, scheduled_for, logo_url")
-              .eq("maker_id", uid);
-
-            if (myProducts && myProducts.length > 0) {
-              const myProductIds = myProducts.map((p: any) => p.id);
-              // Get upvotes on my products
-              const { data: votesOnMe } = await supabase
-                .from("upvotes")
-                .select("user_id, profiles(id, full_name, avatar_url)")
-                .in("product_id", myProductIds);
-
-              if (votesOnMe && votesOnMe.length > 0) {
-                const voterIds = Array.from(new Set(votesOnMe.map((v: any) => v.user_id)));
-                // Get products launched by these voters
-                const { data: voterProducts } = await supabase
-                  .from("products")
-                  .select("id, name, maker_id, scheduled_for, logo_url")
-                  .in("maker_id", voterIds);
-
-                if (voterProducts && voterProducts.length > 0) {
-                  const voterProductIds = voterProducts.map((p: any) => p.id);
-                  // Get upvotes I made on their products
-                  const { data: myVotesOnVoters } = await supabase
-                    .from("upvotes")
-                    .select("product_id")
-                    .eq("user_id", uid)
-                    .in("product_id", voterProductIds);
-
-                  if (myVotesOnVoters && myVotesOnVoters.length > 0) {
-                    const calculatedPacts = [];
-
-                    for (const vote of myVotesOnVoters) {
-                      const matchedProduct = voterProducts.find((p: any) => p.id === vote.product_id);
-                      if (!matchedProduct) continue;
-
-                      // Find profile of the user who upvoted my product and whose product I upvoted
-                      const voterVote = votesOnMe.find((uv: any) => uv.user_id === matchedProduct.maker_id);
-                      const voterProfile = voterVote ? (voterVote.profiles as any) : null;
-                      if (!voterProfile) continue;
-
-                      // Get the specific product of mine they upvoted
-                      const myProductTheyUpvoted = myProducts[0];
-
-                      calculatedPacts.push({
-                        id: `pact-calc-${matchedProduct.id}`,
-                        partnerName: voterProfile.full_name || "Builder",
-                        partnerTrust: "120 TRUST",
-                        partnerAvatar: voterProfile.avatar_url || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=80&q=80",
-                        pactSince: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
-                        description: `A two-way upvote on IndiHunt. Show up when their day comes — they'll show up for yours.`,
-                        yourLaunch: {
-                          name: myProductTheyUpvoted.name,
-                          logoUrl: myProductTheyUpvoted.logo_url,
-                          date: new Date(myProductTheyUpvoted.scheduled_for || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                          status: "they-upvoted"
-                        },
-                        theirLaunch: {
-                          name: matchedProduct.name,
-                          logoUrl: matchedProduct.logo_url,
-                          date: new Date(matchedProduct.scheduled_for || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                          status: "you-upvoted" // automatically completed since mutual upvotes are detected!
-                        }
-                      });
-                    }
-                    setPacts(calculatedPacts);
-                  } else {
-                    setPacts([]);
-                  }
-                } else {
-                  setPacts([]);
-                }
-              } else {
-                setPacts([]);
+            return {
+              id: pact.id,
+              partnerName: partner?.full_name || "Builder",
+              partnerTrust: "100 TRUST",
+              partnerAvatar: partner?.avatar_url || "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=80&q=80",
+              pactSince: new Date(pact.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
+              description: `A two-way upvote on IndiHunt. Show up when their day comes — they'll show up for yours.`,
+              yourLaunch: {
+                name: yourProduct?.name || "Product",
+                logoUrl: yourProduct?.logo_url || "",
+                date: new Date(yourProduct?.scheduled_for || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                status: "they-upvoted"
+              },
+              theirLaunch: {
+                name: theirProduct?.name || "Partner Launch",
+                logoUrl: theirProduct?.logo_url || "",
+                date: new Date(theirProduct?.scheduled_for || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                status: pact.status === "completed" ? "you-upvoted" : "you-upvote"
               }
-            } else {
-              setPacts([]);
-            }
-          }
-        } catch (e) {
-          console.error("Error loading pacts:", e);
+            };
+          });
+          setPacts(formatted);
+        } else {
           setPacts([]);
         }
-
-      } else {
-        // Local storage fallbacks
-        const userSts = allStories.filter(s => s.user_id === uid);
-        setUserStories(userSts);
+      } catch (e) {
+        console.error("Error loading pacts:", e);
+        setPacts([]);
       }
     } catch (err) {
       console.error(err);
@@ -662,8 +514,6 @@ function ProfileContent({
       setIsLoading(false);
     }
   };
-
-
 
   const handleUpdateCampaignStatus = async (campId: string, currentStatus: string) => {
     const nextStatus = currentStatus === "active" ? "paused" : "active";
@@ -706,24 +556,11 @@ function ProfileContent({
     const success = await toggleFollowUser(currentSessionUid, targetId, isFollowing);
     if (success) {
       setIsFollowing(!isFollowing);
-      // Reload followers count
-      if (supabase) {
-        const { data: followsRows } = await supabase
-          .from("user_follows")
-          .select("follower_id")
-          .eq("following_id", targetId);
-        const followerIds = (followsRows || []).map(f => f.follower_id);
-
-        let directFollowerProfs: Profile[] = [];
-        if (followerIds.length > 0) {
-          const { data: profs } = await supabase
-            .from("profiles")
-            .select("*")
-            .in("id", followerIds);
-          directFollowerProfs = profs || [];
-        }
-        setFollowersList(directFollowerProfs);
-      }
+      // Reload followers count via secure API
+      try {
+        const followers = await getUserFollowersList(targetId);
+        setFollowersList(followers);
+      } catch (e) {}
     }
   };
 

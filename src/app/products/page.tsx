@@ -355,7 +355,7 @@ function ProductsContent() {
   const [currentPage, setCurrentPage] = useState<number>(() => {
     return isNaN(pageParam) || pageParam < 1 ? 1 : pageParam;
   });
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 20;
 
   // Sync page from URL if changed externally
   useEffect(() => {
@@ -533,11 +533,11 @@ function ProductsContent() {
     const result = await toggleUpvote(productId, currentUser.id);
     if (result.success) {
       setProducts(prev => prev.map(p => {
-        if (p.id === productId) {
+        if (p.id === productId || (result.productId && p.id === result.productId)) {
           return {
             ...p,
             upvotes_count: result.upvotes_count,
-            has_upvoted: !p.has_upvoted
+            has_upvoted: typeof result.has_upvoted === 'boolean' ? result.has_upvoted : !p.has_upvoted
           };
         }
         return p;

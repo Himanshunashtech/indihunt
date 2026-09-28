@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   MessageSquare,
   Lock,
   Filter,
@@ -198,12 +201,31 @@ export default function CategoryPageClient({
   }, [products, sortBy]);
 
   const ITEMS_PER_PAGE = 10;
-  const totalPages = Math.ceil(displayedProducts.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(displayedProducts.length / ITEMS_PER_PAGE));
+  const validCurrentPage = Math.min(currentPage, totalPages);
 
   const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const startIndex = (validCurrentPage - 1) * ITEMS_PER_PAGE;
     return displayedProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [displayedProducts, currentPage]);
+  }, [displayedProducts, validCurrentPage]);
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (validCurrentPage > 3) pages.push("...");
+      const start = Math.max(2, validCurrentPage - 1);
+      const end = Math.min(totalPages - 1, validCurrentPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (validCurrentPage < totalPages - 2) pages.push("...");
+      if (!pages.includes(totalPages)) pages.push(totalPages);
+    }
+    return pages;
+  };
 
   const handleVote = async (e: React.MouseEvent, productId: string) => {
     e.stopPropagation();
@@ -233,10 +255,11 @@ export default function CategoryPageClient({
     if (result.success) {
       setProducts((prev) =>
         prev.map((p) => {
-          if (p.id === productId) {
+          if (p.id === productId || (result.productId && p.id === result.productId)) {
             return {
               ...p,
               upvotes_count: result.upvotes_count,
+              ...(typeof result.has_upvoted === 'boolean' ? { has_upvoted: result.has_upvoted } : {}),
             };
           }
           return p;
@@ -449,7 +472,7 @@ export default function CategoryPageClient({
                       {(['recent', 'upvotes', 'alphabetical'] as const).map((mode) => (
                         <button
                           key={mode}
-                          onClick={() => { setSortBy(mode); setIsSortDropdownOpen(false); }}
+                          onClick={() => { setSortBy(mode); setIsSortDropdownOpen(false); setCurrentPage(1); }}
                           className={`w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-muted/70 transition-colors ${sortBy === mode ? 'text-orange-500 bg-orange-500/5' : 'text-foreground'}`}
                         >
                           {mode === 'recent' && 'Most Recent'}
@@ -482,7 +505,7 @@ export default function CategoryPageClient({
                 </div>
               ) : (
                 paginatedProducts.map((product, idx) => {
-                  const absoluteIdx = (currentPage - 1) * ITEMS_PER_PAGE + idx + 1;
+                  const absoluteIdx = (validCurrentPage - 1) * ITEMS_PER_PAGE + idx + 1;
                   const displayTags = (product.tags && product.tags.length > 0)
                     ? product.tags
                     : [product.category || categoryName];
@@ -688,26 +711,84 @@ export default function CategoryPageClient({
               )}
             </div>
 
-            {/* Pagination */}
+            {/* ── Numeric Pagination ── */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-6">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3.5 py-2 text-xs font-medium rounded-xl border border-border bg-card text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
-                >
-                  Previous
-                </button>
-                <div className="text-xs text-muted-foreground font-medium px-2">
-                  Page {currentPage} of {totalPages}
+              <div className="pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  Showing <span className="font-semibold text-foreground">{(validCurrentPage - 1) * ITEMS_PER_PAGE + 1}</span> to{" "}
+                  <span className="font-semibold text-foreground">{Math.min(validCurrentPage * ITEMS_PER_PAGE, displayedProducts.length)}</span> of{" "}
+                  <span className="font-semibold text-foreground">{displayedProducts.length}</span> products
+                </p>
+
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+                  {/* First Page */}
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={validCurrentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="First Page"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Previous Page */}
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={validCurrentPage === 1}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Page Numbers */}
+                  {getPageNumbers().map((pageNum, idx) => {
+                    if (typeof pageNum === "string") {
+                      return (
+                        <span
+                          key={`dots-${idx}`}
+                          className="px-2 py-1 text-muted-foreground font-medium select-none"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+                    const isActive = pageNum === validCurrentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-[#ff5733] text-white font-semibold shadow-xs"
+                            : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* Next Page */}
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={validCurrentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  {/* Last Page */}
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={validCurrentPage === totalPages}
+                    className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+                    title="Last Page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3.5 py-2 text-xs font-medium rounded-xl border border-border bg-card text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors cursor-pointer"
-                >
-                  Next
-                </button>
               </div>
             )}
 

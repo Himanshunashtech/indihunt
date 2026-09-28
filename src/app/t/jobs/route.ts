@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     const cacheKey = includeInactive ? 'jobs:all' : 'jobs:active';
     const cached = await getCachedData<any[]>(cacheKey);
-    if (cached) return apiSuccess(cached);
+    if (cached) return apiSuccessSecure(cached);
 
     const supabase = await createServerSupabaseClient();
     let query = supabase.from('jobs').select('*').order('created_at', { ascending: false });
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const list = jobs || [];
     await setCachedData(cacheKey, list, 300);
-    return apiSuccess(list);
+    return apiSuccessSecure(list);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch jobs', 500);
   }
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     await invalidateCache('jobs:active');
     await invalidateCache('jobs:all');
-    return apiSuccess(job, 201);
+    return apiSuccessSecure(job, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to create job', 500);
   }

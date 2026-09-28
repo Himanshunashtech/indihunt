@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
 
-    return apiSuccess({ text });
+    return apiSuccessSecure({ text });
   } catch (error: any) {
     return apiFailure(error?.message || 'AI generation failed', 500);
   }

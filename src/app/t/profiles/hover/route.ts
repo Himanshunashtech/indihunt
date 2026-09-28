@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return apiSuccess({
+    return apiSuccessSecure({
       profile: {
         ...profile,
         followers_count: followersCount ?? profile.followers_count ?? 0,

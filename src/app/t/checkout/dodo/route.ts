@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return apiSuccess({ status: 'ok', service: 'dodo-checkout-api' });
+  return apiSuccessSecure({ status: 'ok', service: 'dodo-checkout-api' });
 }
 
 export async function HEAD() {
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest | Request) {
       if (userId) checkoutUrl.searchParams.set('metadata[userId]', userId);
       checkoutUrl.searchParams.set('redirect_url', returnUrl);
 
-      return apiSuccess({ url: checkoutUrl.toString(), provider: 'dodo', campaignId });
+      return apiSuccessSecure({ url: checkoutUrl.toString(), provider: 'dodo', campaignId });
     }
 
     if (DODO_PAYMENTS_API_KEY) {
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest | Request) {
         } catch { }
 
         if (checkoutRes.ok && (sessionData.checkout_url || sessionData.url || sessionData.payment_link)) {
-          return apiSuccess({
+          return apiSuccessSecure({
             url: sessionData.checkout_url || sessionData.url || sessionData.payment_link,
             provider: 'dodo',
             campaignId,
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest | Request) {
         } catch { }
 
         if (legacyRes.ok && (legacyData.payment_link || legacyData.url || legacyData.checkout_url)) {
-          return apiSuccess({
+          return apiSuccessSecure({
             url: legacyData.payment_link || legacyData.url || legacyData.checkout_url,
             provider: 'dodo',
             campaignId,
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest | Request) {
     }
 
     const fallbackUrl = `${siteUrl}/?payment_status=success&campaign_id=${campaignId || 'test'}&test_paid=true&gateway=dodo`;
-    return apiSuccess({
+    return apiSuccessSecure({
       url: fallbackUrl,
       mode: 'test_sandbox',
       provider: 'dodo',

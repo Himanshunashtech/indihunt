@@ -181,23 +181,42 @@ class DataOrchestrator {
     private async runUiBlockingStage(guard: () => boolean) {
         if (!guard()) return;
         const targetUserId = this.userId === 'guest' ? undefined : (this.userId || undefined);
+        const queryKeyUser = targetUserId || "guest";
 
-        // Prefetch home screen essential lists (Products & Threads)
-        await Promise.allSettled([
-            queryClient.prefetchQuery({
-                queryKey: ["products", targetUserId || "guest"],
-                queryFn: () => getProducts(targetUserId),
-                staleTime: 5 * 60 * 1000,
-            }),
-            queryClient.prefetchQuery({
-                queryKey: ["threads", targetUserId || "guest"],
-                queryFn: () => getThreads(targetUserId),
-                staleTime: 5 * 60 * 1000,
-            })
-        ]);
+        // Check if queryClient already has active data populated from SSR / seed to avoid redundant API calls
+        const cachedProducts = queryClient.getQueryData(["products", queryKeyUser]);
+        const cachedThreads = queryClient.getQueryData(["threads", queryKeyUser]);
+
+        const tasks: Promise<any>[] = [];
+        if (!cachedProducts) {
+            tasks.push(
+                queryClient.prefetchQuery({
+                    queryKey: ["products", queryKeyUser],
+                    queryFn: () => getProducts(targetUserId),
+                    staleTime: 5 * 60 * 1000,
+                })
+            );
+        }
+        if (!cachedThreads) {
+            tasks.push(
+                queryClient.prefetchQuery({
+                    queryKey: ["threads", queryKeyUser],
+                    queryFn: () => getThreads(targetUserId),
+                    staleTime: 5 * 60 * 1000,
+                })
+            );
+        }
+
+        if (tasks.length > 0) {
+            await Promise.allSettled(tasks);
+        }
     }
 
     private async runUiDeferredStage(guard: () => boolean): Promise<void> {
+        if (!guard()) return;
+
+        // Defer secondary resources by 2 seconds so first paint & user interaction are completely unhindered
+        await new Promise(resolve => setTimeout(resolve, 2000));
         if (!guard()) return;
 
         // Prefetch secondary feed views like stories and leaderboards

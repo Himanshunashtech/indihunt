@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
   const capitalizedName = hostname.split('.')[0].charAt(0).toUpperCase() + hostname.split('.')[0].slice(1);
 
   const fallback = () =>
-    apiSuccess({
+    apiSuccessSecure({
       name: capitalizedName,
       tagline: `${capitalizedName} — built by an indie maker`,
       description: 'Explore this product on IndiHunt.',
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
   }
   if (!logoUrl) logoUrl = gallery[0] || FALLBACK_LOGO(hostname);
 
-  return apiSuccess({
+  return apiSuccessSecure({
     name,
     tagline,
     description: description.length > 200 ? description.slice(0, 200).trimEnd() + '...' : description,

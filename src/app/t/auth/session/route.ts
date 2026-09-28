@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ export async function GET(_request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return apiSuccess({
+      return apiSuccessSecure({
         authenticated: false,
         profile: null,
       });
@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest) {
       return apiFailure(error.message, 500);
     }
 
-    return apiSuccess({
+    return apiSuccessSecure({
       authenticated: !!profile,
       profile: profile || null,
     });

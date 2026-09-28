@@ -24,6 +24,7 @@ const ProductItem = memo(function ProductItem({
   onVote,
 }: ProductItemProps) {
   const router = useRouter();
+  const slug = getProductSlug(product.name);
   const isScheduled = !!(
     product.status === "scheduled" &&
     product.scheduled_for &&
@@ -75,12 +76,14 @@ const ProductItem = memo(function ProductItem({
   return (
     <section
       id={idx === 0 ? "first-product-card" : undefined}
+      onMouseEnter={() => router.prefetch(`/products/${slug}`)}
+      onFocus={() => router.prefetch(`/products/${slug}`)}
       onClick={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest("a") || target.closest("button")) {
           return;
         }
-        router.push(`/products/${getProductSlug(product.name)}`);
+        router.push(`/products/${slug}`);
       }}
       className="group relative isolate flex flex-row items-start gap-4 rounded-xl px-0 py-4 transition-all duration-300 ease-out sm:-mx-4 sm:p-4 hover:sm:bg-muted/60 cursor-pointer"
     >
@@ -97,7 +100,7 @@ const ProductItem = memo(function ProductItem({
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold text-foreground/90 transition-all duration-300 sm:flex-nowrap group-hover:sm:text-[#ff5733]">
           <Link
-            href={`/products/${getProductSlug(product.name)}`}
+            href={`/products/${slug}`}
             className="hover:underline font-semibold"
           >
             {displayRank}. {product.name}

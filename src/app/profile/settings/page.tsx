@@ -38,6 +38,7 @@ import {
 import { 
   supabase, 
   getUserProfile, 
+  getUserProducts,
   updateUserProfile,
   uploadImage,
   signOut,
@@ -246,29 +247,29 @@ export default function ProfileSettingsPage() {
     }
     
     try {
+      const ownProducts = await getUserProducts(uid);
+
+      let memberProdsList: Product[] = [];
       if (supabase) {
-        const { data: ownProducts } = await supabase
-          .from("products")
-          .select("*")
-          .eq("maker_id", uid);
+        try {
+          const { data: memberProducts } = await supabase
+            .from("product_members")
+            .select("products(*)")
+            .eq("user_id", uid);
 
-        const { data: memberProducts } = await supabase
-          .from("product_members")
-          .select("products(*)")
-          .eq("user_id", uid);
-
-        const memberProdsList = (memberProducts || [])
-          .map((m: any) => m.products)
-          .filter((p): p is Product => !!p);
-
-        const combined = [...(ownProducts || []), ...memberProdsList];
-        const uniqueProducts = combined.filter(
-          (value, index, self) => self.findIndex(p => p.id === value.id) === index
-        );
-
-        uniqueProducts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setProducts(uniqueProducts as Product[]);
+          memberProdsList = (memberProducts || [])
+            .map((m: any) => m.products)
+            .filter((p): p is Product => !!p);
+        } catch (e) {}
       }
+
+      const combined = [...(ownProducts || []), ...memberProdsList];
+      const uniqueProducts = combined.filter(
+        (value, index, self) => self.findIndex(p => p.id === value.id) === index
+      );
+
+      uniqueProducts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setProducts(uniqueProducts as Product[]);
     } catch (err) {
       console.error(err);
     } finally {

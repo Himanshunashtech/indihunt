@@ -30,6 +30,7 @@ export interface Profile {
   indie_page_theme?: string;
   indie_page_font?: string;
   monthly_revenue?: string;
+  onboarding_completed?: boolean;
 }
 
 export interface Product {

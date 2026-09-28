@@ -285,9 +285,9 @@ export default function AdvertisePage() {
       {/* Main Top Navbar */}
       <Navbar />
 
-      <div className="pt-14 sm:pt-32">
+      <div className="pt-[68px] sm:pt-[76px]">
         {/* Hero Section */}
-        <section className="relative overflow-hidden pt-10 sm:pt-14 pb-16 lg:pb-20 bg-gradient-to-b from-orange-500/5 via-transparent to-transparent">
+        <section className="relative overflow-hidden pt-4 sm:pt-6 pb-12 lg:pb-16 bg-gradient-to-b from-orange-500/5 via-transparent to-transparent">
           <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             
             <div className="lg:col-span-7 space-y-6">

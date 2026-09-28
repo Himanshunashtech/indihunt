@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     const cacheKey = productId ? `comments:product:${productId}` : `comments:thread:${threadId}`;
     const cached = await getCachedData<any[]>(cacheKey);
     if (cached) {
-      return apiSuccess(cached);
+      return apiSuccessSecure(cached);
     }
 
     const supabase = await createServerSupabaseClient();
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     const list = comments || [];
     await setCachedData(cacheKey, list, 600);
 
-    return apiSuccess(list);
+    return apiSuccessSecure(list);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch comments', 500);
   }
@@ -56,6 +57,12 @@ export async function POST(request: NextRequest) {
 
     if (!uId || !commentBody) {
       return apiFailure('userId and body are required', 400);
+    }
+
+    // Content Moderation check
+    const violation = checkContentViolation(commentBody);
+    if (violation.hasViolation) {
+      return apiFailure(violation.message || 'Content violation detected', 400);
     }
 
     const supabase = await createServerSupabaseClient();
@@ -89,8 +96,72 @@ export async function POST(request: NextRequest) {
       await invalidateCache(`comments:thread:${tId}`);
     }
 
-    return apiSuccess(newComment, 201);
+    // Fire-and-forget: notify the maker/thread author about the new comment
+    (async () => {
+      try {
+        const { data: commenter } = await supabase
+          .from('profiles')
+          .select('full_name, username, avatar_url')
+          .eq('id', uId)
+          .single();
+
+        let notifyUserId: string | null = null;
+        let entityType = 'product';
+        let entityId = pId || tId || '';
+        let productName = '';
+        let actionUrl = '';
+
+        if (pId) {
+          const { data: prod } = await supabase
+            .from('products')
+            .select('name, maker_id, logo_url')
+            .eq('id', pId)
+            .single();
+          if (prod?.maker_id && prod.maker_id !== uId) {
+            notifyUserId = prod.maker_id;
+            productName = prod.name;
+            actionUrl = `/products/${pId}`;
+          }
+        } else if (tId) {
+          const { data: thread } = await supabase
+            .from('threads')
+            .select('title, user_id')
+            .eq('id', tId)
+            .single();
+          if (thread?.user_id && thread.user_id !== uId) {
+            notifyUserId = thread.user_id;
+            entityType = 'thread';
+            productName = thread.title;
+            actionUrl = `/threads/${tId}`;
+          }
+        }
+
+        if (notifyUserId) {
+          await supabase.from('notifications').insert({
+            user_id: notifyUserId,
+            actor_id: uId,
+            type: 'comment',
+            entity_type: entityType,
+            entity_id: entityId,
+            data: {
+              product_name: productName,
+              actor_name: commenter?.full_name || commenter?.username || 'Someone',
+              actor_avatar: commenter?.avatar_url || '',
+              body_text: commentBody?.slice(0, 120),
+              action_url: actionUrl,
+              action_label: 'View comment',
+            },
+            read: false,
+          });
+        }
+      } catch {
+        // Non-blocking — ignore notification errors
+      }
+    })();
+
+    return apiSuccessSecure(newComment, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to post comment', 500);
   }
 }
+

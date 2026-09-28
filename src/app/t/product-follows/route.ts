@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccess, apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,12 +8,28 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get('productId') || searchParams.get('product_id');
-
-    if (!productId) {
-      return apiFailure('productId is required', 400);
-    }
+    const userId = searchParams.get('userId') || searchParams.get('user_id');
 
     const supabase = await createServerSupabaseClient();
+
+    if (userId) {
+      const { data, error } = await supabase
+        .from('product_follows')
+        .select('product:products(*, maker:profiles!maker_id(*))')
+        .eq('user_id', userId);
+
+      if (error) {
+        return apiFailure(error.message, 500);
+      }
+
+      const products = (data || []).map((row: any) => row.product).filter(Boolean);
+      return apiSuccessSecure(products);
+    }
+
+    if (!productId) {
+      return apiFailure('productId or userId is required', 400);
+    }
+
     const { data, error } = await supabase
       .from('product_follows')
       .select('product_id, user_id, created_at, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
@@ -24,7 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     const followers = (data || []).map((row: any) => row.user || row).filter(Boolean);
-    return apiSuccess(followers);
+    return apiSuccessSecure(followers);
   } catch (err: any) {
     return apiFailure(err.message || 'Failed to fetch product followers', 500);
   }

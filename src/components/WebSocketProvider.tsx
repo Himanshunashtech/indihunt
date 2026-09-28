@@ -57,11 +57,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        channel.subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            console.log(`[Supabase Realtime] Subscribed to room: ${room}`);
-          }
-        });
+        channel.subscribe();
 
         roomEntry.supabaseChannel = channel;
       } else {
@@ -78,9 +74,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               }
             };
             roomEntry.broadcastChannel = bc;
-            console.log(`[Local BroadcastChannel] Created room: ${room}`);
           } catch (err) {
-            console.error("Failed to create BroadcastChannel:", err);
+            // silent catch
           }
         }
       }
@@ -106,11 +101,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (currentEntry.refCount <= 0) {
           if (currentEntry.supabaseChannel) {
             supabase?.removeChannel(currentEntry.supabaseChannel);
-            console.log(`[Supabase Realtime] Unsubscribed from room: ${room}`);
           }
           if (currentEntry.broadcastChannel) {
             currentEntry.broadcastChannel.close();
-            console.log(`[Local BroadcastChannel] Closed room: ${room}`);
           }
           channelsRef.current.delete(room);
         }

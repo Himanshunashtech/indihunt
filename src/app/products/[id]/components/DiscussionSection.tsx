@@ -41,6 +41,8 @@ interface DiscussionSectionProps {
   comments: Comment[];
   user: any;
   setReportModalState: (state: any) => void;
+  isLoading?: boolean;
+  sentinelRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const COMMENTS_PER_PAGE = 10;
@@ -104,7 +106,9 @@ export default function DiscussionSection({
   product,
   comments,
   user,
-  setReportModalState
+  setReportModalState,
+  isLoading = false,
+  sentinelRef
 }: DiscussionSectionProps) {
   const dispatch = useAppDispatch();
   const searchParams = useSearchParams();
@@ -122,6 +126,11 @@ export default function DiscussionSection({
   const [replyError, setReplyError] = useState("");
   const [commentsPage, setCommentsPage] = useState(1);
   const [commentUpvotes, setCommentUpvotes] = useState<Record<string, { count: number; voted: boolean }>>({});
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!product?.id) return;
@@ -322,13 +331,13 @@ export default function DiscussionSection({
   };
 
   return (
-    <div className=" pb-8 space-y-6">
+    <div ref={sentinelRef} className="pb-8 space-y-6">
       <h3 className="text-base font-semibold text-foreground mb-6 flex items-center gap-2">
         <MessageSquare className="w-4 h-4 text-orange-500" />
         <span>Discussion Feed ({product.comments_count})</span>
       </h3>
 
-      {user ? (
+      {mounted && user ? (
         <div className="flex items-start gap-3 mb-8">
           <div className="w-8 h-8 rounded-full overflow-hidden bg-muted border border-border flex-shrink-0">
             <img
@@ -366,7 +375,24 @@ export default function DiscussionSection({
       )}
 
       <div className="space-y-6">
-        {comments.length === 0 ? (
+        {isLoading && comments.length === 0 ? (
+          <div className="space-y-4 py-4 animate-pulse">
+            <div className="flex gap-3 items-center">
+              <div className="w-8 h-8 rounded-full bg-muted/60" />
+              <div className="space-y-2 flex-1">
+                <div className="h-3 bg-muted/60 rounded w-1/4" />
+                <div className="h-2.5 bg-muted/40 rounded w-3/4" />
+              </div>
+            </div>
+            <div className="flex gap-3 items-center">
+              <div className="w-8 h-8 rounded-full bg-muted/60" />
+              <div className="space-y-2 flex-1">
+                <div className="h-3 bg-muted/60 rounded w-1/3" />
+                <div className="h-2.5 bg-muted/40 rounded w-1/2" />
+              </div>
+            </div>
+          </div>
+        ) : comments.length === 0 ? (
           <p className="text-xs text-muted-foreground/60 italic text-center py-6">No discussions yet. Leave a note!</p>
         ) : (
           paginatedComments.map((comment, index) => {

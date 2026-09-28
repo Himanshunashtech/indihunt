@@ -16,7 +16,7 @@ import {
   ChevronLeft
 } from "lucide-react";
 import { useAppSelector } from "@/lib/store";
-import { supabase, getProductSlug, Product } from "@/lib/supabase";
+import { getProductSlug, Product, getUserProducts } from "@/lib/supabase";
 
 export default function LaunchScheduleWidget() {
   const pathname = usePathname();
@@ -48,26 +48,13 @@ export default function LaunchScheduleWidget() {
     };
 
     const fetchScheduledLaunch = async () => {
-      if (supabase) {
-        const { data, error } = await supabase
-          .from("products")
-          .select("*")
-          .eq("maker_id", user.id);
-
-        if (!error && data) {
-          productsList = data;
+      try {
+        const prods = await getUserProducts(user.id);
+        if (prods && prods.length > 0) {
+          productsList = prods;
         }
-      } else {
-        // Fallback to local storage in offline/mock mode
-        const local = localStorage.getItem("indihunt_products");
-        if (local) {
-          try {
-            const parsed = JSON.parse(local);
-            productsList = parsed.filter((p: any) => p.maker_id === user.id);
-          } catch (e) {
-            console.error(e);
-          }
-        }
+      } catch (e) {
+        console.error(e);
       }
 
       updateScheduledState();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { apiSuccessSecure } from "@/lib/api/response";
 
 export const dynamic = 'force-dynamic';
 
@@ -130,7 +131,7 @@ export async function POST(req: Request) {
           }
         });
       }
-      return NextResponse.json({ success: true, message: "Recorded failed payment status" });
+      return apiSuccessSecure({ success: true, message: "Recorded failed payment status" });
     }
 
     // Supported successful events
@@ -257,7 +258,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    return apiSuccessSecure({
       success: true,
       message: `Dodo Payments webhook '${eventType}' processed securely`
     });

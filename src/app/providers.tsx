@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Provider } from "react-redux";
 import { store, useAppDispatch, setUser, setProfile } from "@/lib/store";
-import { supabase, updateUserStreak, clearCache } from "@/lib/supabase";
+import { supabase, updateUserStreak, clearCache, getCachedProducts, getUserProfile, getUserUpvotedProductIds } from "@/lib/supabase";
 import { queryClient } from "@/lib/queryClient";
 import { dataOrchestrator } from "@/lib/dataOrchestrator";
 
@@ -30,7 +30,8 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
     } catch (e) { }
   }
 
-  // Seed Redux synchronously on first render with initialUser from server — guarantees 100% server/client HTML match
+  // Seed TanStack Query cache from localStorage BEFORE any render — guarantees instant data
+  // on every page without waiting for network. Background fetch updates this silently.
   if (!seededRef.current) {
     seededRef.current = true;
     if (initialUser) {
@@ -43,6 +44,14 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
         }
       } catch (e) { }
     }
+    // Hydrate product cache from localStorage so TanStack serves data immediately
+    try {
+      const cachedProducts = getCachedProducts();
+      if (cachedProducts && cachedProducts.length > 0) {
+        queryClient.setQueryData(['products', 'guest'], cachedProducts);
+        queryClient.setQueryData(['products', undefined], cachedProducts);
+      }
+    } catch (e) { }
   }
 
   useEffect(() => {
@@ -118,15 +127,13 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
       dispatch(setUser(session.user));
       setCurrentUser(session.user);
 
-      // Fast upvotes fetch directly on session setup (< 50ms) to ensure live DB accuracy
-      Promise.resolve(
-        client.from('upvotes').select('product_id').eq('user_id', session.user.id)
-      ).then(({ data: upvotes }) => {
-        if (upvotes) {
-          const votedIds = new Set((upvotes as any[]).map((u: any) => u.product_id));
+      // Fast upvotes fetch directly on session setup via internal API (< 50ms) to ensure live DB accuracy
+      getUserUpvotedProductIds(session.user.id).then((votedIdsArr) => {
+        if (votedIdsArr && Array.isArray(votedIdsArr)) {
+          const votedIds = new Set(votedIdsArr);
           try {
-            localStorage.setItem(`indihunt_upvotes_${session.user.id}`, JSON.stringify(Array.from(votedIds)));
-            localStorage.setItem('indihunt_upvotes', JSON.stringify(Array.from(votedIds)));
+            localStorage.setItem(`indihunt_upvotes_${session.user.id}`, JSON.stringify(votedIdsArr));
+            localStorage.setItem('indihunt_upvotes', JSON.stringify(votedIdsArr));
           } catch (e) {}
           queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) => {
             if (!Array.isArray(old)) return old;
@@ -162,10 +169,8 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
 
       dataOrchestrator.startMigration(session.user.id);
       
-      // Fetch live fresh profile directly from Supabase DB in parallel
-      Promise.resolve(
-        client.from('profiles').select('*').eq('id', session.user.id).single()
-      ).then(({ data: dbProfile }) => {
+      // Fetch live fresh profile via internal /t/profiles API in parallel
+      getUserProfile(session.user.id).then((dbProfile) => {
         if (dbProfile) {
           dispatch(setProfile(dbProfile));
           try {

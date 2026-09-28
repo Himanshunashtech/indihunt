@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ export async function GET(
     const supabase = await createServerSupabaseClient();
     const { data: story, error } = await supabase
       .from('stories')
-      .select('id, title, content, excerpt, image_url, category, user_id, published_at, likes_count, comments_count, read_time, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
+      .select('*, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
       .eq('id', id)
       .single();
 
@@ -26,8 +26,26 @@ export async function GET(
       return apiFailure('Story not found', 404);
     }
 
-    return apiSuccess(story);
+    return apiSuccessSecure(story);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch story', 500);
   }
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const supabase = await createServerSupabaseClient();
+    const { error } = await supabase.from('stories').delete().eq('id', id);
+    if (error) {
+      return apiFailure(error.message, 500);
+    }
+    return apiSuccessSecure({ success: true, deleted: true });
+  } catch (error: any) {
+    return apiFailure(error?.message || 'Failed to delete story', 500);
+  }
+}
+

@@ -50,9 +50,6 @@ export default function AlternativesTab({
 
     addProds(allProductsList);
     addProds(dbProducts);
-    if (typeof window !== "undefined") {
-      addProds(getCachedProducts());
-    }
     return list;
   }, [allProductsList, dbProducts, productId]);
 
@@ -60,7 +57,7 @@ export default function AlternativesTab({
   const similarProducts = useMemo(() => {
     if (!product || effectiveAllProducts.length === 0) return [];
     const cat = (product.category || "").trim().toLowerCase();
-    
+
     const scored = effectiveAllProducts.map(p => {
       let score = 0;
       if (cat && (p.category || "").toLowerCase() === cat) score += 5;
@@ -214,84 +211,7 @@ export default function AlternativesTab({
       </div>
 
       {/* Community-Voted Alternatives */}
-      <div className="space-y-4 pt-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Award className="w-4 h-4 text-orange-500" />
-            Community Suggested Alternatives ({alternatives.length})
-          </h3>
-        </div>
 
-        {/* Suggest Alternative Form */}
-        <form onSubmit={handleAddAlternative} className="bg-card border border-border p-4 rounded-2xl flex flex-col sm:flex-row gap-3 items-center">
-          <div className="relative flex-1 w-full">
-            <select
-              value={selectedAltId}
-              onChange={(e) => setSelectedAltId(e.target.value)}
-              className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-orange-500"
-            >
-              <option value="">Suggest another product on IndiHunt as an alternative...</option>
-              {effectiveAllProducts
-                .filter(p => !alternatives.some(a => a.alternative_product?.id === p.id))
-                .map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.category || "General"})
-                  </option>
-                ))}
-            </select>
-          </div>
-          <button
-            type="submit"
-            disabled={!selectedAltId || isSubmittingAlt}
-            className="w-full sm:w-auto px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{isSubmittingAlt ? "Adding..." : "Suggest Alternative"}</span>
-          </button>
-        </form>
-
-        {alternatives.length > 0 && (
-          <div className="space-y-3">
-            {alternatives.map((alt) => {
-              const p = alt.alternative_product;
-              if (!p) return null;
-              return (
-                <div key={alt.id} className="bg-card border border-border p-4 rounded-2xl flex items-center justify-between gap-4 hover:border-orange-500/20 transition-all">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center font-semibold text-orange-500">
-                      {p.logo_url ? (
-                        <img src={p.logo_url} alt={p.name} className="w-10 h-10 object-cover" />
-                      ) : (
-                        p.name.charAt(0)
-                      )}
-                    </div>
-                    <div>
-                      <Link href={`/products/${getProductSlug(p.name)}`} className="text-xs font-semibold text-foreground hover:text-orange-500 transition-colors">
-                        {p.name}
-                      </Link>
-                      <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{p.tagline}</p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className="text-[9px] font-semibold bg-muted text-muted-foreground px-2 py-0.5 rounded uppercase">★ {p.upvotes_count} upvotes</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleVoteAlternative(alt.id)}
-                    className={`flex flex-col items-center justify-center border px-3 py-1.5 rounded-xl transition-all cursor-pointer ${alt.has_voted
-                      ? "bg-orange-500/10 border-orange-500/30 text-orange-500"
-                      : "bg-muted/40 border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-                      }`}
-                  >
-                    <ArrowUp className="w-3.5 h-3.5" />
-                    <span className="text-[10px] font-semibold mt-0.5">{alt.votes_count}</span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
       {/* Why Look for Alternatives Box */}
       <div className="bg-card/40 border border-border rounded-2xl p-6 space-y-4">

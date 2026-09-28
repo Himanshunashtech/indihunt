@@ -1,5 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ export async function GET() {
       return apiFailure('Forbidden - Admin access required', 403);
     }
 
-    return apiSuccess({
+    return apiSuccessSecure({
       isAdmin: true,
       role: 'admin',
     });

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/supabase/admin';
-import { apiSuccess, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       .from(bucket)
       .getPublicUrl(filePath);
 
-    return apiSuccess({ url: publicUrlData.publicUrl });
+    return apiSuccessSecure({ url: publicUrlData.publicUrl });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to upload media', 500);
   }
