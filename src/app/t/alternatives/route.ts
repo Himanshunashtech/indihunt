@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const { data: alternatives, error } = await supabase
       .from('product_alternatives')
-      .select('*, alternative_product:products!alternative_id(id, name, tagline, logo_url, website_url, upvotes_count, category), created_by_user:profiles!created_by(id, username, full_name, avatar_url)')
+      .select('*, alternative_product:products!alternative_id(id, name, tagline, logo_url, website_url, upvotes_count, tags), created_by_user:profiles!created_by(id, username, full_name, avatar_url)')
       .eq('product_id', productId)
       .order('votes_count', { ascending: false });
 
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     const { data: newAlt, error } = await supabase
       .from('product_alternatives')
       .insert({ product_id: pId, alternative_id: altProdId, created_by: uId, note: note || null, votes_count: 1 })
-      .select('*, alternative_product:products!alternative_id(id, name, tagline, logo_url, website_url, upvotes_count, category)')
+      .select('*, alternative_product:products!alternative_id(id, name, tagline, logo_url, website_url, upvotes_count, tags)')
       .single();
 
     if (error) return apiFailure(error.message, 500);
