@@ -5728,19 +5728,27 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
   else if (timeframe === "monthly" || timeframe === "last_month") timeLimitMs = 30 * 86400000;
   else if (timeframe === "yearly" || timeframe === "last_year") timeLimitMs = 365 * 86400000;
 
-  // Load all products to accurately calculate per-maker statistics
+  // Load products to accurately calculate per-maker statistics
   let products = getCachedProducts();
-  if (timeLimitMs > 0) {
+  if (!products || products.length === 0) {
+    try {
+      products = await getProducts();
+    } catch {
+      products = [];
+    }
+  }
+
+  if (timeLimitMs > 0 && products.length > 0) {
     products = products.filter(p => p.created_at && (now - new Date(p.created_at).getTime() <= timeLimitMs));
   }
 
-  // Fallback: derive directly from cached products and profiles
+  // Fallback: derive directly from products and profiles
   const hunterMap = new Map<string, Hunter>();
 
   products.forEach(p => {
     if (p.maker) {
       const key = (p.maker.username || p.maker.id || p.maker_id || '').toLowerCase();
-      if (key && !key.startsWith('usr_mock_')) {
+      if (key) {
         const existing = hunterMap.get(key) || {
           id: p.maker.id || key,
           name: p.maker.full_name || p.maker.username || 'Indie Builder',
@@ -5765,6 +5773,28 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
       }
     }
   });
+
+  if (hunterMap.size === 0) {
+    Object.values(MOCK_PROFILES).forEach((p: any) => {
+      const key = (p.username || p.id || '').toLowerCase();
+      if (key && !hunterMap.has(key)) {
+        hunterMap.set(key, {
+          id: p.id,
+          name: p.full_name || p.username || 'Indie Maker',
+          username: p.username || 'maker',
+          avatar_url: p.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+          bio: p.bio || p.headline || 'IndiHunt Hunter & Builder',
+          hunts_count: 3,
+          upvotes_count: (p.karma_points || 20) * 10,
+          comments_count: 6,
+          first_places_count: 1,
+          avg_upvotes: Math.round(((p.karma_points || 20) * 10) / 3),
+          avg_comments: 2,
+          is_verified: !!p.is_verified
+        });
+      }
+    });
+  }
 
   const realHuntersList = Array.from(hunterMap.values());
   realHuntersList.forEach(h => {

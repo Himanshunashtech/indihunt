@@ -342,18 +342,35 @@ export default function TopHuntersPage() {
   const [hunters, setHunters] = useState<Hunter[]>([]);
   const [topProducts, setTopProducts] = useState<Product[]>([]);
 
-  // Initial one-time products load for marquee
+  // Initial one-time products load for marquee: load exactly 20 random favicon icons from DB
   useEffect(() => {
+    const shuffleAndPick20 = (list: Product[]): Product[] => {
+      if (!list || list.length === 0) return [];
+      // Prefer products that have logo_url / favicon icon
+      const withLogo = list.filter((p) => p && p.logo_url);
+      const pool = withLogo.length >= 20 ? withLogo : list.filter((p) => p && (p.logo_url || p.name));
+
+      // Fisher-Yates unbiased random shuffle
+      const shuffled = [...pool];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled.slice(0, 20);
+    };
+
     const cached = getCachedProducts();
     if (cached && cached.length > 0) {
-      setTopProducts([...cached].sort((a, b) => (b.upvotes_count || 0) - (a.upvotes_count || 0)));
-    } else {
-      getProducts().then((prods) => {
-        if (prods && prods.length > 0) {
-          setTopProducts([...prods].sort((a, b) => (b.upvotes_count || 0) - (a.upvotes_count || 0)));
-        }
-      }).catch(() => {});
+      setTopProducts(shuffleAndPick20(cached));
     }
+
+    getProducts()
+      .then((prods) => {
+        if (prods && prods.length > 0) {
+          setTopProducts(shuffleAndPick20(prods));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const [timeframe, setTimeframe] = useState<"all_time" | "last_year" | "last_month" | "last_week">("all_time");
@@ -440,18 +457,22 @@ export default function TopHuntersPage() {
     return num.toString();
   };
 
-  const filteredHunters = hunters
+  const filteredHunters = (hunters || [])
     .filter((h) => {
-      const q = searchQuery.toLowerCase();
-      return h.name.toLowerCase().includes(q) || h.username.toLowerCase().includes(q);
+      if (!h) return false;
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
+      const name = (h.name || "").toLowerCase();
+      const username = (h.username || "").toLowerCase();
+      return name.includes(q) || username.includes(q);
     })
     .sort((a, b) => {
-      if (sortBy === "hunts") return b.hunts_count - a.hunts_count;
-      if (sortBy === "upvotes") return b.upvotes_count - a.upvotes_count;
-      if (sortBy === "comments") return b.comments_count - a.comments_count;
-      if (sortBy === "first_places") return b.first_places_count - a.first_places_count;
-      if (sortBy === "avg_upvotes") return b.avg_upvotes - a.avg_upvotes;
-      return b.hunts_count - a.hunts_count;
+      if (sortBy === "hunts") return (b.hunts_count || 0) - (a.hunts_count || 0);
+      if (sortBy === "upvotes") return (b.upvotes_count || 0) - (a.upvotes_count || 0);
+      if (sortBy === "comments") return (b.comments_count || 0) - (a.comments_count || 0);
+      if (sortBy === "first_places") return (b.first_places_count || 0) - (a.first_places_count || 0);
+      if (sortBy === "avg_upvotes") return (b.avg_upvotes || 0) - (a.avg_upvotes || 0);
+      return (b.hunts_count || 0) - (a.hunts_count || 0);
     });
 
   const totalPages = Math.max(1, Math.ceil(filteredHunters.length / ITEMS_PER_PAGE));
@@ -479,12 +500,13 @@ export default function TopHuntersPage() {
     return pages;
   };
 
-  const mostFeatured = [...hunters].sort((a, b) => b.hunts_count - a.hunts_count)[0] || hunters[0];
-  const mostFirsts = [...hunters].sort((a, b) => b.first_places_count - a.first_places_count)[0] || hunters[2];
-  const highestAvgUpvotes = [...hunters].sort((a, b) => b.avg_upvotes - a.avg_upvotes)[0] || hunters[5];
-  const mostDiscussed = [...hunters].sort((a, b) => b.avg_comments - a.avg_comments)[0] || hunters[5];
-  const mostUpvotes = [...hunters].sort((a, b) => b.upvotes_count - a.upvotes_count)[0] || hunters[2];
-  const mostComments = [...hunters].sort((a, b) => b.comments_count - a.comments_count)[0] || hunters[4];
+  const validHunters = (hunters || []).filter(h => h && h.id);
+  const mostFeatured = validHunters.length > 0 ? [...validHunters].sort((a, b) => (b.hunts_count || 0) - (a.hunts_count || 0))[0] : null;
+  const mostFirsts = validHunters.length > 0 ? [...validHunters].sort((a, b) => (b.first_places_count || 0) - (a.first_places_count || 0))[0] : null;
+  const highestAvgUpvotes = validHunters.length > 0 ? [...validHunters].sort((a, b) => (b.avg_upvotes || 0) - (a.avg_upvotes || 0))[0] : null;
+  const mostDiscussed = validHunters.length > 0 ? [...validHunters].sort((a, b) => (b.avg_comments || 0) - (a.avg_comments || 0))[0] : null;
+  const mostUpvotes = validHunters.length > 0 ? [...validHunters].sort((a, b) => (b.upvotes_count || 0) - (a.upvotes_count || 0))[0] : null;
+  const mostComments = validHunters.length > 0 ? [...validHunters].sort((a, b) => (b.comments_count || 0) - (a.comments_count || 0))[0] : null;
 
   return (
     <div className="min-h-screen font-sans selection:bg-orange-500 selection:text-white transition-colors duration-200 bg-background text-foreground">
@@ -707,72 +729,98 @@ export default function TopHuntersPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT COLUMN: HUNTERS RANKING LIST (7/12 desktop) */}
           <div className="lg:col-span-7 space-y-3">
-            {paginatedHunters.map((hunter, index) => (
-              <div
-                key={hunter.id}
-                className="relative border border-border/80 rounded-2xl p-4 flex items-center justify-between gap-4 transition-all bg-card shadow-xs hover:border-orange-500/30 hover:shadow-sm"
-              >
-                {/* Left: Rank + Avatar + Name */}
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <span className="text-sm font-extrabold w-5 text-center shrink-0 text-muted-foreground">
-                    {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
-                  </span>
-
-                  <Link href={`/@${hunter.username.replace(/^@/, '')}`} className="flex items-center gap-3.5 min-w-0 group">
-                    <div className="relative shrink-0">
-                      <img
-                        src={hunter.avatar_url}
-                        alt={hunter.name}
-                        loading="eager"
-                        decoding="async"
-                        className="w-10 h-10 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                      />
-                      {hunter.is_verified && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-orange-500 absolute -bottom-0.5 -right-0.5 rounded-full bg-background" />
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-sm text-foreground group-hover:text-orange-500 transition-colors truncate">
-                          {hunter.name}
-                        </span>
-                      </div>
-                      <div className="text-xs font-mono text-muted-foreground group-hover:text-orange-500 transition-colors truncate">
-                        @{hunter.username.replace(/^@/, '')}
+            {loading ? (
+              // Loading Skeleton State
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                  <div
+                    key={`skeleton-${n}`}
+                    className="border border-border/60 rounded-2xl p-4 flex items-center justify-between gap-4 bg-card animate-pulse shadow-xs"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-5 h-5 bg-muted rounded shrink-0" />
+                      <div className="w-10 h-10 rounded-full bg-muted shrink-0" />
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="w-28 h-4 bg-muted rounded" />
+                        <div className="w-20 h-3 bg-muted rounded" />
                       </div>
                     </div>
-                  </Link>
-                </div>
-
-                {/* Right: Stat Columns */}
-                <div className="flex items-center gap-4 sm:gap-6 shrink-0 text-center">
-                  {/* Upvotes Column */}
-                  <div className="flex flex-col items-center min-w-[44px]">
-                    <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-sm font-extrabold mt-0.5 text-foreground">
-                      {formatNumber(hunter.upvotes_count)}
-                    </span>
+                    <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+                      <div className="w-10 h-8 bg-muted rounded" />
+                      <div className="w-10 h-8 bg-muted rounded" />
+                      <div className="w-10 h-8 bg-muted rounded" />
+                    </div>
                   </div>
-
-                  {/* Comments Column */}
-                  <div className="flex flex-col items-center min-w-[44px]">
-                    <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-sm font-extrabold mt-0.5 text-foreground">
-                      {formatNumber(hunter.comments_count)}
-                    </span>
-                  </div>
-
-                  {/* Hunts Count Column */}
-                  <div className="flex flex-col items-center min-w-[44px]">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Hunts</span>
-                    <span className="text-sm font-black text-orange-500 mt-0.5">
-                      {hunter.hunts_count}
-                    </span>
-                  </div>
-                </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              paginatedHunters.map((hunter, index) => (
+                <div
+                  key={hunter.id || `hunter-${index}`}
+                  className="relative border border-border/80 rounded-2xl p-4 flex items-center justify-between gap-4 transition-all bg-card shadow-xs hover:border-orange-500/30 hover:shadow-sm"
+                >
+                  {/* Left: Rank + Avatar + Name */}
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <span className="text-sm font-extrabold w-5 text-center shrink-0 text-muted-foreground">
+                      {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                    </span>
+
+                    <Link href={`/@${(hunter.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3.5 min-w-0 group">
+                      <div className="relative shrink-0">
+                        <img
+                          src={hunter.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                          alt={hunter.name || 'Hunter'}
+                          loading="eager"
+                          decoding="async"
+                          className="w-10 h-10 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
+                        />
+                        {hunter.is_verified && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-orange-500 absolute -bottom-0.5 -right-0.5 rounded-full bg-background" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-sm text-foreground group-hover:text-orange-500 transition-colors truncate">
+                            {hunter.name || hunter.username || 'Indie Hunter'}
+                          </span>
+                        </div>
+                        <div className="text-xs font-mono text-muted-foreground group-hover:text-orange-500 transition-colors truncate">
+                          @{hunter.username ? hunter.username.replace(/^@/, '') : 'maker'}
+                        </div>
+                      </div>
+                    </Link>
+                  </div>
+
+                  {/* Right: Stat Columns */}
+                  <div className="flex items-center gap-4 sm:gap-6 shrink-0 text-center">
+                    {/* Upvotes Column */}
+                    <div className="flex flex-col items-center min-w-[44px]">
+                      <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-sm font-extrabold mt-0.5 text-foreground">
+                        {formatNumber(hunter.upvotes_count || 0)}
+                      </span>
+                    </div>
+
+                    {/* Comments Column */}
+                    <div className="flex flex-col items-center min-w-[44px]">
+                      <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-sm font-extrabold mt-0.5 text-foreground">
+                        {formatNumber(hunter.comments_count || 0)}
+                      </span>
+                    </div>
+
+                    {/* Hunts Count Column */}
+                    <div className="flex flex-col items-center min-w-[44px]">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">Hunts</span>
+                      <span className="text-sm font-black text-orange-500 mt-0.5">
+                        {hunter.hunts_count || 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
 
             {filteredHunters.length === 0 && !loading && (
               <div className="py-16 text-center text-sm rounded-2xl border border-border bg-card text-muted-foreground">
@@ -898,25 +946,25 @@ export default function TopHuntersPage() {
                     <Target className="w-3.5 h-3.5 text-amber-500" />
                     <span>Most featured</span>
                   </div>
-                  <Link href={`/@${mostFeatured.username.replace(/^@/, '')}`} className="flex items-center gap-3 group">
+                  <Link href={`/@${(mostFeatured.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
                     <img
-                      src={mostFeatured.avatar_url}
-                      alt={mostFeatured.name}
+                      src={mostFeatured.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                      alt={mostFeatured.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
                     />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
-                        {mostFeatured.name}
+                        {mostFeatured.name || mostFeatured.username || 'Hunter'}
                       </div>
                       <div className="text-[11px] font-mono text-muted-foreground group-hover:text-orange-500 truncate transition-colors">
-                        @{mostFeatured.username.replace(/^@/, '')}
+                        @{mostFeatured.username ? mostFeatured.username.replace(/^@/, '') : 'maker'}
                       </div>
                     </div>
                   </Link>
                   <div className="text-sm font-black text-orange-500">
-                    {mostFeatured.hunts_count} <span className="text-xs font-normal text-muted-foreground">hunts</span>
+                    {mostFeatured.hunts_count || 0} <span className="text-xs font-normal text-muted-foreground">hunts</span>
                   </div>
                 </div>
               )}
@@ -928,25 +976,25 @@ export default function TopHuntersPage() {
                     <Trophy className="w-3.5 h-3.5 text-amber-500" />
                     <span>Most #1s</span>
                   </div>
-                  <Link href={`/@${mostFirsts.username.replace(/^@/, '')}`} className="flex items-center gap-3 group">
+                  <Link href={`/@${(mostFirsts.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
                     <img
-                      src={mostFirsts.avatar_url}
-                      alt={mostFirsts.name}
+                      src={mostFirsts.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                      alt={mostFirsts.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
                     />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
-                        {mostFirsts.name}
+                        {mostFirsts.name || mostFirsts.username || 'Hunter'}
                       </div>
                       <div className="text-[11px] font-mono text-muted-foreground group-hover:text-orange-500 truncate transition-colors">
-                        @{mostFirsts.username.replace(/^@/, '')}
+                        @{mostFirsts.username ? mostFirsts.username.replace(/^@/, '') : 'maker'}
                       </div>
                     </div>
                   </Link>
                   <div className="text-sm font-black text-orange-500">
-                    {mostFirsts.first_places_count} <span className="text-xs font-normal text-muted-foreground">#1 placements</span>
+                    {mostFirsts.first_places_count || 0} <span className="text-xs font-normal text-muted-foreground">#1 placements</span>
                   </div>
                 </div>
               )}
@@ -958,25 +1006,25 @@ export default function TopHuntersPage() {
                     <ChevronUp className="w-3.5 h-3.5 text-amber-500" />
                     <span>Highest avg upvotes</span>
                   </div>
-                  <Link href={`/@${highestAvgUpvotes.username.replace(/^@/, '')}`} className="flex items-center gap-3 group">
+                  <Link href={`/@${(highestAvgUpvotes.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
                     <img
-                      src={highestAvgUpvotes.avatar_url}
-                      alt={highestAvgUpvotes.name}
+                      src={highestAvgUpvotes.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                      alt={highestAvgUpvotes.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
                     />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
-                        {highestAvgUpvotes.name}
+                        {highestAvgUpvotes.name || highestAvgUpvotes.username || 'Hunter'}
                       </div>
                       <div className="text-[11px] font-mono text-muted-foreground group-hover:text-orange-500 truncate transition-colors">
-                        @{highestAvgUpvotes.username.replace(/^@/, '')}
+                        @{highestAvgUpvotes.username ? highestAvgUpvotes.username.replace(/^@/, '') : 'maker'}
                       </div>
                     </div>
                   </Link>
                   <div className="text-sm font-black text-orange-500">
-                    {highestAvgUpvotes.avg_upvotes} <span className="text-xs font-normal text-muted-foreground">avg upvotes</span>
+                    {highestAvgUpvotes.avg_upvotes || 0} <span className="text-xs font-normal text-muted-foreground">avg upvotes</span>
                   </div>
                 </div>
               )}
@@ -988,25 +1036,25 @@ export default function TopHuntersPage() {
                     <MessageSquare className="w-3.5 h-3.5 text-amber-500" />
                     <span>Most discussed</span>
                   </div>
-                  <Link href={`/@${mostDiscussed.username.replace(/^@/, '')}`} className="flex items-center gap-3 group">
+                  <Link href={`/@${(mostDiscussed.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
                     <img
-                      src={mostDiscussed.avatar_url}
-                      alt={mostDiscussed.name}
+                      src={mostDiscussed.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                      alt={mostDiscussed.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
                     />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
-                        {mostDiscussed.name}
+                        {mostDiscussed.name || mostDiscussed.username || 'Hunter'}
                       </div>
                       <div className="text-[11px] font-mono text-muted-foreground group-hover:text-orange-500 truncate transition-colors">
-                        @{mostDiscussed.username.replace(/^@/, '')}
+                        @{mostDiscussed.username ? mostDiscussed.username.replace(/^@/, '') : 'maker'}
                       </div>
                     </div>
                   </Link>
                   <div className="text-sm font-black text-orange-500">
-                    {mostDiscussed.avg_comments} <span className="text-xs font-normal text-muted-foreground">avg comments</span>
+                    {mostDiscussed.avg_comments || 0} <span className="text-xs font-normal text-muted-foreground">avg comments</span>
                   </div>
                 </div>
               )}
@@ -1018,25 +1066,25 @@ export default function TopHuntersPage() {
                     <ChevronUp className="w-3.5 h-3.5 text-orange-500" />
                     <span>Most upvotes</span>
                   </div>
-                  <Link href={`/@${mostUpvotes.username.replace(/^@/, '')}`} className="flex items-center gap-3 group">
+                  <Link href={`/@${(mostUpvotes.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
                     <img
-                      src={mostUpvotes.avatar_url}
-                      alt={mostUpvotes.name}
+                      src={mostUpvotes.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                      alt={mostUpvotes.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
                     />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
-                        {mostUpvotes.name}
+                        {mostUpvotes.name || mostUpvotes.username || 'Hunter'}
                       </div>
                       <div className="text-[11px] font-mono text-muted-foreground group-hover:text-orange-500 truncate transition-colors">
-                        @{mostUpvotes.username.replace(/^@/, '')}
+                        @{mostUpvotes.username ? mostUpvotes.username.replace(/^@/, '') : 'maker'}
                       </div>
                     </div>
                   </Link>
                   <div className="text-sm font-black text-orange-500">
-                    {formatNumber(mostUpvotes.upvotes_count)} <span className="text-xs font-normal text-muted-foreground">total upvotes</span>
+                    {formatNumber(mostUpvotes.upvotes_count || 0)} <span className="text-xs font-normal text-muted-foreground">total upvotes</span>
                   </div>
                 </div>
               )}
@@ -1048,25 +1096,25 @@ export default function TopHuntersPage() {
                     <MessageSquare className="w-3.5 h-3.5 text-amber-500" />
                     <span>Most comments</span>
                   </div>
-                  <Link href={`/@${mostComments.username.replace(/^@/, '')}`} className="flex items-center gap-3 group">
+                  <Link href={`/@${(mostComments.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
                     <img
-                      src={mostComments.avatar_url}
-                      alt={mostComments.name}
+                      src={mostComments.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
+                      alt={mostComments.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
                     />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
-                        {mostComments.name}
+                        {mostComments.name || mostComments.username || 'Hunter'}
                       </div>
                       <div className="text-[11px] font-mono text-muted-foreground group-hover:text-orange-500 truncate transition-colors">
-                        @{mostComments.username.replace(/^@/, '')}
+                        @{mostComments.username ? mostComments.username.replace(/^@/, '') : 'maker'}
                       </div>
                     </div>
                   </Link>
                   <div className="text-sm font-black text-orange-500">
-                    {formatNumber(mostComments.comments_count)} <span className="text-xs font-normal text-muted-foreground">total comments</span>
+                    {formatNumber(mostComments.comments_count || 0)} <span className="text-xs font-normal text-muted-foreground">total comments</span>
                   </div>
                 </div>
               )}
