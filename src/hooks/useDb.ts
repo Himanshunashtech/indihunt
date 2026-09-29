@@ -341,11 +341,13 @@ export function prefetchThread(queryClient: ReturnType<typeof useQueryClient>, t
 }
 
 // 4. Fetch comments for a product or thread
-export function useComments(productId?: string, threadId?: string, enabled = true) {
+export function useComments(productId?: string, threadId?: string, enabled = true, initialData?: Comment[]) {
   return useQuery({
     queryKey: ["comments", productId || "", threadId || ""],
     queryFn: () => getComments(productId || undefined, threadId || undefined),
     enabled: enabled && (!!productId || !!threadId),
+    initialData: initialData && initialData.length > 0 ? initialData : undefined,
+    initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
     staleTime: 2 * 60 * 1000, // 2 minutes for comments to stay relatively fresh
     refetchOnWindowFocus: false,
   });

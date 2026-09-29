@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect, RedirectType } from "next/navigation";
-import { getProductById, getProducts, calculateProductRank, getProductSlug, getSimilarProducts } from "@/lib/supabase";
+import { getProductById, getProducts, calculateProductRank, getProductSlug, getSimilarProducts, getComments } from "@/lib/supabase";
 import ProductDetailPageClient from "./ProductDetailPageClient";
 
 export const revalidate = 60; // ISR: Revalidate page data at most every 60 seconds
@@ -58,16 +58,18 @@ export default async function ProductDetailPage({ params }: PageProps) {
     redirect(`/products/${slug}`, RedirectType.replace);
   }
 
-  // Server-side rank and similar products calculation (avoids shipping full 500 products database over the wire)
+  // Server-side rank, similar products, and initial comments
   const allProducts = await getProducts().catch(() => []);
   const rankDetails = calculateProductRank(product, allProducts.length > 0 ? allProducts : [product]);
   const similarProducts = getSimilarProducts(product, allProducts, 3);
+  const initialComments = await getComments(product.id).catch(() => []);
 
   return (
     <ProductDetailPageClient
       id={id}
       initialProduct={product}
       initialSimilarProducts={similarProducts}
+      initialComments={initialComments}
       initialReviews={[]}
       initialAlternatives={[]}
       initialRank={rankDetails.rank}

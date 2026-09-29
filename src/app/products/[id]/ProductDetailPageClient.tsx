@@ -30,6 +30,7 @@ import {
   getSimilarProducts,
   Product,
   Review,
+  Comment,
   AlternativeProduct,
   Profile,
   ProductShoutout,
@@ -115,6 +116,7 @@ export default function ProductDetailPage({
   initialTab,
   initialProduct,
   initialSimilarProducts = [],
+  initialComments = [],
   initialAllProducts = [],
   initialReviews = [],
   initialAlternatives = [],
@@ -129,6 +131,7 @@ export default function ProductDetailPage({
   initialTab?: string;
   initialProduct: any;
   initialSimilarProducts?: Product[];
+  initialComments?: Comment[];
   initialAllProducts?: Product[];
   initialReviews?: Review[];
   initialAlternatives?: AlternativeProduct[];
@@ -153,6 +156,7 @@ export default function ProductDetailPage({
         initialTab={initialTab}
         initialProduct={initialProduct}
         initialSimilarProducts={initialSimilarProducts}
+        initialComments={initialComments}
         initialAllProducts={initialAllProducts}
         initialReviews={initialReviews}
         initialAlternatives={initialAlternatives}
@@ -173,6 +177,7 @@ function ProductDetailsContent({
   initialTab,
   initialProduct,
   initialSimilarProducts = [],
+  initialComments = [],
   initialAllProducts = [],
   initialReviews = [],
   initialAlternatives = [],
@@ -187,6 +192,7 @@ function ProductDetailsContent({
   initialTab?: string;
   initialProduct: any;
   initialSimilarProducts?: Product[];
+  initialComments?: Comment[];
   initialAllProducts?: Product[];
   initialReviews?: Review[];
   initialAlternatives?: AlternativeProduct[];
@@ -330,7 +336,8 @@ function ProductDetailsContent({
   const { data: queryComments = [], isLoading: isCommentsLoading } = useComments(
     product?.id || productId,
     undefined,
-    shouldLoadComments
+    shouldLoadComments,
+    initialComments
   );
   const comments = queryComments;
 

@@ -375,7 +375,7 @@ export default function DiscussionSection({
       )}
 
       <div className="space-y-6">
-        {isLoading && comments.length === 0 ? (
+        {mounted && isLoading && comments.length === 0 ? (
           <div className="space-y-4 py-4 animate-pulse">
             <div className="flex gap-3 items-center">
               <div className="w-8 h-8 rounded-full bg-muted/60" />
@@ -401,6 +401,7 @@ export default function DiscussionSection({
               const upvoteState = commentUpvotes[node.id] ?? { count: node.upvotes_count ?? 0, voted: node.has_upvoted ?? false };
               const isHighlighted = highlightedCommentId === node.id || highlightedCommentId === String(commentNumber);
               const timeAgo = (() => {
+                if (!mounted) return "";
                 const diff = (Date.now() - new Date(node.created_at).getTime()) / 1000;
                 if (diff < 60) return `${Math.floor(diff)}s ago`;
                 if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
