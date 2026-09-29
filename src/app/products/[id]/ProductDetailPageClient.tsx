@@ -237,19 +237,7 @@ function ProductDetailsContent({
   const { data: dbAllProducts = [] } = useProducts(effectiveUserId || undefined, initialAllProducts, isAlternativesTab);
   const toggleUpvoteMutation = useToggleUpvoteMutation();
 
-  const [localProduct, setLocalProduct] = useState<any>(() => {
-    if (typeof window !== 'undefined' && effectiveUserId && initialProduct) {
-      try {
-        const raw = localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`) || localStorage.getItem('indihunt_upvotes');
-        const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-        return {
-          ...initialProduct,
-          has_upvoted: votedSet.has(initialProduct.id),
-        };
-      } catch {}
-    }
-    return initialProduct || null;
-  });
+  const [localProduct, setLocalProduct] = useState<any>(initialProduct || null);
   const [isPageLoading, setIsPageLoading] = useState<boolean>(!initialProduct);
 
   const setProduct = useCallback((updater: any) => {
@@ -273,6 +261,25 @@ function ProductDetailsContent({
     }
   }, [queryProduct]);
 
+  // Sync upvote state from localStorage safely after hydration
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = (effectiveUserId && localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`)) ||
+                  localStorage.getItem('indihunt_upvotes');
+      if (raw && (localProduct || initialProduct)) {
+        const target = localProduct || initialProduct;
+        if (target._userToggled !== undefined) return;
+        const votedSet = new Set<string>(JSON.parse(raw));
+        const productSlug = getProductSlug(target.name);
+        const isVoted = votedSet.has(target.id) || (productSlug ? votedSet.has(productSlug) : false);
+        if (isVoted !== !!target.has_upvoted) {
+          setLocalProduct((prev: any) => prev ? { ...prev, has_upvoted: isVoted } : prev);
+        }
+      }
+    } catch {}
+  }, [effectiveUserId, localProduct?.id, initialProduct?.id]);
+
   useEffect(() => {
     if (!productId) return;
     const unsubscribe = subscribe(`product:${productId}`, "product_upvoted", (data: { productId: string; upvotes_count: number }) => {
@@ -287,24 +294,7 @@ function ProductDetailsContent({
     return unsubscribe;
   }, [productId, subscribe]);
 
-  const rawProduct = localProduct || queryProduct || initialProduct;
-  const product = useMemo(() => {
-    if (!rawProduct) return rawProduct;
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = (effectiveUserId && localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`)) ||
-                    localStorage.getItem('indihunt_upvotes');
-        const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-        const productSlug = getProductSlug(rawProduct.name);
-        const isVoted = votedSet.has(rawProduct.id) || (productSlug ? votedSet.has(productSlug) : false);
-        return {
-          ...rawProduct,
-          has_upvoted: rawProduct._userToggled !== undefined ? !!rawProduct.has_upvoted : isVoted,
-        };
-      } catch {}
-    }
-    return rawProduct;
-  }, [rawProduct, effectiveUserId]);
+  const product = localProduct || queryProduct || initialProduct;
 
   // Lazy-load comments only when scrolled near comments or when direct deep-linked
   const [shouldLoadComments, setShouldLoadComments] = useState<boolean>(false);
@@ -379,16 +369,20 @@ function ProductDetailsContent({
     if (initialAllProducts && initialAllProducts.length > 0) {
       return initialAllProducts.filter((p: Product) => p.id !== productId);
     }
-    if (typeof window !== "undefined") {
+    return [];
+  });
+
+  // Hydrate client-cached products in useEffect after initial paint
+  useEffect(() => {
+    if (allProductsList.length === 0 && typeof window !== "undefined") {
       try {
         const cached = getCachedProducts();
         if (cached && cached.length > 0) {
-          return cached.filter((p: Product) => p.id !== productId);
+          setAllProductsList(cached.filter((p: Product) => p.id !== productId));
         }
       } catch {}
     }
-    return [];
-  });
+  }, [productId, allProductsList.length]);
 
   const effectiveAllProducts = useMemo(() => {
     if (allProductsList && allProductsList.length > 0) return allProductsList;
@@ -398,12 +392,12 @@ function ProductDetailsContent({
   }, [allProductsList, dbAllProducts, initialAllProducts]);
 
   const similarProducts = useMemo(() => {
-    if (initialSimilarProducts && initialSimilarProducts.length > 0 && effectiveAllProducts.length === 0) {
+    if (initialSimilarProducts && initialSimilarProducts.length > 0) {
       return initialSimilarProducts;
     }
     const target = product || initialProduct;
-    if (!target) return initialSimilarProducts || [];
-    if (effectiveAllProducts.length === 0) return initialSimilarProducts || [];
+    if (!target) return [];
+    if (effectiveAllProducts.length === 0) return [];
     return getSimilarProducts(target, effectiveAllProducts, 3);
   }, [product, initialProduct, effectiveAllProducts, initialSimilarProducts]);
   const [recordedReviewViews, setRecordedReviewViews] = useState<Record<string, boolean>>({});
