@@ -107,11 +107,11 @@ export default function SidebarPanel({
         <div className="flex justify-between items-center">
           <div>
             {dailyRank !== null ? (
-              <span className="text-2xl font-bold text-foreground block">#{dailyRank}</span>
+              <span className="text-2xl font-bold text-foreground block" suppressHydrationWarning>#{dailyRank}</span>
             ) : (
               <div className="h-8 w-12 bg-muted/60 animate-pulse rounded-md my-0.5" />
             )}
-            <span className="text-[10px] text-muted-foreground block font-semibold uppercase tracking-wider">{rankLabel}</span>
+            <span className="text-[10px] text-muted-foreground block font-semibold uppercase tracking-wider" suppressHydrationWarning>{rankLabel}</span>
           </div>
 
           {/* Ranking toggle */}

@@ -740,6 +740,23 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
     }
   }
 
+  // 2. Direct Supabase query during SSR / Server execution (0ms network loopback overhead)
+  if (typeof window === 'undefined' && supabase) {
+    try {
+      const { data: dbProducts } = await supabase
+        .from('products')
+        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
+        .order('created_at', { ascending: false });
+
+      if (dbProducts && dbProducts.length > 0) {
+        if (!currentUserId) {
+          setRedisCache('public_products', dbProducts, 300).catch(() => { });
+        }
+        return dbProducts as Product[];
+      }
+    } catch { }
+  }
+
   try {
     const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}&limit=500` : '?limit=500';
     const res = await secureApiFetch<Product[]>(`/t/products${query}`);
@@ -750,20 +767,6 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
       return res.data;
     }
   } catch { }
-
-  // Direct Supabase fallback for SSR / server components
-  if (supabase) {
-    try {
-      const { data: dbProducts } = await supabase
-        .from('products')
-        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
-        .order('created_at', { ascending: false });
-
-      if (dbProducts && dbProducts.length > 0) {
-        return dbProducts as Product[];
-      }
-    } catch { }
-  }
 
   return getCachedProducts(currentUserId);
 }
@@ -1198,18 +1201,36 @@ export async function signOut() {
 
   if (typeof window !== 'undefined') {
     try {
-      // 1. Wipe all local and session storage (indihunt, ih_, and Supabase auth sb- tokens)
+      // 1. Wipe user data and Supabase auth sb- tokens, BUT strictly preserve cookie consent & theme preferences
       const keys = Object.keys(localStorage);
       keys.forEach(k => {
+        // Never delete cookie consent preferences or theme
+        if (
+          k === 'indihunt_cookie_consent_v1' ||
+          k.includes('cookie_consent') ||
+          k.includes('cookie_preference') ||
+          k === 'theme'
+        ) {
+          return;
+        }
         if (k.startsWith('ih_') || k.startsWith('indihunt_') || k.startsWith('sb-')) {
           localStorage.removeItem(k);
         }
       });
       sessionStorage.clear();
 
-      // 2. Clear all auth cookies
+      // 2. Clear ONLY Supabase auth session cookies; never delete cookie consent preferences
       document.cookie.split(";").forEach((c) => {
-        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
+        const trimmed = c.trim();
+        const cookieName = trimmed.split("=")[0];
+        if (
+          cookieName.startsWith("sb-") ||
+          cookieName.includes("auth-token") ||
+          cookieName.includes("access_token") ||
+          cookieName.includes("refresh_token")
+        ) {
+          document.cookie = cookieName + "=;expires=" + new Date(0).toUTCString() + ";path=/";
+        }
       });
 
       // 3. Strip any leftover tokens/hashes from the address bar
@@ -1509,6 +1530,23 @@ async function getThreadsRaw(currentUserId?: string): Promise<Thread[]> {
     if (cachedThreads && Array.isArray(cachedThreads) && cachedThreads.length > 0) {
       return cachedThreads;
     }
+  }
+
+  // 2. Direct Supabase query during SSR / Server execution (0ms network loopback overhead)
+  if (typeof window === 'undefined' && supabase) {
+    try {
+      const { data: dbThreads } = await supabase
+        .from('threads')
+        .select('*, author:profiles!author_id(*)')
+        .order('created_at', { ascending: false });
+
+      if (dbThreads && dbThreads.length > 0) {
+        if (!currentUserId) {
+          setRedisCache('public_threads', dbThreads, 60).catch(() => { });
+        }
+        return dbThreads as Thread[];
+      }
+    } catch { }
   }
 
   try {
@@ -7255,6 +7293,52 @@ export async function getUserPactsList(userId: string): Promise<any[]> {
     console.warn('[getUserPactsList] API call failed:', err);
   }
   return [];
+}
+
+export function getSimilarProducts(
+  target: Product | null | undefined,
+  allProducts: Product[],
+  limit = 3
+): Product[] {
+  if (!target || !allProducts || allProducts.length === 0) return [];
+  const targetCategory = (target.category || "").trim().toLowerCase();
+  const targetTags = new Set(
+    ((target.tags || []) as any[])
+      .filter((t: any): t is string => typeof t === "string")
+      .map((t: string) => t.trim().toLowerCase())
+  );
+
+  const filtered = allProducts.filter(
+    (p: Product) =>
+      p &&
+      p.id !== target.id &&
+      p.id !== "prod-media-1" &&
+      p.id !== "prod-media-2" &&
+      p.id !== "prod-media-3" &&
+      p.name !== "StreamPulse AI" &&
+      p.name !== "VoxWave Studio" &&
+      p.name !== "OmniPlay Pro" &&
+      getProductSlug(p.name) !== getProductSlug(target.name)
+  );
+
+  if (filtered.length === 0) return [];
+
+  const scored = filtered.map((p) => {
+    let score = 0;
+    const pCat = (p.category || "").trim().toLowerCase();
+    if (targetCategory && pCat && pCat === targetCategory) score += 5;
+    if (p.tags && Array.isArray(p.tags)) {
+      for (const t of p.tags) {
+        if (typeof t === "string" && targetTags.has(t.trim().toLowerCase())) {
+          score += 2;
+        }
+      }
+    }
+    return { product: p, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score || (b.product.upvotes_count || 0) - (a.product.upvotes_count || 0));
+  return scored.slice(0, limit).map((s) => s.product);
 }
 
 

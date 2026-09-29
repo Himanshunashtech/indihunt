@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronRight } from "lucide-react";
 import { Hunter } from "@/lib/supabase";
 
@@ -34,9 +35,11 @@ export default function TopHuntersWidget({ hunters }: TopHuntersWidgetProps) {
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="relative shrink-0">
-                <img
+                <Image
                   src={hunter.avatar_url}
                   alt={hunter.name}
+                  width={36}
+                  height={36}
                   className="w-9 h-9 rounded-full object-cover border border-border/60"
                 />
                 <span

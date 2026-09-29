@@ -20,13 +20,44 @@ import {
 
 // 1. Fetch all products
 export function useProducts(currentUserId?: string, initialData?: Product[], enabled = true) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["products", currentUserId || "guest"],
     queryFn: () => getProducts(currentUserId || undefined),
     enabled,
-    staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    initialData: initialData && initialData.length > 0 ? initialData : undefined,
+    initialData: initialData && initialData.length > 0
+      ? () => {
+          if (currentUserId && typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
+              const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+              return initialData.map((p) => ({
+                ...p,
+                has_upvoted: votedSet.has(p.id),
+              }));
+            } catch (e) {}
+          }
+          return initialData;
+        }
+      : () => {
+          const guestData = queryClient.getQueryData<Product[]>(["products", "guest"]);
+          if (guestData && guestData.length > 0) {
+            if (currentUserId && typeof window !== 'undefined') {
+              try {
+                const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
+                const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+                return guestData.map((p) => ({
+                  ...p,
+                  has_upvoted: votedSet.has(p.id),
+                }));
+              } catch (e) {}
+            }
+            return guestData;
+          }
+          return undefined;
+        },
     initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
     placeholderData: (previousData) => {
       if (previousData && previousData.length > 0) {
@@ -66,7 +97,7 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
     queryKey: ["product", productId, currentUserId || "guest"],
     queryFn: () => getProductById(productId, currentUserId || undefined),
     enabled: !!productId,
-    staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     initialData: initialData
       ? () => {
@@ -82,7 +113,11 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
           }
           return initialData;
         }
-      : undefined,
+      : () => {
+          const guestProduct = queryClient.getQueryData<Product>(["product", productId, "guest"]);
+          if (guestProduct) return guestProduct;
+          return undefined;
+        },
     initialDataUpdatedAt: initialData ? Date.now() : undefined,
     placeholderData: (previousData) => {
       if (previousData) {
@@ -123,13 +158,32 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
 
 // 3. Fetch all threads
 export function useThreads(currentUserId?: string, initialData?: Thread[]) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["threads", currentUserId || "guest"],
     queryFn: () => getThreads(currentUserId || undefined),
-    staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    initialData: initialData && initialData.length > 0 ? initialData : undefined,
-    initialDataUpdatedAt: currentUserId ? 0 : undefined,
+    initialData: initialData && initialData.length > 0
+      ? () => {
+          if (currentUserId && typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem(`indihunt_thread_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_thread_upvotes');
+              const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+              return initialData.map((t) => ({
+                ...t,
+                has_upvoted: votedSet.has(t.id),
+              }));
+            } catch (e) {}
+          }
+          return initialData;
+        }
+      : () => {
+          const guestThreads = queryClient.getQueryData<Thread[]>(["threads", "guest"]);
+          if (guestThreads && guestThreads.length > 0) return guestThreads;
+          return undefined;
+        },
+    initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
     placeholderData: (previousData) => {
       if (previousData && previousData.length > 0) {
         if (currentUserId && typeof window !== 'undefined') {

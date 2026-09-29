@@ -174,11 +174,7 @@ export default function PagesLandingPage() {
 
           {/* Hero Demo Page Live Preview Box matching user screenshot */}
           <div className="pt-6 max-w-5xl mx-auto">
-            <div className="text-center mb-4">
-              <span className="text-base font-mono font-bold uppercase tracking-wider text-orange-500 bg-orange-500/10 border border-orange-500/20 px-3.5 py-1.5 rounded-full">
-                ✨ Live Demo Page Specimen (White Tile Signature Style)
-              </span>
-            </div>
+
 
             {/* Page Container */}
             <div className="rounded-3xl p-6 sm:p-10 border border-slate-200/80 bg-[#f4f4f6] text-slate-900 shadow-2xl transition-all duration-300 relative overflow-hidden">

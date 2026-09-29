@@ -132,9 +132,6 @@ export default function Navbar({
   useEffect(() => {
     if (notificationsOpen) {
       setVisibleNotificationsCount(10);
-    }
-    // Only re-fetch if we are opening it, or if it's the first load
-    if (notificationsOpen || notificationsList.length === 0) {
       getNotifications(activeUser?.id).then((items) => {
         setNotificationsList(items || []);
       });
@@ -264,13 +261,31 @@ export default function Navbar({
         try {
           const keys = Object.keys(localStorage);
           keys.forEach(k => {
+            // Never delete cookie consent preferences or theme
+            if (
+              k === 'indihunt_cookie_consent_v1' ||
+              k.includes('cookie_consent') ||
+              k.includes('cookie_preference') ||
+              k === 'theme'
+            ) {
+              return;
+            }
             if (k.startsWith('ih_') || k.startsWith('indihunt_') || k.startsWith('sb-')) {
               localStorage.removeItem(k);
             }
           });
           sessionStorage.clear();
           document.cookie.split(";").forEach((c) => {
-            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
+            const trimmed = c.trim();
+            const cookieName = trimmed.split("=")[0];
+            if (
+              cookieName.startsWith("sb-") ||
+              cookieName.includes("auth-token") ||
+              cookieName.includes("access_token") ||
+              cookieName.includes("refresh_token")
+            ) {
+              document.cookie = cookieName + "=;expires=" + new Date(0).toUTCString() + ";path=/";
+            }
           });
         } catch (e) {}
       }
@@ -353,7 +368,7 @@ export default function Navbar({
             </button>
 
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-3">
+            <Link href="/" prefetch={true} className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 shadow-md shadow-orange-500/20 border border-orange-500/30">
                 <Image
                   src="/logo.webp"
@@ -1076,7 +1091,7 @@ export default function Navbar({
       >
         {/* Drawer header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-          <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
+          <Link href="/" prefetch={true} className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
             <div className="w-7 h-7 rounded-lg overflow-hidden">
               <Image src="/logo.webp" alt="IndiHunt" width={28} height={28} className="w-full h-full object-cover" />
             </div>

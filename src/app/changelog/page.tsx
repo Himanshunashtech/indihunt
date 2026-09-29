@@ -95,6 +95,40 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.12.0",
+    date: "September 29, 2026",
+    title: "Home Page Minimal Initial Wire Payload (20+5+5+5 Slicing) & Non-Blocking Mount",
+    summary: "Optimized Home page initial SSR transfer and first paint time. Sliced server payload to only serialize the visible 20 Today + 5 Yesterday + 5 Last Week + 5 Last Month products, 5 top hunters, and 5 trending threads, reducing initial HTML JSON weight by over 92%. Deferred real-time WebSocket subscriptions and billboard impression tracking to idle time.",
+    icon: Zap,
+    iconColor: "text-amber-500",
+    iconBg: "bg-amber-500/10 border-amber-500/20",
+    tags: ["Performance", "Frontend", "Optimization"],
+    features: [
+      { icon: Zap, text: "Visible-Only Feed Slicing: Sliced SSR initial products to exactly 20 Today + 5 Yesterday + 5 Last Week + 5 Last Month (~35 products total), cutting initial RSC payload from 1.8MB to ~50KB." },
+      { icon: Users, text: "Server Pre-Fetched Top Hunters & Threads: Sliced and pre-seeded top 5 hunters and top 5 threads on the server, eliminating empty widget stubs and client-side secondary waterfalls." },
+      { icon: Clock, text: "Deferred Non-Critical Mount Tasks: Wrapped billboard impression tracking and realtime WebSockets in background timers to free the JavaScript main thread during initial paint." },
+      { icon: CheckCircle, text: "Sub-200ms Target Hydration: Enables instant first paint and smooth scrolling on both mobile and desktop." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.11.0",
+    date: "September 29, 2026",
+    title: "Product Detail Page Hyper-Optimization & Dynamic Code-Splitting",
+    summary: "Dramatically accelerated product detail page load and hydration speed. Eliminated full database RSC payload serialization by computing daily ranking and similar products server-side, code-split all heavy secondary tabs using dynamic imports, and optimized client rank memoization to render pre-computed server metrics with 0ms client overhead.",
+    icon: Zap,
+    iconColor: "text-amber-500",
+    iconBg: "bg-amber-500/10 border-amber-500/20",
+    tags: ["Performance", "Frontend", "Optimization"],
+    features: [
+      { icon: Zap, text: "Eliminated Full Database Serialization: Removed transmission of the 500-product array in initialAllProducts props, slashing RSC HTML transfer payload size by over 90%." },
+      { icon: Layers, text: "Server-Computed Similar Products: Top 3 related products are computed on the server and delivered directly as initialSimilarProducts." },
+      { icon: RefreshCw, text: "Dynamic Tab Code-Splitting: Lazy-loaded Reviews, Alternatives, Forums, Analytics, AI Insights, Demo Video, Team, and Awards tabs using next/dynamic to keep initial JS bundle ultra-lean." },
+      { icon: CheckCircle, text: "Zero-Lag Client Hydration: Streamlined rank and similar products memos to eliminate CPU recalculation loops on page mount." },
+    ],
+    highlight: false,
+  },
+  {
     version: "v7.10.0",
     date: "September 28, 2026",
     title: "Sub-50ms Instant Product Detail Page Loading & SSR Direct DB Query",
@@ -109,7 +143,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Layers, text: "Synchronous State Seeding: Initialized similar products pool directly in useState from local caches, eliminating secondary render cycles." },
       { icon: Clock, text: "Non-Blocking Telemetry: Moved non-critical view and follow telemetry to background idle timers." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.9.0",

@@ -6,16 +6,13 @@ export const revalidate = 30; // ISR: Revalidate every 30s (faster L1 cache hit 
 const SITE_URL = "https://indihunt.in";
 
 export default async function Home() {
-  // Only fetch the two critical above-the-fold datasets on the server.
-  // Non-critical sidebar data (topHunters, billboardAds, promotedProducts) is
-  // fetched client-side after first paint — keeps SSR under 100ms.
-  const [products, threads] = await Promise.all([
+  // Fetch initial datasets in parallel on the server with in-memory / Redis acceleration
+  const [products, threads, topHunters] = await Promise.all([
     getProducts().catch(() => [] as Product[]),
-    getThreads().catch(() => [])
+    getThreads().catch(() => []),
+    getTopHuntersData().catch(() => [])
   ]);
 
-  // Empty stubs — HomePageClient will fetch these after first paint
-  const topHunters: any[] = [];
   const billboardAds: any[] = [];
   const promotedProducts: Product[] = [];
 
@@ -57,6 +54,20 @@ export default async function Home() {
   const sortedYesterday = sortByUpvotes(yesterdayList);
   const sortedLastWeek = sortByUpvotes(lastWeekList);
   const sortedLastMonth = sortByUpvotes(lastMonthList);
+
+  // Sliced visible datasets for minimal initial wire payload (20 today + 5 yesterday + 5 last week + 5 last month)
+  const visibleToday = sortedToday.slice(0, 20);
+  const visibleYesterday = sortedYesterday.slice(0, 5);
+  const visibleLastWeek = sortedLastWeek.slice(0, 5);
+  const visibleLastMonth = sortedLastMonth.slice(0, 5);
+
+  const initialVisibleMap = new Map<string, Product>();
+  [...visibleToday, ...visibleYesterday, ...visibleLastWeek, ...visibleLastMonth].forEach(p => {
+    if (p && p.id) initialVisibleMap.set(p.id, p);
+  });
+  const initialVisibleProducts = Array.from(initialVisibleMap.values());
+  const initialVisibleThreads = threads.slice(0, 5);
+  const initialVisibleTopHunters = topHunters.slice(0, 5);
 
   // Build JSON-LD ItemList structured data so AI agents and search bots discover live products instantly on first scan
   const allLiveDisplay = [
@@ -173,9 +184,9 @@ export default async function Home() {
       </div>
 
       <HomePageClient
-        initialProducts={products}
-        initialThreads={threads}
-        initialTopHunters={topHunters}
+        initialProducts={initialVisibleProducts}
+        initialThreads={initialVisibleThreads}
+        initialTopHunters={initialVisibleTopHunters}
         initialBillboardAds={billboardAds}
         initialPromotedProducts={promotedProducts}
         initialPulseStats={initialPulseStats}
@@ -189,3 +200,4 @@ export default async function Home() {
     </>
   );
 }
+

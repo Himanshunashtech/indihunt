@@ -158,7 +158,8 @@ export default function ProductMediaSection({ product, screenshots }: ProductMed
                 <img
                   src={slide.url}
                   alt={`Product Slide ${idx + 1}`}
-                  loading={idx < 2 ? "eager" : "lazy"}
+                  loading={idx === 0 ? "eager" : "lazy"}
+                  decoding="async"
                   {...(idx === 0 ? { fetchPriority: "high" as any } : {})}
                   className="w-full h-full object-contain"
                 />

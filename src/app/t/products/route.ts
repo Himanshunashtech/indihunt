@@ -30,10 +30,12 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const queryStr = searchParams.get('q') || searchParams.get('search');
     const checkUrl = searchParams.get('check_url') || searchParams.get('url');
-    const limit = parseInt(searchParams.get('limit') || '500', 10);
+    const cursor = searchParams.get('cursor');
+    const isLightweight = searchParams.get('lightweight') === 'true';
+    const limit = parseInt(searchParams.get('limit') || (cursor ? '20' : '500'), 10);
     const makerId = searchParams.get('makerId') || searchParams.get('maker_id');
 
-    const cacheKey = `redis_products_${category || 'all'}_${limit}`;
+    const cacheKey = `redis_products_${category || 'all'}_${limit}_${cursor || 'none'}_${isLightweight ? 'lite' : 'full'}`;
 
     // Redis cache hit for non-personalized, non-maker, non-search requests
     if (!userId && !queryStr && !checkUrl && !makerId) {
@@ -46,11 +48,19 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     let products: any[] = [];
     try {
+      const selectFields = isLightweight
+        ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker)'
+        : '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
+
       let query = supabase
         .from('products')
-        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)')
+        .select(selectFields)
         .order('created_at', { ascending: false })
         .limit(limit);
+
+      if (cursor) {
+        query = query.lt('created_at', cursor);
+      }
 
       if (makerId) {
         query = query.eq('maker_id', makerId);
@@ -75,10 +85,11 @@ export async function GET(request: NextRequest) {
         console.warn('[GET /t/products] Primary query error, falling back to simple select:', error.message);
         let fallbackQuery = supabase
           .from('products')
-          .select('*')
+          .select(isLightweight ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id' : '*')
           .order('created_at', { ascending: false })
           .limit(limit);
 
+        if (cursor) fallbackQuery = fallbackQuery.lt('created_at', cursor);
         if (makerId) fallbackQuery = fallbackQuery.eq('maker_id', makerId);
         if (checkUrl) {
           const cleanDomain = extractDomain(checkUrl);

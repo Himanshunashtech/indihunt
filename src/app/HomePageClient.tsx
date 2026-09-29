@@ -95,26 +95,33 @@ export default function HomePageClient({
     setMounted(true);
   }, []);
 
-  // Real-time upvotes subscription
+  // Real-time upvotes subscription (deferred to keep first paint sub-100ms)
   useEffect(() => {
-    const unsubscribe = subscribe(
-      "feed",
-      "product_upvoted",
-      (data: { productId: string; upvotes_count: number }) => {
-        queryClient.setQueriesData(
-          { queryKey: ["products"] },
-          (old: any) => {
-            if (!Array.isArray(old)) return old;
-            return old.map((p) =>
-              p.id === data.productId || (p.name && getProductSlug(p.name).toLowerCase() === data.productId.toLowerCase())
-                ? { ...p, upvotes_count: data.upvotes_count }
-                : p
-            );
-          }
-        );
-      }
-    );
-    return unsubscribe;
+    let unsubscribe: (() => void) | undefined;
+    const timer = setTimeout(() => {
+      unsubscribe = subscribe(
+        "feed",
+        "product_upvoted",
+        (data: { productId: string; upvotes_count: number }) => {
+          queryClient.setQueriesData(
+            { queryKey: ["products"] },
+            (old: any) => {
+              if (!Array.isArray(old)) return old;
+              return old.map((p) =>
+                p.id === data.productId || (p.name && getProductSlug(p.name).toLowerCase() === data.productId.toLowerCase())
+                  ? { ...p, upvotes_count: data.upvotes_count }
+                  : p
+              );
+            }
+          );
+        }
+      );
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      if (unsubscribe) unsubscribe();
+    };
   }, [subscribe]);
 
   // Sync auth state & onboarding from global Redux store
@@ -391,114 +398,119 @@ export default function HomePageClient({
         window.history.replaceState({}, "", "/");
       }
     }
-  }, []);
-
-  // Top hunters & billboards load
+  }, []);  // Top hunters & billboards load (deferred to idle time so initial paint is 0ms)
   useEffect(() => {
-    getTopHuntersData().then((data) => {
-      setTopHunters(data.slice(0, 5));
-    });
-
-    let sid = "";
-    let lastSeenId = "";
-    if (typeof window !== "undefined") {
-      sid = sessionStorage.getItem("ih_ad_sid") || "";
-      if (!sid) {
-        sid = `sid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        sessionStorage.setItem("ih_ad_sid", sid);
-      }
-      lastSeenId = sessionStorage.getItem("ih_last_billboard_id") || "";
+    if (!initialTopHunters || initialTopHunters.length === 0) {
+      getTopHuntersData().then((data) => {
+        setTopHunters(data.slice(0, 5));
+      });
     }
 
-    secureApiFetch<any>(`/t/billboards?sessionId=${sid}&lastSeenId=${encodeURIComponent(lastSeenId)}`)
-      .then((res) => {
-        let adsList: BillboardAd[] = [];
-        if (res && res.success && res.data) {
-          if (Array.isArray(res.data)) {
-            adsList = res.data;
-          } else if (Array.isArray((res.data as any).ads)) {
-            adsList = (res.data as any).ads;
-          }
+    const timer = setTimeout(() => {
+      let sid = "";
+      let lastSeenId = "";
+      if (typeof window !== "undefined") {
+        sid = sessionStorage.getItem("ih_ad_sid") || "";
+        if (!sid) {
+          sid = `sid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          sessionStorage.setItem("ih_ad_sid", sid);
         }
-        const uniqueAds: BillboardAd[] = [];
-        for (const ad of adsList) {
-          if (!uniqueAds.some((u) => u.id === ad.id || (u.destination_url && u.destination_url === ad.destination_url))) {
-            uniqueAds.push(ad);
-          }
-        }
-        if (uniqueAds.length === 0) {
-          for (const defAd of DEFAULT_BILLBOARDS) {
-            if (!uniqueAds.some((u) => u.id === defAd.id || (u.destination_url && u.destination_url === defAd.destination_url))) {
-              uniqueAds.push(defAd);
+        lastSeenId = sessionStorage.getItem("ih_last_billboard_id") || "";
+      }
+
+      secureApiFetch<any>(`/t/billboards?sessionId=${sid}&lastSeenId=${encodeURIComponent(lastSeenId)}`)
+        .then((res) => {
+          let adsList: BillboardAd[] = [];
+          if (res && res.success && res.data) {
+            if (Array.isArray(res.data)) {
+              adsList = res.data;
+            } else if (Array.isArray((res.data as any).ads)) {
+              adsList = (res.data as any).ads;
             }
           }
-        }
+          const uniqueAds: BillboardAd[] = [];
+          for (const ad of adsList) {
+            if (!uniqueAds.some((u) => u.id === ad.id || (u.destination_url && u.destination_url === ad.destination_url))) {
+              uniqueAds.push(ad);
+            }
+          }
+          if (uniqueAds.length === 0) {
+            for (const defAd of DEFAULT_BILLBOARDS) {
+              if (!uniqueAds.some((u) => u.id === defAd.id || (u.destination_url && u.destination_url === defAd.destination_url))) {
+                uniqueAds.push(defAd);
+              }
+            }
+          }
 
-        if (uniqueAds.length > 0) {
-          let rotated = [...uniqueAds];
-          if (typeof window !== "undefined") {
-            try {
-              if (lastSeenId && rotated.length > 1) {
-                const idx = rotated.findIndex((a) => a.id === lastSeenId);
-                if (idx !== -1) {
-                  const nextIdx = (idx + 1) % rotated.length;
-                  rotated = [...rotated.slice(nextIdx), ...rotated.slice(0, nextIdx)];
-                } else {
-                  const unviewed = rotated.filter((a) => a.id !== lastSeenId);
-                  if (unviewed.length > 0) {
-                    rotated = [...unviewed, ...rotated.filter((a) => a.id === lastSeenId)];
+          if (uniqueAds.length > 0) {
+            let rotated = [...uniqueAds];
+            if (typeof window !== "undefined") {
+              try {
+                if (lastSeenId && rotated.length > 1) {
+                  const idx = rotated.findIndex((a) => a.id === lastSeenId);
+                  if (idx !== -1) {
+                    const nextIdx = (idx + 1) % rotated.length;
+                    rotated = [...rotated.slice(nextIdx), ...rotated.slice(0, nextIdx)];
+                  } else {
+                    const unviewed = rotated.filter((a) => a.id !== lastSeenId);
+                    if (unviewed.length > 0) {
+                      rotated = [...unviewed, ...rotated.filter((a) => a.id === lastSeenId)];
+                    }
                   }
                 }
-              }
-              if (rotated[0]) {
-                sessionStorage.setItem("ih_last_billboard_id", rotated[0].id);
-              }
-            } catch (e) {}
-          }
+                if (rotated[0]) {
+                  sessionStorage.setItem("ih_last_billboard_id", rotated[0].id);
+                }
+              } catch (e) {}
+            }
 
-          setSelectedBillboardAds(rotated);
+            setSelectedBillboardAds(rotated);
 
-          rotated.forEach((ad: any) => {
-            fetch("/t/billboards/event", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                billboardId: ad.id,
-                eventType: "impression",
-                sessionId: sid,
-              }),
-            }).catch(() => {});
-          });
-        }
-      })
-      .catch(() => {
-        getBillboardAds(false).then((ads) => {
-          let list = [...(ads || [])];
-          if (list.length === 0) {
-            for (const defAd of DEFAULT_BILLBOARDS) {
-              if (!list.some((u) => u.id === defAd.id || (u.destination_url && u.destination_url === defAd.destination_url))) {
-                list.push(defAd);
-              }
+            // Only record impression for the single top visible billboard
+            if (rotated[0]) {
+              fetch("/t/billboards/event", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  billboardId: rotated[0].id,
+                  eventType: "impression",
+                  sessionId: sid,
+                }),
+              }).catch(() => {});
             }
           }
-          if (typeof window !== "undefined" && list.length > 1) {
-            try {
-              if (lastSeenId) {
-                const idx = list.findIndex((a) => a.id === lastSeenId);
-                if (idx !== -1) {
-                  const nextIdx = (idx + 1) % list.length;
-                  list = [...list.slice(nextIdx), ...list.slice(0, nextIdx)];
+        })
+        .catch(() => {
+          getBillboardAds(false).then((ads) => {
+            let list = [...(ads || [])];
+            if (list.length === 0) {
+              for (const defAd of DEFAULT_BILLBOARDS) {
+                if (!list.some((u) => u.id === defAd.id || (u.destination_url && u.destination_url === defAd.destination_url))) {
+                  list.push(defAd);
                 }
               }
-              if (list[0]) {
-                sessionStorage.setItem("ih_last_billboard_id", list[0].id);
-              }
-            } catch (e) {}
-          }
-          setSelectedBillboardAds(list);
+            }
+            if (typeof window !== "undefined" && list.length > 1) {
+              try {
+                if (lastSeenId) {
+                  const idx = list.findIndex((a) => a.id === lastSeenId);
+                  if (idx !== -1) {
+                    const nextIdx = (idx + 1) % list.length;
+                    list = [...list.slice(nextIdx), ...list.slice(0, nextIdx)];
+                  }
+                }
+                if (list[0]) {
+                  sessionStorage.setItem("ih_last_billboard_id", list[0].id);
+                }
+              } catch (e) {}
+            }
+            setSelectedBillboardAds(list);
+          });
         });
-      });
-  }, []);
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [initialTopHunters]);
 
   useEffect(() => {
     setHasMounted(true);
@@ -549,8 +561,9 @@ export default function HomePageClient({
     }
   };
 
-  // Pulse stats fetch
+  // Pulse stats fetch — only fetch if SSR initial stats are not provided
   useEffect(() => {
+    if (initialPulseStats) return;
     secureApiFetch("/t/stats/pulse")
       .then((resData) => {
         const data = resData?.data || resData;
@@ -566,7 +579,7 @@ export default function HomePageClient({
         }
       })
       .catch(() => {});
-  }, []);
+  }, [initialPulseStats]);
 
   // Upvote Handler
   const handleVote = useCallback(

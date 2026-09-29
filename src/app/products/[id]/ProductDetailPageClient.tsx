@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ExternalLink, Star, LayoutGrid, X, ChevronLeft, ChevronRight } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -26,6 +27,7 @@ import {
   addProductToCollection,
   createCollection,
   calculateProductRank,
+  getSimilarProducts,
   Product,
   Review,
   AlternativeProduct,
@@ -45,20 +47,38 @@ import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
 import { ReportModal } from "@/components/ReportModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWebSocket } from "@/components/WebSocketProvider";
-import ReviewsTab from "./components/ReviewsTab";
-import AlternativesTab from "./components/AlternativesTab";
-import ForumsTab from "./components/ForumsTab";
-import AnalyticsTab from "./components/AnalyticsTab";
-import AIInsightsTab from "./components/AIInsightsTab";
-import DemoVideoTab from "./components/DemoVideoTab";
-import TeamTab from "./components/TeamTab";
-import AwardsTab from "./components/AwardsTab";
 import SidebarPanel from "./components/SidebarPanel";
-import AdminBar from "./components/AdminBar";
-import LaunchCelebration from "./components/LaunchCelebration";
 import ProductMediaSection from "./components/ProductMediaSection";
 import MakersSection from "./components/MakersSection";
 import DiscussionSection from "./components/DiscussionSection";
+
+// Dynamically load secondary tabs on demand to keep initial client bundle ultra-lean
+const ReviewsTab = dynamic(() => import("./components/ReviewsTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading reviews...</div>,
+});
+const AlternativesTab = dynamic(() => import("./components/AlternativesTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading alternatives...</div>,
+});
+const ForumsTab = dynamic(() => import("./components/ForumsTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading discussions...</div>,
+});
+const AnalyticsTab = dynamic(() => import("./components/AnalyticsTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading analytics...</div>,
+});
+const AIInsightsTab = dynamic(() => import("./components/AIInsightsTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading AI insights...</div>,
+});
+const DemoVideoTab = dynamic(() => import("./components/DemoVideoTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading demo video...</div>,
+});
+const TeamTab = dynamic(() => import("./components/TeamTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading team info...</div>,
+});
+const AwardsTab = dynamic(() => import("./components/AwardsTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading awards...</div>,
+});
+const AdminBar = dynamic(() => import("./components/AdminBar"));
+const LaunchCelebration = dynamic(() => import("./components/LaunchCelebration"));
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -94,6 +114,7 @@ export default function ProductDetailPage({
   id,
   initialTab,
   initialProduct,
+  initialSimilarProducts = [],
   initialAllProducts = [],
   initialReviews = [],
   initialAlternatives = [],
@@ -107,6 +128,7 @@ export default function ProductDetailPage({
   id: string;
   initialTab?: string;
   initialProduct: any;
+  initialSimilarProducts?: Product[];
   initialAllProducts?: Product[];
   initialReviews?: Review[];
   initialAlternatives?: AlternativeProduct[];
@@ -118,20 +140,30 @@ export default function ProductDetailPage({
   initialCohortProducts?: Product[];
 }) {
   return (
-    <ProductDetailsContent
-      id={id}
-      initialTab={initialTab}
-      initialProduct={initialProduct}
-      initialAllProducts={initialAllProducts}
-      initialReviews={initialReviews}
-      initialAlternatives={initialAlternatives}
-      initialRank={initialRank}
-      initialRankLabel={initialRankLabel}
-      initialIsTopHunt={initialIsTopHunt}
-      initialPrevProd={initialPrevProd}
-      initialNextProd={initialNextProd}
-      initialCohortProducts={initialCohortProducts}
-    />
+    <Suspense fallback={
+      <div className="min-h-screen bg-background text-foreground flex flex-col pt-[72px] sm:pt-[78px]">
+        <Navbar />
+        <main className="flex-1 w-full min-h-[calc(100vh-84px)] flex items-center justify-center">
+          <CircularLoader label="Loading product details..." size="lg" center={false} />
+        </main>
+      </div>
+    }>
+      <ProductDetailsContent
+        id={id}
+        initialTab={initialTab}
+        initialProduct={initialProduct}
+        initialSimilarProducts={initialSimilarProducts}
+        initialAllProducts={initialAllProducts}
+        initialReviews={initialReviews}
+        initialAlternatives={initialAlternatives}
+        initialRank={initialRank}
+        initialRankLabel={initialRankLabel}
+        initialIsTopHunt={initialIsTopHunt}
+        initialPrevProd={initialPrevProd}
+        initialNextProd={initialNextProd}
+        initialCohortProducts={initialCohortProducts}
+      />
+    </Suspense>
   );
 }
 
@@ -140,6 +172,7 @@ function ProductDetailsContent({
   id,
   initialTab,
   initialProduct,
+  initialSimilarProducts = [],
   initialAllProducts = [],
   initialReviews = [],
   initialAlternatives = [],
@@ -153,6 +186,7 @@ function ProductDetailsContent({
   id: string;
   initialTab?: string;
   initialProduct: any;
+  initialSimilarProducts?: Product[];
   initialAllProducts?: Product[];
   initialReviews?: Review[];
   initialAlternatives?: AlternativeProduct[];
@@ -198,7 +232,7 @@ function ProductDetailsContent({
   const [activeSubTab, setActiveSubTab] = useState<string>(initialResolvedTab);
 
   // TanStack Query Hooks
-  const { data: queryProduct } = useProduct(productId, effectiveUserId || undefined, initialProduct);
+  const { data: queryProduct, isLoading: isQueryLoading, isPending } = useProduct(productId, effectiveUserId || undefined, initialProduct);
   const isAlternativesTab = activeSubTab === "Alternatives";
   const { data: dbAllProducts = [] } = useProducts(effectiveUserId || undefined, initialAllProducts, isAlternativesTab);
   const toggleUpvoteMutation = useToggleUpvoteMutation();
@@ -364,47 +398,14 @@ function ProductDetailsContent({
   }, [allProductsList, dbAllProducts, initialAllProducts]);
 
   const similarProducts = useMemo(() => {
+    if (initialSimilarProducts && initialSimilarProducts.length > 0 && effectiveAllProducts.length === 0) {
+      return initialSimilarProducts;
+    }
     const target = product || initialProduct;
-    if (!target || !effectiveAllProducts || effectiveAllProducts.length === 0) return [];
-    const targetCategory = (target.category || "").trim().toLowerCase();
-    const targetTags = new Set(
-      ((target.tags || []) as any[])
-        .filter((t: any): t is string => typeof t === "string")
-        .map((t: string) => t.trim().toLowerCase())
-    );
-
-    const filtered = effectiveAllProducts.filter(
-      (p: Product) =>
-        p &&
-        p.id !== target.id &&
-        p.id !== "prod-media-1" &&
-        p.id !== "prod-media-2" &&
-        p.id !== "prod-media-3" &&
-        p.name !== "StreamPulse AI" &&
-        p.name !== "VoxWave Studio" &&
-        p.name !== "OmniPlay Pro" &&
-        getProductSlug(p.name) !== getProductSlug(target.name)
-    );
-
-    if (filtered.length === 0) return [];
-
-    const scored = filtered.map(p => {
-      let score = 0;
-      const pCat = (p.category || "").trim().toLowerCase();
-      if (targetCategory && pCat && pCat === targetCategory) score += 5;
-      if (p.tags && Array.isArray(p.tags)) {
-        for (const t of p.tags) {
-          if (typeof t === "string" && targetTags.has(t.trim().toLowerCase())) {
-            score += 2;
-          }
-        }
-      }
-      return { product: p, score };
-    });
-
-    scored.sort((a, b) => b.score - a.score || (b.product.upvotes_count || 0) - (a.product.upvotes_count || 0));
-    return scored.slice(0, 3).map(s => s.product);
-  }, [product, initialProduct, effectiveAllProducts]);
+    if (!target) return initialSimilarProducts || [];
+    if (effectiveAllProducts.length === 0) return initialSimilarProducts || [];
+    return getSimilarProducts(target, effectiveAllProducts, 3);
+  }, [product, initialProduct, effectiveAllProducts, initialSimilarProducts]);
   const [recordedReviewViews, setRecordedReviewViews] = useState<Record<string, boolean>>({});
 
   // ==========================================================================
@@ -564,7 +565,7 @@ function ProductDetailsContent({
   // Derive server-synchronized, reactive rank calculation
   const rankInfo = useMemo(() => {
     const target = product || initialProduct;
-    if (!target) {
+    if (!target || effectiveAllProducts.length <= 1) {
       return {
         rank: initialRank ?? null,
         rankLabel: initialRankLabel || "Day Rank",
@@ -574,9 +575,7 @@ function ProductDetailsContent({
         nextProd: initialNextProd || null,
       };
     }
-    const sourcePool = effectiveAllProducts.length > 0 ? effectiveAllProducts : [];
-
-    const otherProds = sourcePool.filter(p => p.id !== target.id && getProductSlug(p.name) !== getProductSlug(target.name));
+    const otherProds = effectiveAllProducts.filter(p => p.id !== target.id && getProductSlug(p.name) !== getProductSlug(target.name));
     const pool = [target, ...otherProds];
 
     return calculateProductRank(target, pool);
@@ -682,8 +681,8 @@ function ProductDetailsContent({
     return makerTopLevel.length > 0 ? makerTopLevel[0].id : null;
   }, [comments, product?.maker_id]);
 
-  // Always render immediately — no loading gate
-  const isLoading = false;
+  const isProductLoading = !product && (isQueryLoading || isPending);
+  const isLoading = isProductLoading || (!product && (isQueryLoading || isPending || isPageLoading));
 
   const screenshots = product?.screenshots ?? [
     "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&h=450&q=80"
@@ -815,22 +814,17 @@ function ProductDetailsContent({
   }, [product, firstGalleryImage]);
 
 
-  // Show circular loader while data is being fetched (no SSR data available)
-  if (isPageLoading && !product) {
+  // ==========================================================================
+  // LOADING & ERROR STATES
+  // ==========================================================================
+
+  if (isLoading || (isPageLoading && !product)) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center gap-4 pt-[72px] sm:pt-[78px]">
+      <div className="min-h-screen bg-background text-foreground flex flex-col pt-[72px] sm:pt-[78px]">
         <Navbar />
-        <div className="flex flex-col items-center gap-5">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full bg-orange-500/10 flex items-center justify-center">
-              <CircularLoader size="lg" center={false} />
-            </div>
-          </div>
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-sm font-semibold text-foreground">Loading product...</span>
-            <span className="text-xs text-muted-foreground">Fetching the latest data</span>
-          </div>
-        </div>
+        <main className="flex-1 w-full min-h-[calc(100vh-84px)] flex items-center justify-center">
+          <CircularLoader label="Loading product details..." size="lg" center={false} />
+        </main>
       </div>
     );
   }
@@ -1074,11 +1068,11 @@ function ProductDetailsContent({
           <div className="flex justify-between items-center px-1">
             <div>
               {dailyRank !== null ? (
-                <span className="text-xl font-extrabold text-foreground block tracking-tight">#{dailyRank}</span>
+                <span className="text-xl font-extrabold text-foreground block tracking-tight" suppressHydrationWarning>#{dailyRank}</span>
               ) : (
                 <div className="h-6 w-10 bg-muted/60 animate-pulse rounded-md my-0.5" />
               )}
-              <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider">{rankLabel}</span>
+              <span className="text-[10px] text-muted-foreground block font-bold uppercase tracking-wider" suppressHydrationWarning>{rankLabel}</span>
             </div>
 
             {/* Ranking toggle */}

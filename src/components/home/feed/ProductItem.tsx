@@ -92,8 +92,7 @@ const ProductItem = memo(function ProductItem({
         alt={product.name}
         width={48}
         height={48}
-        priority={idx < 8}
-        unoptimized={typeof product.logo_url === 'string' && product.logo_url.startsWith('http')}
+        priority={idx < 6}
         className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
       />
 

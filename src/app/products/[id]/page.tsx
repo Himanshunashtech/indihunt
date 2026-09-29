@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect, RedirectType } from "next/navigation";
-import { getProductById, calculateProductRank, getProductSlug } from "@/lib/supabase";
+import { getProductById, getProducts, calculateProductRank, getProductSlug, getSimilarProducts } from "@/lib/supabase";
 import ProductDetailPageClient from "./ProductDetailPageClient";
 
 export const revalidate = 60; // ISR: Revalidate page data at most every 60 seconds
@@ -58,16 +58,16 @@ export default async function ProductDetailPage({ params }: PageProps) {
     redirect(`/products/${slug}`, RedirectType.replace);
   }
 
-  // Fast server-side rank fallback — full product pool loaded client-side from cache.
-  // Reviews and alternatives are intentionally NOT fetched here — they load lazily
-  // on the client when the respective tab is opened, keeping SSR fast.
-  const rankDetails = calculateProductRank(product, [product]);
+  // Server-side rank and similar products calculation (avoids shipping full 500 products database over the wire)
+  const allProducts = await getProducts().catch(() => []);
+  const rankDetails = calculateProductRank(product, allProducts.length > 0 ? allProducts : [product]);
+  const similarProducts = getSimilarProducts(product, allProducts, 3);
 
   return (
     <ProductDetailPageClient
       id={id}
       initialProduct={product}
-      initialAllProducts={[]}
+      initialSimilarProducts={similarProducts}
       initialReviews={[]}
       initialAlternatives={[]}
       initialRank={rankDetails.rank}
@@ -75,7 +75,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
       initialIsTopHunt={rankDetails.isTopHunt}
       initialPrevProd={rankDetails.prevProd}
       initialNextProd={rankDetails.nextProd}
-      initialCohortProducts={rankDetails.cohortProducts}
     />
   );
 }
+
