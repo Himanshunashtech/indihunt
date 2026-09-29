@@ -12,6 +12,7 @@ import {
   addComment,
   Product,
   Thread,
+  Comment,
   getCachedProducts,
   getCachedThreads,
   getPromotedProducts,
@@ -496,7 +497,7 @@ export function useToggleUpvoteMutation() {
   });
 }
 
-// 6. Add comment mutation
+// 6. Add comment mutation with instant cache update
 export function useAddCommentMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -513,13 +514,57 @@ export function useAddCommentMutation() {
       parentId?: string | null;
       threadId?: string;
     }) => addComment(productId, userId, body, parentId, threadId),
-    onSuccess: (data, variables) => {
+    onSuccess: (newComment, variables) => {
+      if (newComment) {
+        // Instantly update the comments cache tree
+        const addToTree = (tree: Comment[]): Comment[] => {
+          if (!newComment.parent_id) {
+            if (tree.some(c => c.id === newComment.id)) return tree;
+            return [...tree, { ...newComment, replies: newComment.replies || [] }];
+          }
+          return tree.map(c => {
+            if (c.id === newComment.parent_id) {
+              if (c.replies?.some(r => r.id === newComment.id)) return c;
+              return {
+                ...c,
+                replies: [...(c.replies || []), { ...newComment, replies: [] }]
+              };
+            }
+            if (c.replies && c.replies.length > 0) {
+              return {
+                ...c,
+                replies: addToTree(c.replies)
+              };
+            }
+            return c;
+          });
+        };
+
+        queryClient.setQueriesData({ queryKey: ["comments"] }, (old: unknown) => {
+          return addToTree(Array.isArray(old) ? (old as Comment[]) : []);
+        });
+
+        if (variables.productId) {
+          queryClient.setQueriesData({ queryKey: ["product", variables.productId] }, (old: unknown) => {
+            if (!old || typeof old !== "object") return old;
+            return { ...(old as any), comments_count: ((old as any).comments_count || 0) + 1 };
+          });
+          queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
+            if (!Array.isArray(old)) return old;
+            return old.map((p: Product) =>
+              p.id === variables.productId ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
+            );
+          });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["comments"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
       if (variables.productId) {
         queryClient.invalidateQueries({ queryKey: ["product", variables.productId] });
       }
-      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      if (variables.threadId) {
+        queryClient.invalidateQueries({ queryKey: ["threads"] });
+      }
     },
   });
 }

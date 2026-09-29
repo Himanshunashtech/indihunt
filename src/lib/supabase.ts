@@ -949,10 +949,10 @@ async function getCommentsRaw(productId?: string, threadId?: string): Promise<Co
   return [];
 }
 
-export const getComments = withCache('comments', getCommentsRaw);
+export const getComments = getCommentsRaw;
 
 export async function addComment(productId: string | null, userId: string, body: string, parentId?: string | null, threadId?: string): Promise<Comment | null> {
-  clearCache();
+  clearCache('comments');
   const profile: Profile = {
     id: userId,
     username: "explorer",

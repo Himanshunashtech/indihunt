@@ -297,7 +297,7 @@ function ProductDetailsContent({
   const product = localProduct || queryProduct || initialProduct;
 
   // Lazy-load comments only when scrolled near comments or when direct deep-linked
-  const [shouldLoadComments, setShouldLoadComments] = useState<boolean>(false);
+  const [shouldLoadComments, setShouldLoadComments] = useState<boolean>(true);
   const commentsSentinelRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
