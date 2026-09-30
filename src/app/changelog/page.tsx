@@ -95,6 +95,27 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.21.0",
+    date: "September 30, 2026",
+    title: "Full-Stack Performance, Serialization & Database Scalability Overhaul",
+    summary: "Comprehensive architectural optimizations across Next.js SSR, database queries, Redis caching, and middleware. Slashed product detail page HTML payload by 90%+ by removing massive 500-product prop serialization. Eliminated blocking auth network calls in middleware for public routes. Replaced 21-query and 90-query sequential loops in admin dashboard and analytics with single 3-query date-window buckets. Allowed authenticated users to leverage Redis caching for product feeds. Added partial index matching to product queries and non-blocking SCAN to Redis cache invalidation.",
+    icon: Zap,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Performance", "Scalability", "Database", "Redis"],
+    features: [
+      { icon: Zap, text: "Product Detail HTML Payload Slashed: Filtered initialAllProducts down to relevant items, dropping ~1MB of flight data from initial HTML." },
+      { icon: ShieldCheck, text: "Middleware Auth Optimization: Scoped supabase.auth.getUser() to protected routes only, saving 100-200ms TTFB on all public pages." },
+      { icon: Database, text: "Admin Loops Batched: Replaced 21-query dashboard loop and 90-query analytics loop with parallel date-window bucketing (3 queries total)." },
+      { icon: Zap, text: "Authenticated Redis Feed Cache: /t/products now serves cached public products to logged-in users and only checks upvotes for matching IDs." },
+      { icon: Database, text: "PostgreSQL Index Optimization: Added is_deleted = false filter to getProductsRaw to activate composite partial index idx_products_active_created_at_desc." },
+      { icon: Code, text: "React Cache Profile Lookups: Memoized fetchProfileForSeo on /[username] pages to eliminate duplicate queries between metadata and page component." },
+      { icon: Bot, text: "Gemini AI Caching: Added 7-day Redis caching for generated product insights to save API quota and deliver sub-millisecond responses." },
+      { icon: Rocket, text: "Static Server Components: Converted /makers page to static Server Component and removed unsolicited background prefetch storms in dataOrchestrator." }
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.20.0",
     date: "September 30, 2026",
     title: "SSR Performance Overhaul — Eliminates Self HTTP Loopback Roundtrips",

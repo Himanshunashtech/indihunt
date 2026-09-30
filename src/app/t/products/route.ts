@@ -36,85 +36,91 @@ export async function GET(request: NextRequest) {
     const makerId = searchParams.get('makerId') || searchParams.get('maker_id');
 
     const cacheKey = `redis_products_${category || 'all'}_${limit}_${cursor || 'none'}_${isLightweight ? 'lite' : 'full'}`;
+    const canUsePublicCache = !queryStr && !checkUrl && !makerId;
 
-    // Redis cache hit for non-personalized, non-maker, non-search requests
-    if (!userId && !queryStr && !checkUrl && !makerId) {
+    let products: any[] = [];
+
+    // 1. Check Redis cache first for the base product list (even for logged-in users!)
+    if (canUsePublicCache) {
       const cached = await getCachedData<any[]>(cacheKey);
       if (cached && Array.isArray(cached) && cached.length > 0) {
-        return apiSuccessSecure(cached);
+        products = cached;
       }
     }
 
     const supabase = await createServerSupabaseClient();
-    let products: any[] = [];
-    try {
-      const selectFields = isLightweight
-        ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker)'
-        : '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
 
-      let query = supabase
-        .from('products')
-        .select(selectFields)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    // 2. If cache miss, fetch base products from Supabase
+    if (products.length === 0) {
+      try {
+        const selectFields = isLightweight
+          ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker)'
+          : '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
 
-      if (cursor) {
-        query = query.lt('created_at', cursor);
-      }
-
-      if (makerId) {
-        query = query.eq('maker_id', makerId);
-      }
-
-      if (category) {
-        query = query.contains('tags', [category]);
-      }
-
-      if (checkUrl) {
-        const normUrl = normalizeUrl(checkUrl);
-        query = query.or(`website_url.ilike.%${normUrl}%`);
-      } else if (queryStr) {
-        query = query.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
-      }
-
-      const { data: productsData, error } = await query;
-      if (!error && productsData) {
-        products = productsData;
-      } else if (error) {
-        console.warn('[GET /t/products] Primary query error, falling back to simple select:', error.message);
-        let fallbackQuery = supabase
+        let query = supabase
           .from('products')
-          .select(isLightweight ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch' : '*')
+          .select(selectFields)
           .order('created_at', { ascending: false })
           .limit(limit);
 
-        if (cursor) fallbackQuery = fallbackQuery.lt('created_at', cursor);
-        if (makerId) fallbackQuery = fallbackQuery.eq('maker_id', makerId);
-        if (checkUrl) {
-          const normUrl = normalizeUrl(checkUrl);
-          fallbackQuery = fallbackQuery.or(`website_url.ilike.%${normUrl}%`);
-        } else if (queryStr) {
-          fallbackQuery = fallbackQuery.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
+        if (cursor) {
+          query = query.lt('created_at', cursor);
         }
 
-        const { data: fallbackData } = await fallbackQuery;
-        if (fallbackData) products = fallbackData;
-      }
-    } catch (dbErr: any) {
-      console.warn('[GET /t/products] Supabase connection error:', dbErr?.message);
-    }
+        if (makerId) {
+          query = query.eq('maker_id', makerId);
+        }
 
-    const now = new Date();
-    products = (products || []).map((p: any) => {
-      if (p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now) {
-        return { ...p, status: 'live' };
-      }
-      return p;
-    });
+        if (category) {
+          query = query.contains('tags', [category]);
+        }
 
-    if (!userId && !queryStr && !checkUrl && !makerId && products.length > 0) {
-      // 5-min TTL — feed is eventually consistent, saves ~80% Supabase round-trips
-      setCachedData(cacheKey, products, 300);
+        if (checkUrl) {
+          const normUrl = normalizeUrl(checkUrl);
+          query = query.or(`website_url.ilike.%${normUrl}%`);
+        } else if (queryStr) {
+          query = query.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
+        }
+
+        const { data: productsData, error } = await query;
+        if (!error && productsData) {
+          products = productsData;
+        } else if (error) {
+          console.warn('[GET /t/products] Primary query error, falling back to simple select:', error.message);
+          let fallbackQuery = supabase
+            .from('products')
+            .select(isLightweight ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch' : '*')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+          if (cursor) fallbackQuery = fallbackQuery.lt('created_at', cursor);
+          if (makerId) fallbackQuery = fallbackQuery.eq('maker_id', makerId);
+          if (checkUrl) {
+            const normUrl = normalizeUrl(checkUrl);
+            fallbackQuery = fallbackQuery.or(`website_url.ilike.%${normUrl}%`);
+          } else if (queryStr) {
+            fallbackQuery = fallbackQuery.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
+          }
+
+          const { data: fallbackData } = await fallbackQuery;
+          if (fallbackData) products = fallbackData;
+        }
+      } catch (dbErr: any) {
+        console.warn('[GET /t/products] Supabase connection error:', dbErr?.message);
+      }
+
+      const now = new Date();
+      products = (products || []).map((p: any) => {
+        if (p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now) {
+          return { ...p, status: 'live' };
+        }
+        return p;
+      });
+
+      if (canUsePublicCache && products.length > 0) {
+        // Cache base un-personalized products for 5 minutes
+        setCachedData(cacheKey, products, 300);
+      }
     }
 
     if (queryStr) {

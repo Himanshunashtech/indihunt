@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache as reactCache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import ProfilePage from "@/app/profile/page";
 import Script from "next/script";
@@ -19,13 +20,14 @@ interface PageProps {
   }>;
 }
 
-async function fetchProfileForSeo(cleanUsername: string) {
+// React cache memoization ensures generateMetadata and UsernameProfilePage share the single query
+const fetchProfileForSeo = reactCache(async (cleanUsername: string) => {
   try {
     const supabase = getServiceSupabase();
     if (supabase) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id, username, full_name, avatar_url, bio, headline, website_url, twitter_url, github_url, linkedin_url, location, job_title, karma_points, streak_count, is_maker, created_at")
         .ilike("username", cleanUsername)
         .maybeSingle();
 
@@ -35,7 +37,7 @@ async function fetchProfileForSeo(cleanUsername: string) {
     console.error("Error fetching SEO profile:", e);
   }
   return null;
-}
+});
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { username } = await params;
@@ -126,10 +128,12 @@ export default async function UsernameProfilePage({ params }: PageProps) {
       if (supabase) {
         const { data: prods } = await supabase
           .from("products")
-          .select("*, maker:profiles!maker_id(*)")
+          .select("id, name, tagline, logo_url, website_url, category, tags, upvotes_count, comments_count, created_at, status, scheduled_for, maker_id")
           .eq("maker_id", profile.id)
           .order("upvotes_count", { ascending: false });
-        if (prods && prods.length > 0) initialProducts = prods;
+        if (prods && prods.length > 0) {
+          initialProducts = prods.map(p => ({ ...p, maker: profile }));
+        }
       }
     } catch (e) {
       console.error("Error fetching maker products for SSR profile:", e);

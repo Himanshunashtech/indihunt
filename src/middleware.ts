@@ -115,7 +115,16 @@ export async function middleware(request: NextRequest) {
 
   const hasAuthCookie = request.cookies.getAll().some(c => c.name.startsWith('sb-') || c.name.includes('auth-token') || c.name.includes('access_token'));
 
-  if (isAuthCallback || hasAuthCookie) {
+  const isProtectedPath = 
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/my-products') ||
+    pathname.startsWith('/new') ||
+    pathname.startsWith('/notifications') ||
+    pathname.startsWith('/t/account') ||
+    pathname.startsWith('/t/admin');
+
+  if (isAuthCallback || (hasAuthCookie && isProtectedPath)) {
     try {
       const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,

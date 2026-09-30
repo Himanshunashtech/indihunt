@@ -214,58 +214,12 @@ class DataOrchestrator {
 
     private async runUiDeferredStage(guard: () => boolean): Promise<void> {
         if (!guard()) return;
-
-        // Defer secondary resources by 2 seconds so first paint & user interaction are completely unhindered
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        if (!guard()) return;
-
-        // Prefetch secondary feed views like stories and leaderboards
-        await Promise.allSettled([
-            queryClient.prefetchQuery({
-                queryKey: ["stories", ""],
-                queryFn: () => getStories(),
-                staleTime: 5 * 60 * 1000,
-            }),
-            queryClient.prefetchQuery({
-                queryKey: ["karmaLeaderboard"],
-                queryFn: () => getKarmaLeaderboard(20),
-                staleTime: 5 * 60 * 1000,
-            }),
-            queryClient.prefetchQuery({
-                queryKey: ["streakLeaderboard"],
-                queryFn: () => getStreakLeaderboard(20),
-                staleTime: 5 * 60 * 1000,
-            })
-        ]);
-
-        // Prefetch product logo/screenshot images in the browser background
-        const productsList = queryClient.getQueryData<Product[]>(["products", this.userId === 'guest' ? "guest" : (this.userId || "guest")]);
-        if (productsList && productsList.length > 0 && typeof window !== 'undefined') {
-            const urlsToPrefetch = productsList
-                .slice(0, 10)
-                .map(p => p.logo_url)
-                .filter(Boolean);
-
-            if (urlsToPrefetch.length > 0) {
-                urlsToPrefetch.forEach(url => {
-                    const img = new window.Image();
-                    img.src = url;
-                });
-            }
-        }
+        // Secondary views are loaded on-demand when the user navigates, preserving bandwidth on mobile/cellular
     }
 
     private async runBackgroundStage(guard: () => boolean): Promise<void> {
         if (!guard()) return;
-        // Warm up cache for "products-best" if they navigate to best products page
-        await queryClient.prefetchQuery({
-            queryKey: ["products-best", "all", "all", undefined, undefined, undefined],
-            queryFn: async () => {
-                const dataList = await getProducts();
-                return dataList || [];
-            },
-            staleTime: 5 * 60 * 1000,
-        });
+        // Auxiliary feeds loaded on-demand, preventing redundant cold-start API roundtrips
     }
 }
 

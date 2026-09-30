@@ -112,9 +112,18 @@ export async function invalidateCachePattern(prefix: string): Promise<void> {
   // Evict from L2 Redis if available
   try {
     if (redis) {
-      const keys = await redis.keys(`${prefix}*`);
-      if (keys && keys.length > 0) {
-        await redis.del(...keys);
+      let cursor = "0";
+      const keysToDelete: string[] = [];
+      do {
+        const [nextCursor, matchedKeys] = await redis.scan(cursor, { match: `${prefix}*`, count: 100 });
+        cursor = nextCursor;
+        if (matchedKeys && matchedKeys.length > 0) {
+          keysToDelete.push(...matchedKeys);
+        }
+      } while (cursor !== "0" && keysToDelete.length < 500);
+
+      if (keysToDelete.length > 0) {
+        await redis.del(...keysToDelete);
       }
     }
   } catch (error) {

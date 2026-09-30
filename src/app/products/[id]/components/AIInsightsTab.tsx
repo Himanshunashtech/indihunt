@@ -40,6 +40,12 @@ export default function AIInsightsTab({ product, setProduct }: AIInsightsTabProp
                 const { getAISummaryForProduct } = await import("@/lib/gemini");
                 const sum = await getAISummaryForProduct(product.name, product.tagline, product.description || "", product.tags || []);
                 setProduct({ ...product, ai_summary: sum });
+                if (product.id) {
+                  const { supabase } = await import("@/lib/supabase");
+                  if (supabase) {
+                    supabase.from("products").update({ ai_summary: sum }).eq("id", product.id).then(() => {});
+                  }
+                }
               }}
               className="px-5 py-2.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 font-bold text-xs rounded-xl transition-all cursor-pointer"
             >

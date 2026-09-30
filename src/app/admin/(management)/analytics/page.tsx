@@ -65,29 +65,54 @@ async function PlatformOverview({ range }: { range: string }) {
 async function DailyGrowthChart({ range }: { range: string }) {
   const supabase = await createServerSupabase();
   const numDays = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : 30;
+  const windowStart = new Date();
+  windowStart.setDate(windowStart.getDate() - numDays);
+  windowStart.setHours(0, 0, 0, 0);
+
+  // Batched 3-query fetch across full range instead of 90-270 sequential queries
+  const [profilesRes, productsRes, upvotesRes] = await Promise.all([
+    supabase.from("profiles").select("created_at").gte("created_at", windowStart.toISOString()),
+    supabase.from("products").select("created_at").gte("created_at", windowStart.toISOString()),
+    supabase.from("upvotes").select("created_at").gte("created_at", windowStart.toISOString()),
+  ]);
+
+  const userCountsByDay = new Map<string, number>();
+  (profilesRes.data || []).forEach((r: { created_at: string }) => {
+    if (r.created_at) {
+      const d = new Date(r.created_at).toISOString().split('T')[0];
+      userCountsByDay.set(d, (userCountsByDay.get(d) || 0) + 1);
+    }
+  });
+
+  const productCountsByDay = new Map<string, number>();
+  (productsRes.data || []).forEach((r: { created_at: string }) => {
+    if (r.created_at) {
+      const d = new Date(r.created_at).toISOString().split('T')[0];
+      productCountsByDay.set(d, (productCountsByDay.get(d) || 0) + 1);
+    }
+  });
+
+  const upvoteCountsByDay = new Map<string, number>();
+  (upvotesRes.data || []).forEach((r: { created_at: string }) => {
+    if (r.created_at) {
+      const d = new Date(r.created_at).toISOString().split('T')[0];
+      upvoteCountsByDay.set(d, (upvoteCountsByDay.get(d) || 0) + 1);
+    }
+  });
+
   const days: { label: string; users: number; products: number; upvotes: number }[] = [];
 
   for (let i = numDays - 1; i >= 0; i--) {
     const dayStart = new Date();
     dayStart.setDate(dayStart.getDate() - i);
     dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
-
-    const [{ count: users }, { count: products }, { count: upvotes }] = await Promise.all([
-      supabase.from("profiles").select("*", { count: "exact", head: true })
-        .gte("created_at", dayStart.toISOString()).lt("created_at", dayEnd.toISOString()),
-      supabase.from("products").select("*", { count: "exact", head: true })
-        .gte("created_at", dayStart.toISOString()).lt("created_at", dayEnd.toISOString()),
-      supabase.from("upvotes").select("*", { count: "exact", head: true })
-        .gte("created_at", dayStart.toISOString()).lt("created_at", dayEnd.toISOString()),
-    ]);
+    const dayKey = dayStart.toISOString().split('T')[0];
 
     days.push({
       label: dayStart.toLocaleDateString("en-IN", { month: "short", day: "numeric" }),
-      users: users ?? 0,
-      products: products ?? 0,
-      upvotes: upvotes ?? 0,
+      users: userCountsByDay.get(dayKey) || 0,
+      products: productCountsByDay.get(dayKey) || 0,
+      upvotes: upvoteCountsByDay.get(dayKey) || 0,
     });
   }
 

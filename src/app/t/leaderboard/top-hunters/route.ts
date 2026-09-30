@@ -34,12 +34,19 @@ export async function GET(request: NextRequest) {
     try {
       const supabase = await createServerSupabaseClient();
 
-      // 1. Fetch products with maker profile join
-      const { data: dbProducts, error: prodErr } = await supabase
+      // 1. Fetch top active products with index-backed filter and ordering
+      let prodQuery = supabase
         .from('products')
         .select('id, name, maker_id, upvotes_count, comments_count, featured, quality_score, created_at, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, karma_points, is_verified)')
-        .order('created_at', { ascending: false })
-        .limit(1000);
+        .eq('is_deleted', false)
+        .order('upvotes_count', { ascending: false })
+        .limit(200);
+
+      if (timeLimitMs > 0) {
+        prodQuery = prodQuery.gte('created_at', new Date(now - timeLimitMs).toISOString());
+      }
+
+      const { data: dbProducts, error: prodErr } = await prodQuery;
 
       if (!prodErr && dbProducts && dbProducts.length > 0) {
         dbProducts.forEach((p: any) => {

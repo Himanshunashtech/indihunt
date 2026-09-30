@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
+import crypto from 'crypto';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { getCachedData, setCachedData } from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +13,14 @@ export async function POST(request: NextRequest) {
 
     if (!prompt) {
       return apiFailure('Prompt is required', 400);
+    }
+
+    // Check Redis cache for identical prompt (saves duplicate Gemini calls and token quota)
+    const promptHash = crypto.createHash('md5').update(prompt.trim()).digest('hex');
+    const cacheKey = `ai_gen_${promptHash}`;
+    const cached = await getCachedData<{ text: string }>(cacheKey);
+    if (cached && cached.text) {
+      return apiSuccessSecure(cached);
     }
 
     if (!GEMINI_API_KEY) {
@@ -36,6 +46,11 @@ export async function POST(request: NextRequest) {
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+
+    if (text) {
+      // Cache generated AI text for 7 days
+      setCachedData(cacheKey, { text }, 7 * 24 * 60 * 60).catch(() => {});
+    }
 
     return apiSuccessSecure({ text });
   } catch (error: any) {

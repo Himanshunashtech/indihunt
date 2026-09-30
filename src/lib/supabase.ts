@@ -745,6 +745,7 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
       const { data: dbProducts } = await supabase
         .from('products')
         .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
       if (dbProducts && dbProducts.length > 0) {
@@ -1612,7 +1613,8 @@ async function getThreadsRaw(currentUserId?: string): Promise<Thread[]> {
       const { data: dbThreads } = await supabase
         .from('threads')
         .select('*, author:profiles!author_id(*)')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (dbThreads && dbThreads.length > 0) {
         if (!currentUserId) {

@@ -80,6 +80,11 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const rankDetails = calculateProductRank(product, allProducts.length > 0 ? allProducts : [product]);
   const similarProducts = getSimilarProducts(product, allProducts, 3);
 
+  // Sliced relevant dataset (maker's products + similar) so HTML flight payload stays ~30KB instead of 1MB
+  const relevantProducts = allProducts.filter(
+    p => p.id === product.id || (product.maker_id && p.maker_id === product.maker_id) || similarProducts.some(s => s.id === p.id)
+  );
+
   return (
     <ProductDetailPageClient
       id={id}
@@ -88,7 +93,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
       initialComments={initialComments}
       initialReviews={[]}
       initialAlternatives={[]}
-      initialAllProducts={allProducts}
+      initialAllProducts={relevantProducts}
       initialRank={rankDetails.rank}
       initialRankLabel={rankDetails.rankLabel}
       initialIsTopHunt={rankDetails.isTopHunt}
@@ -97,3 +102,4 @@ export default async function ProductDetailPage({ params }: PageProps) {
     />
   );
 }
+
