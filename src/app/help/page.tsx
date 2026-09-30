@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import { useRouter } from "next/navigation";
 import {
@@ -761,11 +762,11 @@ function IndiBot({ onClose }: { onClose: () => void }) {
                     onClick={() => handleAction(`select_product:${prod.id}`, prod.name)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-muted border border-border hover:border-orange-500/30 hover:bg-orange-500/5 transition-all text-left group"
                   >
-                    <img
+                    <Image
                       src={prod.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=80&q=80"}
                       alt={prod.name}
                       className="w-9 h-9 rounded-xl object-cover border border-border flex-shrink-0"
-                    />
+                    width={36} height={36} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-foreground truncate">{prod.name}</p>
                       <p className="text-[10px] text-muted-foreground truncate">{prod.tagline || "No tagline"}</p>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 
 const UNSPLASH_404_PHOTOS = [
@@ -33,11 +34,11 @@ export default function NotFound() {
       <div className="relative w-full mt-14 sm:mt-16 min-h-[calc(100vh-3.5rem)] sm:min-h-[calc(100vh-4rem)] flex flex-col justify-center overflow-hidden">
         {/* Background Image — Full visibility starting below top navbar */}
         <div className="absolute inset-0 z-0">
-          <img
+          <Image
             src={activeImage}
             alt="404 Background"
             className="w-full h-full object-cover transition-opacity duration-700"
-          />
+          width={48} height={48} />
           {/* Subtle vignette gradient overlay */}
           <div className="absolute inset-0 bg-black/20 dark:bg-black/40" />
         </div>

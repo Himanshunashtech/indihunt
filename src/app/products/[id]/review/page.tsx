@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -269,7 +270,7 @@ export default function ReviewWizardPage() {
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 rounded-2xl border border-border/80 bg-muted overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm">
                 {product.logo_url ? (
-                  <img src={product.logo_url} alt={product.name} className="w-full h-full object-cover" />
+                  <Image src={product.logo_url} alt={product.name} className="w-full h-full object-cover" width={48} height={48} />
                 ) : (
                   <span className="text-lg font-semibold text-orange-500">{product.name.charAt(0)}</span>
                 )}
@@ -539,7 +540,7 @@ export default function ReviewWizardPage() {
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg overflow-hidden border border-border bg-card flex items-center justify-center flex-shrink-0">
                             {selectedCompareProduct.logo_url ? (
-                              <img src={selectedCompareProduct.logo_url} alt="" className="w-full h-full object-cover" />
+                              <Image src={selectedCompareProduct.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                             ) : (
                               <span className="text-xs font-semibold text-orange-500">{selectedCompareProduct.name.charAt(0)}</span>
                             )}
@@ -586,7 +587,7 @@ export default function ReviewWizardPage() {
                                 >
                                   <div className="w-8 h-8 rounded-lg overflow-hidden border border-border bg-muted flex items-center justify-center flex-shrink-0">
                                     {p.logo_url ? (
-                                      <img src={p.logo_url} alt={p.name} className="w-full h-full object-cover" />
+                                      <Image src={p.logo_url} alt={p.name} className="w-full h-full object-cover" width={48} height={48} />
                                     ) : (
                                       <span className="text-xs font-semibold text-orange-500">{p.name.charAt(0)}</span>
                                     )}

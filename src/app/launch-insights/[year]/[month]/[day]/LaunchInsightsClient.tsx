@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import {
@@ -394,7 +395,7 @@ export default function LaunchInsightsClient({
                         <span className="text-[10px] text-muted-foreground w-4 font-mono">{idx + 1}</span>
                         <div className="w-5 h-5 rounded-full overflow-hidden relative flex-shrink-0 border border-border/50 bg-muted flex items-center justify-center">
                           {p.logo_url ? (
-                            <img src={p.logo_url} alt="" className="object-cover w-full h-full" />
+                            <Image src={p.logo_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                           ) : (
                             <span className="text-[9px] font-semibold" style={{ color }}>{p.name.charAt(0)}</span>
                           )}
@@ -498,7 +499,7 @@ export default function LaunchInsightsClient({
                         </div>
                         <div className="w-5 h-5 rounded-full overflow-hidden relative flex-shrink-0 border border-border/50 bg-muted flex items-center justify-center">
                           {p.logo_url ? (
-                            <img src={p.logo_url} alt="" className="object-cover w-full h-full" />
+                            <Image src={p.logo_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                           ) : (
                             <span className="text-[9px] font-semibold" style={{ color }}>{p.name.charAt(0)}</span>
                           )}
@@ -534,7 +535,7 @@ export default function LaunchInsightsClient({
               </div>
               <div className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-lg border border-border">
                 <div className="w-4 h-4 rounded-md overflow-hidden relative border border-border/50">
-                  <img src={data.mostPoints.product.logo_url} alt="" className="object-cover w-full h-full" />
+                  <Image src={data.mostPoints.product.logo_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                 </div>
                 <span className="text-[10px] font-semibold">{data.mostPoints.product.name}</span>
               </div>
@@ -552,7 +553,7 @@ export default function LaunchInsightsClient({
               </div>
               <div className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-lg border border-border">
                 <div className="w-4 h-4 rounded-md overflow-hidden relative border border-border/50">
-                  <img src={data.mostComments.product.logo_url} alt="" className="object-cover w-full h-full" />
+                  <Image src={data.mostComments.product.logo_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                 </div>
                 <span className="text-[10px] font-semibold">{data.mostComments.product.name}</span>
               </div>
@@ -572,7 +573,7 @@ export default function LaunchInsightsClient({
               {data.mostPopularTag.products.map(p => (
                 <div key={p.id} className="flex items-center gap-1 bg-muted px-2 py-1 rounded-lg border border-border">
                   <div className="w-3.5 h-3.5 rounded-sm overflow-hidden flex-shrink-0">
-                    <img src={p.logo_url} alt="" className="w-full h-full object-cover" />
+                    <Image src={p.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                   </div>
                   <span className="text-[9px] font-bold">{p.name}</span>
                 </div>
@@ -590,7 +591,7 @@ export default function LaunchInsightsClient({
             </div>
             <div className="flex items-center gap-1.5 bg-muted px-3 py-1.5 rounded-xl border border-border">
               <div className="w-4 h-4 rounded overflow-hidden">
-                <img src={data.topComment.product.logo_url} alt="" className="w-full h-full object-cover" />
+                <Image src={data.topComment.product.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
               </div>
               <span className="text-xs font-bold text-foreground">{data.topComment.product.name}</span>
             </div>
@@ -600,7 +601,7 @@ export default function LaunchInsightsClient({
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full overflow-hidden border border-border bg-muted flex items-center justify-center">
                 {data.topComment.user.avatar_url ? (
-                  <img src={data.topComment.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                  <Image src={data.topComment.user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                 ) : (
                   <span className="text-xs font-semibold text-orange-500">{data.topComment.user.full_name?.charAt(0) || "U"}</span>
                 )}

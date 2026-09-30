@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { AdminSearch } from "@/app/admin/_components/AdminSearch";
@@ -49,7 +50,7 @@ async function CommentsTable({ page, limit, q }: { page: number; limit: number; 
                       <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-slate-900 font-semibold text-xs shrink-0 overflow-hidden">
                         {user?.avatar_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                          <Image src={user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                         ) : (
                           (user?.username?.charAt(0) || "U").toUpperCase()
                         )}

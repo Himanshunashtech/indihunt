@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Search } from "lucide-react";
 
 interface AdminHeaderProps {
@@ -47,11 +48,11 @@ export function AdminHeader({ adminProfile }: AdminHeaderProps) {
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-slate-900 font-semibold text-sm overflow-hidden border border-slate-200 shrink-0">
               {adminProfile.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   src={adminProfile.avatar_url}
                   alt=""
                   className="w-full h-full object-cover"
-                />
+                width={48} height={48} />
               ) : (
                 (adminProfile.full_name?.charAt(0) || "A").toUpperCase()
               )}

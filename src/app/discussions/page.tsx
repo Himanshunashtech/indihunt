@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   MessageSquare,
   ArrowUp,
@@ -595,11 +596,11 @@ export default function DiscussionsPage() {
                           <span className="inline-flex items-center gap-1.5 font-medium text-foreground/80 hover:text-foreground hover:underline transition-colors cursor-pointer">
                             <div className="w-4 h-4 rounded-full overflow-hidden bg-muted border border-border/80 flex-shrink-0" style={{ width: "16px", height: "16px" }}>
                               {thread.user?.avatar_url ? (
-                                <img
+                                <Image
                                   src={thread.user.avatar_url}
                                   alt={thread.user.full_name || thread.user.username || "User"}
                                   className="w-full h-full object-cover"
-                                />
+                                width={48} height={48} />
                               ) : (
                                 <div className="w-full h-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-[8px] font-semibold text-white uppercase">
                                   {(thread.user?.full_name?.charAt(0) || thread.user?.username?.charAt(0) || "M")}

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowUp, Sparkles, ExternalLink, ChevronRight, Award, Plus } from "lucide-react";
 import { AlternativeProduct, Product, addAlternative, getAlternatives, toggleAlternativeVote, getProductSlug, getCachedProducts } from "@/lib/supabase";
 import { useAppDispatch, setAuthModalOpen } from "@/lib/store";
@@ -115,7 +116,7 @@ export default function AlternativesTab({
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden bg-muted border border-border flex items-center justify-center flex-shrink-0">
               {product?.logo_url ? (
-                <img src={product.logo_url} alt={productName} className="w-full h-full object-cover" />
+                <Image src={product.logo_url} alt={productName} className="w-full h-full object-cover" width={48} height={48} />
               ) : (
                 <span className="font-bold text-orange-500">{productName.charAt(0)}</span>
               )}
@@ -170,7 +171,7 @@ export default function AlternativesTab({
                   <div className="flex items-start gap-3.5">
                     <div className="w-11 h-11 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center font-bold text-orange-500">
                       {alt.logo_url ? (
-                        <img src={alt.logo_url} alt={alt.name} className="w-full h-full object-cover" />
+                        <Image src={alt.logo_url} alt={alt.name} className="w-full h-full object-cover" width={48} height={48} />
                       ) : (
                         alt.name.charAt(0)
                       )}

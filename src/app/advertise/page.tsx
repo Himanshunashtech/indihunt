@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   ArrowLeft, 
   Rocket, 
@@ -380,7 +381,7 @@ export default function AdvertisePage() {
                     <div key={idx} className={`absolute ${pos} group`}>
                       <div className="w-full h-full rounded-full overflow-hidden border-2 border-border shadow-lg transform hover:scale-110 hover:-translate-y-1 transition-all duration-300 bg-muted flex items-center justify-center">
                         {maker.avatar_url ? (
-                          <img src={maker.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+                          <Image src={maker.avatar_url} alt={displayName} className="w-full h-full object-cover" width={48} height={48} />
                         ) : (
                           <span className="font-bold text-xs text-orange-500">{initials}</span>
                         )}
@@ -421,7 +422,7 @@ export default function AdvertisePage() {
                   >
                     <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-500 font-bold text-xs flex items-center justify-center flex-shrink-0 overflow-hidden border border-orange-500/20">
                       {prod.logo_url ? (
-                        <img src={prod.logo_url} alt={prod.name} className="w-full h-full object-cover" />
+                        <Image src={prod.logo_url} alt={prod.name} className="w-full h-full object-cover" width={48} height={48} />
                       ) : (
                         (prod.name || "P").substring(0, 2).toUpperCase()
                       )}
@@ -507,7 +508,7 @@ export default function AdvertisePage() {
                   <div className="bg-card border border-border p-4 rounded-xl flex items-center gap-3.5 shadow-sm">
                     <div className="w-11 h-11 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 font-bold text-sm overflow-hidden flex-shrink-0">
                       {sampleProduct.logo_url ? (
-                        <img src={sampleProduct.logo_url} alt={sampleProduct.name} className="w-full h-full object-cover" />
+                        <Image src={sampleProduct.logo_url} alt={sampleProduct.name} className="w-full h-full object-cover" width={48} height={48} />
                       ) : (
                         (sampleProduct.name || "P").substring(0, 2).toUpperCase()
                       )}
@@ -575,7 +576,7 @@ export default function AdvertisePage() {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0">
                         {samplePromoted.logo_url ? (
-                          <img src={samplePromoted.logo_url} alt={samplePromoted.name} className="w-full h-full object-cover rounded-xl" />
+                          <Image src={samplePromoted.logo_url} alt={samplePromoted.name} className="w-full h-full object-cover rounded-xl" width={48} height={48} />
                         ) : (
                           (samplePromoted.name || "P").substring(0, 2).toUpperCase()
                         )}
@@ -617,11 +618,11 @@ export default function AdvertisePage() {
                 </div>
                 <div className="lg:col-span-6 p-4 bg-muted/30 border border-border rounded-2xl">
                   <div className="block relative w-full aspect-[4/1] rounded-xl overflow-hidden border border-border shadow-sm bg-muted/50 group">
-                    <img 
+                    <Image 
                       src={sampleBillboard?.image_url || "/supabase_ad_banner.webp"} 
                       alt="Billboard Ad Preview" 
                       className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform duration-500" 
-                    />
+                    width={48} height={48} />
                     <div className="absolute top-2 right-2 bg-orange-500 text-white text-[8px] sm:text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-white/20 shadow">
                       Promoted Banner
                     </div>

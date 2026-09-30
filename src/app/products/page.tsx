@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -680,11 +681,11 @@ function ProductsContent() {
                         <div className="flex items-start gap-4 min-w-0 flex-1">
                           {/* Logo */}
                           <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-muted border border-border/80 flex-shrink-0 flex items-center justify-center p-0.5 shadow-xs">
-                            <img
+                            <Image
                               src={product.logo_url}
                               alt={product.name}
                               className="object-cover rounded-xl group-hover:scale-105 transition-transform w-full h-full"
-                            />
+                            width={48} height={48} />
                           </div>
 
                           {/* Product Info */}

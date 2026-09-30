@@ -16,17 +16,29 @@ export async function GET(request: NextRequest) {
       return apiFailure('productId or threadId is required', 400);
     }
 
-    const cacheKey = productId ? `comments:product:${productId}` : `comments:thread:${threadId}`;
+    let targetProductId = productId;
+    const supabase = await createServerSupabaseClient();
+
+    if (productId) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
+      if (!isUUID) {
+        const { data: prod } = await supabase.from('products').select('id').ilike('name', productId.replace(/-/g, ' ')).maybeSingle();
+        if (prod?.id) {
+          targetProductId = prod.id;
+        }
+      }
+    }
+
+    const cacheKey = targetProductId ? `comments:product:${targetProductId}` : `comments:thread:${threadId}`;
     const cached = await getCachedData<any[]>(cacheKey);
     if (cached) {
       return apiSuccessSecure(cached);
     }
 
-    const supabase = await createServerSupabaseClient();
     let query = supabase.from('comments').select('*, user:profiles(id, username, full_name, avatar_url, headline, karma_points, is_maker)');
 
-    if (productId) {
-      query = query.eq('product_id', productId);
+    if (targetProductId) {
+      query = query.eq('product_id', targetProductId);
     } else if (threadId) {
       query = query.eq('thread_id', threadId);
     }
@@ -38,6 +50,9 @@ export async function GET(request: NextRequest) {
 
     const list = comments || [];
     await setCachedData(cacheKey, list, 600);
+    if (productId && productId !== targetProductId) {
+      await setCachedData(`comments:product:${productId}`, list, 600);
+    }
 
     return apiSuccessSecure(list);
   } catch (error: any) {
@@ -50,7 +65,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { productId, product_id, userId, user_id, body: commentBody, parentId, parent_id, threadId, thread_id } = body;
 
-    const pId = productId || product_id;
+    let pId = productId || product_id;
     const tId = threadId || thread_id;
     const uId = userId || user_id;
     const parId = parentId || parent_id;
@@ -66,6 +81,17 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createServerSupabaseClient();
+
+    if (pId) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pId);
+      if (!isUUID) {
+        const { data: prod } = await supabase.from('products').select('id').ilike('name', pId.replace(/-/g, ' ')).maybeSingle();
+        if (prod?.id) {
+          pId = prod.id;
+        }
+      }
+    }
+
     const { data: newComment, error } = await supabase
       .from('comments')
       .insert({
@@ -83,13 +109,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (pId) {
-      const { data: prod } = await supabase.from('products').select('comments_count').eq('id', pId).single();
+      const { data: prod } = await supabase.from('products').select('id, name, comments_count').eq('id', pId).maybeSingle();
       if (prod) {
         await supabase.from('products').update({ comments_count: (prod.comments_count || 0) + 1 }).eq('id', pId);
+        await invalidateCache(`comments:product:${pId}`);
+        const { getProductSlug } = await import('@/lib/supabase');
+        const slug = getProductSlug(prod.name);
+        if (slug) {
+          await invalidateCache(`comments:product:${slug}`);
+        }
+      } else {
+        await invalidateCache(`comments:product:${pId}`);
       }
-      await invalidateCache(`comments:product:${pId}`);
     } else if (tId) {
-      const { data: thr } = await supabase.from('threads').select('comments_count').eq('id', tId).single();
+      const { data: thr } = await supabase.from('threads').select('comments_count').eq('id', tId).maybeSingle();
       if (thr) {
         await supabase.from('threads').update({ comments_count: (thr.comments_count || 0) + 1 }).eq('id', tId);
       }

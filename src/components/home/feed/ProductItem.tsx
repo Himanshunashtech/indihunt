@@ -73,19 +73,44 @@ const ProductItem = memo(function ProductItem({
   const productTags = tagList.slice(0, 3);
   const displayRank = idx + 1;
 
+  const websiteUrl = product.website_url ? (() => {
+    try {
+      let u = product.website_url.trim();
+      if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+      const parsed = new URL(u);
+      parsed.searchParams.set("ref", "indihunt");
+      return parsed.toString();
+    } catch {
+      return product.website_url.includes("?")
+        ? `${product.website_url}&ref=indihunt`
+        : `${product.website_url}?ref=indihunt`;
+    }
+  })() : null;
+
+  const directPromotedUrl = product.is_promoted && websiteUrl ? websiteUrl : null;
+
   return (
     <section
       id={idx === 0 ? "first-product-card" : undefined}
-      onMouseEnter={() => router.prefetch(`/products/${slug}`)}
-      onFocus={() => router.prefetch(`/products/${slug}`)}
+      onMouseEnter={() => {
+        if (!directPromotedUrl) router.prefetch(`/products/${slug}`);
+      }}
+      onFocus={() => {
+        if (!directPromotedUrl) router.prefetch(`/products/${slug}`);
+      }}
       onClick={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest("a") || target.closest("button")) {
           return;
         }
+        if (directPromotedUrl) {
+          window.open(directPromotedUrl, "_blank", "noopener,noreferrer");
+          return;
+        }
         router.push(`/products/${slug}`);
       }}
       className="group relative isolate flex flex-row items-start gap-4 rounded-xl px-0 py-4 transition-all duration-300 ease-out sm:-mx-4 sm:p-4 hover:sm:bg-muted/60 cursor-pointer"
+      suppressHydrationWarning
     >
       <Image
         src={product.logo_url}
@@ -96,29 +121,34 @@ const ProductItem = memo(function ProductItem({
         className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold text-foreground/90 transition-all duration-300 sm:flex-nowrap group-hover:sm:text-[#ff5733]">
-          <Link
-            href={`/products/${slug}`}
-            className="hover:underline font-semibold"
-          >
-            {displayRank}. {product.name}
-          </Link>
-          {product.website_url && (
+      <div className="flex min-w-0 flex-1 flex-col" suppressHydrationWarning>
+        <span suppressHydrationWarning className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold text-foreground/90 transition-all duration-300 sm:flex-nowrap group-hover:sm:text-[#ff5733]">
+          {directPromotedUrl ? (
             <a
-              href={(() => {
-                try {
-                  let u = product.website_url.trim();
-                  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-                  const parsed = new URL(u);
-                  parsed.searchParams.set("ref", "indihunt");
-                  return parsed.toString();
-                } catch {
-                  return product.website_url.includes("?")
-                    ? `${product.website_url}&ref=indihunt`
-                    : `${product.website_url}?ref=indihunt`;
-                }
-              })()}
+              href={directPromotedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="hover:underline font-semibold"
+            >
+              {displayRank}. {product.name}
+            </a>
+          ) : (
+            <Link
+              href={`/products/${slug}`}
+              className="hover:underline font-semibold"
+            >
+              {displayRank}. {product.name}
+            </Link>
+          )}
+          {product.is_promoted && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-200/80 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 px-2 py-0.5 rounded-md transition-colors shadow-2xs">
+              Promoted
+            </span>
+          )}
+          {websiteUrl && (
+            <a
+              href={websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -161,11 +191,6 @@ const ProductItem = memo(function ProductItem({
 
         <div className="mt-1 hidden sm:flex flex-col items-start gap-2 *:z-10">
           <div className="flex flex-wrap items-center gap-2">
-            {product.is_promoted && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-200/80 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 px-2 py-0.5 rounded-md transition-colors shadow-2xs">
-                Promoted
-              </span>
-            )}
             {productTags.map((tag) => (
               <Link
                 key={tag}

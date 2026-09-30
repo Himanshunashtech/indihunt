@@ -740,7 +740,7 @@ function ProfileContent({
           <div className="relative flex-shrink-0">
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-4xl font-medium text-white shadow-md overflow-hidden border-2 border-border">
               {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="Profile Avatar" className="w-full h-full object-cover" />
+                <Image src={profile.avatar_url} alt="Profile Avatar" className="w-full h-full object-cover" width={48} height={48} />
               ) : (
                 profile?.full_name?.charAt(0).toUpperCase() || "U"
               )}
@@ -909,11 +909,11 @@ function ProfileContent({
                     >
                       {story.image_url && (
                         <div className="w-full h-32 overflow-hidden bg-muted relative">
-                          <img
+                          <Image
                             src={story.image_url}
                             alt=""
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
+                          width={48} height={48} />
                         </div>
                       )}
                       <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
@@ -1070,7 +1070,7 @@ function ProfileContent({
                       {/* Logo / Marker */}
                       <div className="absolute -left-[41px] top-0 w-8 h-8 rounded-xl overflow-hidden bg-muted border-2 border-background shadow-xs flex-shrink-0 flex items-center justify-center">
                         {p.logo_url ? (
-                          <img src={p.logo_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          <Image src={p.logo_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" width={48} height={48} />
                         ) : (
                           <span className="text-xs font-semibold text-[#ff5733]">{p.name.slice(0, 1)}</span>
                         )}
@@ -1152,7 +1152,7 @@ function ProfileContent({
                     <div key={act.id} className="flex gap-4 items-start p-4 bg-white dark:bg-card border border-border shadow-xs rounded-2xl">
                       <div className="w-10 h-10 rounded-xl overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center font-bold text-sm border border-border">
                         {act.logo ? (
-                          <img src={act.logo} alt="" className="w-full h-full object-cover" />
+                          <Image src={act.logo} alt="" className="w-full h-full object-cover" width={48} height={48} />
                         ) : (
                           "P"
                         )}
@@ -1191,7 +1191,7 @@ function ProfileContent({
                     >
                       <div className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-sm text-orange-500 flex-shrink-0">
                         {prod.logo_url ? (
-                          <img src={prod.logo_url} alt="" className="w-full h-full object-cover" />
+                          <Image src={prod.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                         ) : (
                           prod.name.charAt(0)
                         )}
@@ -1223,7 +1223,7 @@ function ProfileContent({
                     >
                       <div className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-sm text-orange-500 flex-shrink-0">
                         {prod.logo_url ? (
-                          <img src={prod.logo_url} alt="" className="w-full h-full object-cover" />
+                          <Image src={prod.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                         ) : (
                           prod.name.charAt(0)
                         )}
@@ -1296,7 +1296,7 @@ function ProfileContent({
                                 className="flex items-center gap-2.5 min-w-0 flex-1"
                               >
                                 <div className="w-8 h-8 rounded-lg overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center font-semibold text-xs">
-                                  {prod.logo_url ? <img src={prod.logo_url} className="w-full h-full object-cover" /> : prod.name.charAt(0)}
+                                  {prod.logo_url ? <Image src={prod.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} /> : prod.name.charAt(0)}
                                 </div>
                                 <span className="text-[11px] font-semibold text-foreground truncate">{prod.name}</span>
                               </Link>
@@ -1426,7 +1426,7 @@ function ProfileContent({
                       <Link href={`/products/${prod.id}`} className="flex items-center gap-3 overflow-hidden mr-2">
                         <div className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-sm text-orange-500 flex-shrink-0">
                           {prod.logo_url ? (
-                            <img src={prod.logo_url} alt="" className="w-full h-full object-cover" />
+                            <Image src={prod.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                           ) : (
                             prod.name.charAt(0)
                           )}
@@ -1745,11 +1745,11 @@ function ProfileContent({
 
                         {/* Partner Profile Badge */}
                         <div className="inline-flex items-center gap-2 bg-background border border-border/80 rounded-2xl px-3 py-1.5">
-                          <img
+                          <Image
                             src={pact.partnerAvatar}
                             alt={pact.partnerName}
                             className="w-5 h-5 rounded-full object-cover border border-border"
-                          />
+                          width={20} height={20} />
                           <span className="text-[10px] font-bold text-foreground">{pact.partnerName}</span>
                           <span className="text-[9px] font-bold text-orange-500 tracking-wider">
                             • {pact.partnerTrust}
@@ -1765,7 +1765,7 @@ function ProfileContent({
                             Your Launch
                           </span>
                           {pact.yourLaunch.logoUrl ? (
-                            <img src={pact.yourLaunch.logoUrl} alt="" className="w-10 h-10 rounded-xl object-cover border border-border" />
+                            <Image src={pact.yourLaunch.logoUrl} alt="" className="w-10 h-10 rounded-xl object-cover border border-border" width={40} height={40} />
                           ) : (
                             <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 font-bold text-sm shadow-inner">
                               {pact.yourLaunch.name.charAt(0)}
@@ -1797,7 +1797,7 @@ function ProfileContent({
                             Their Launch
                           </span>
                           {pact.theirLaunch.logoUrl ? (
-                            <img src={pact.theirLaunch.logoUrl} alt="" className="w-10 h-10 rounded-xl object-cover border border-border" />
+                            <Image src={pact.theirLaunch.logoUrl} alt="" className="w-10 h-10 rounded-xl object-cover border border-border" width={40} height={40} />
                           ) : (
                             <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500 font-bold text-sm shadow-inner">
                               {pact.theirLaunch.name.charAt(0)}
@@ -1912,7 +1912,7 @@ function ProfileContent({
                     </div>
                     {newStoryImageUrl && (
                       <div className="mt-2 relative w-full h-24 rounded-lg overflow-hidden border border-border bg-muted">
-                        <img src={newStoryImageUrl} alt="Cover preview" className="w-full h-full object-cover" />
+                        <Image src={newStoryImageUrl} alt="Cover preview" className="w-full h-full object-cover" width={48} height={48} />
                         <button
                           type="button"
                           onClick={() => setNewStoryImageUrl("")}

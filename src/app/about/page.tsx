@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import {
   ArrowLeft,
@@ -164,26 +165,26 @@ export default function AboutPage() {
       <section className="py-16 max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-3 gap-3 rounded-3xl overflow-hidden h-[420px]">
           <div className="col-span-2 rounded-2xl overflow-hidden">
-            <img
+            <Image
               src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=900&h=600&q=80"
               alt="Team collaboration"
               className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
-            />
+            width={48} height={48} />
           </div>
           <div className="grid grid-rows-2 gap-3">
             <div className="rounded-2xl overflow-hidden">
-              <img
+              <Image
                 src="https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=400&h=280&q=80"
                 alt="Startup culture"
                 className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
-              />
+              width={48} height={48} />
             </div>
             <div className="rounded-2xl overflow-hidden">
-              <img
+              <Image
                 src="https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=400&h=280&q=80"
                 alt="Product launch"
                 className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
-              />
+              width={48} height={48} />
             </div>
           </div>
         </div>
@@ -256,11 +257,11 @@ export default function AboutPage() {
             </p>
           </div>
           <div className="rounded-3xl overflow-hidden shadow-2xl">
-            <img
+            <Image
               src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=700&h=500&q=80"
               alt="Mission - empowering makers"
               className="w-full h-full object-cover"
-            />
+            width={48} height={48} />
           </div>
         </div>
       </section>

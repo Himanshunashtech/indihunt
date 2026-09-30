@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Crosshair, Package } from "lucide-react";
 import { Product, Profile, inviteProductMember, getProductMembers } from "@/lib/supabase";
 
@@ -26,7 +27,7 @@ export default function TeamTab({
           <div className="bg-card border border-border p-5 rounded-2xl flex items-start gap-4">
             <Link href={product.maker.username ? `/@${product.maker.username}` : `/profile?id=${product.maker_id}`} className="w-10 h-10 rounded-full overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-sm text-orange-500 flex-shrink-0 hover:opacity-90 transition-opacity">
               {product.maker.avatar_url ? (
-                <img src={product.maker.avatar_url} alt="Avatar" className="w-10 h-10 object-cover" />
+                <Image src={product.maker.avatar_url} alt="Avatar" className="w-10 h-10 object-cover" width={40} height={40} />
               ) : (
                 product.maker.full_name.charAt(0)
               )}
@@ -56,7 +57,7 @@ export default function TeamTab({
           <div key={member.id} className="bg-card border border-border p-5 rounded-2xl flex items-start gap-4">
             <Link href={member.username ? `/@${member.username}` : `/profile?id=${member.id}`} className="w-10 h-10 rounded-full overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-sm text-orange-500 flex-shrink-0 hover:opacity-90 transition-opacity">
               {member.avatar_url ? (
-                <img src={member.avatar_url} alt="Avatar" className="w-10 h-10 object-cover" />
+                <Image src={member.avatar_url} alt="Avatar" className="w-10 h-10 object-cover" width={40} height={40} />
               ) : (
                 member.full_name.charAt(0)
               )}

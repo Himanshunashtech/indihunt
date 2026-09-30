@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Users,
   ChevronDown,
@@ -48,7 +49,7 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
               >
                 <div className="w-8 h-8 rounded-full border-2 border-card overflow-hidden bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center font-semibold text-white text-[10px] shadow-sm cursor-pointer hover:scale-105 transition-all">
                   {product.maker?.avatar_url ? (
-                    <img src={product.maker.avatar_url} alt="" className="object-cover w-full h-full" />
+                    <Image src={product.maker.avatar_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                   ) : (
                     product.maker?.full_name?.charAt(0) || "M"
                   )}
@@ -82,7 +83,7 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
               >
                 <div className="w-8 h-8 rounded-full border-2 border-card overflow-hidden bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center font-semibold text-white text-[10px] shadow-sm cursor-pointer hover:scale-105 transition-all">
                   {member.avatar_url ? (
-                    <img src={member.avatar_url} alt="" className="object-cover w-full h-full" />
+                    <Image src={member.avatar_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                   ) : (
                     member.full_name?.charAt(0) || "C"
                   )}
@@ -107,11 +108,11 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
                   <Link key={shout.id} href={`/products/${slug}`} title={`Built with ${shout.shouted_product.name}`}>
                     <div className="w-8 h-8 rounded-xl border-2 border-card overflow-hidden bg-muted flex items-center justify-center shadow-sm cursor-pointer hover:scale-105 transition-all">
                       {shout.shouted_product.logo_url ? (
-                        <img
+                        <Image
                           src={shout.shouted_product.logo_url}
                           alt={shout.shouted_product.name}
                           className="object-cover w-full h-full"
-                        />
+                        width={48} height={48} />
                       ) : (
                         <span className="text-[10px] font-semibold text-orange-500">
                           {shout.shouted_product.name.charAt(0)}
@@ -152,7 +153,7 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
                   className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-muted border border-border shadow-sm"
                 >
                   {product.maker.avatar_url ? (
-                    <img src={product.maker.avatar_url} alt="" className="object-cover w-full h-full" />
+                    <Image src={product.maker.avatar_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-orange-500 to-amber-500 text-white font-semibold text-sm">
                       {product.maker.full_name?.charAt(0) || "M"}
@@ -195,7 +196,7 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
                   className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-muted border border-border shadow-sm"
                 >
                   {member.avatar_url ? (
-                    <img src={member.avatar_url} alt="" className="object-cover w-full h-full" />
+                    <Image src={member.avatar_url} alt="" className="object-cover w-full h-full" width={48} height={48} />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-orange-500 to-amber-500 text-white font-semibold text-sm">
                       {member.full_name?.charAt(0) || "M"}
@@ -241,11 +242,11 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
                         className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex items-center justify-center flex-shrink-0 font-semibold text-sm text-orange-500 shadow-sm hover:opacity-90 transition-opacity"
                       >
                         {shout.shouted_product.logo_url ? (
-                          <img
+                          <Image
                             src={shout.shouted_product.logo_url}
                             alt={shout.shouted_product.name}
                             className="w-full h-full object-cover"
-                          />
+                          width={48} height={48} />
                         ) : (
                           shout.shouted_product.name.charAt(0) || "P"
                         )}

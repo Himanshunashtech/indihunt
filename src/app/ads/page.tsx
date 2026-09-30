@@ -20,6 +20,7 @@ import {
   MousePointerClick
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { CircularLoader } from "@/components/CircularLoader";
 
 function AdsContent() {
@@ -552,14 +553,11 @@ function AdsContent() {
                   <div className="relative w-full bg-slate-100/90 dark:bg-slate-800/60 border border-slate-300/80 dark:border-slate-700/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 hover:border-orange-500/40 transition-all shadow-2xs overflow-hidden group">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-full sm:w-auto overflow-hidden">
                       <div className="w-12 h-12 rounded-xl overflow-hidden border border-border flex-shrink-0 bg-background shadow-2xs">
-                        <img
+                        <Image
                           src={displayLogo}
                           alt={displayTitle}
                           className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=80&h=80&q=80";
-                          }}
-                        />
+                        width={48} height={48} />
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">
                         <span className="font-bold text-foreground text-sm block transition-colors truncate">
@@ -587,14 +585,11 @@ function AdsContent() {
                   <div className="relative w-full bg-card border border-border rounded-2xl p-5 space-y-4 hover:border-orange-500/40 transition-all shadow-2xs overflow-hidden">
                     <div className="flex items-start gap-3">
                       <div className="w-12 h-12 rounded-xl overflow-hidden border border-border flex-shrink-0 bg-background shadow-2xs">
-                        <img
+                        <Image
                           src={displayLogo}
                           alt={displayTitle}
                           className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=80&h=80&q=80";
-                          }}
-                        />
+                        width={48} height={48} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <span className="font-bold text-foreground text-sm block truncate">

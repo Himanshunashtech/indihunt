@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { CircularLoader } from "@/components/CircularLoader";
@@ -653,7 +654,7 @@ export default function PagesStudioPage() {
                       style={{ border: `2px solid ${currentTheme.border}` }}
                     >
                       {avatarUrl ? (
-                        <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+                        <Image src={avatarUrl} alt={fullName} className="w-full h-full object-cover" width={48} height={48} />
                       ) : (
                         <div
                           className="w-full h-full flex items-center justify-center text-2xl font-bold"
@@ -748,7 +749,7 @@ export default function PagesStudioPage() {
                         >
                           <div className="flex items-center gap-2">
                             {p.logo_url ? (
-                              <img src={p.logo_url} alt="" className="w-5 h-5 rounded-md object-cover" />
+                              <Image src={p.logo_url} alt="" className="w-5 h-5 rounded-md object-cover" width={20} height={20} />
                             ) : (
                               <div
                                 className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white"

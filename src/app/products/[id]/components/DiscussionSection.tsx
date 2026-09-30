@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
   MessageSquare,
@@ -10,6 +11,8 @@ import {
   Share2,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Crosshair,
   Package,
   Check,
@@ -135,9 +138,10 @@ export default function DiscussionSection({
   useEffect(() => {
     if (!product?.id) return;
     const room = `product:${product.id}`;
+    const slug = getProductSlug(product.name);
 
     // 1. Listen for new comments/replies
-    const unsubCommentAdded = subscribe(room, "comment_added", (newComment: Comment) => {
+    const handleCommentAdded = (newComment: Comment) => {
       // Update query cache for both UUID and slug
       const updateTree = (old: Comment[] | undefined) => addCommentToTree(old || [], newComment);
       queryClient.setQueriesData({ queryKey: ["comments"] }, updateTree);
@@ -151,12 +155,17 @@ export default function DiscussionSection({
         if (!Array.isArray(old)) return old;
         return old.map(p => p.id === product.id ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p);
       });
-    });
+    };
+
+    const unsubCommentAdded = subscribe(room, "comment_added", handleCommentAdded);
+    const unsubSlugCommentAdded = (slug && slug !== product.id)
+      ? subscribe(`product:${slug}`, "comment_added", handleCommentAdded)
+      : () => {};
 
     // 2. Listen for comment upvotes
     const unsubCommentUpvoted = subscribe(room, "comment_upvoted", (data: { commentId: string; upvotes_count: number }) => {
       // Update comments tree cache
-      queryClient.setQueryData(["comments", product.id, ""], (old: Comment[] | undefined) => {
+      queryClient.setQueriesData({ queryKey: ["comments"] }, (old: Comment[] | undefined) => {
         if (!old) return old;
         return updateCommentInTree(old, data.commentId, (c) => ({
           ...c,
@@ -176,7 +185,7 @@ export default function DiscussionSection({
 
     // 3. Listen for comment edits
     const unsubCommentEdited = subscribe(room, "comment_edited", (data: { commentId: string; body: string }) => {
-      queryClient.setQueryData(["comments", product.id, ""], (old: Comment[] | undefined) => {
+      queryClient.setQueriesData({ queryKey: ["comments"] }, (old: Comment[] | undefined) => {
         if (!old) return old;
         return updateCommentInTree(old, data.commentId, (c) => ({
           ...c,
@@ -187,7 +196,7 @@ export default function DiscussionSection({
 
     // 4. Listen for comment deletions
     const unsubCommentDeleted = subscribe(room, "comment_deleted", (data: { commentId: string }) => {
-      queryClient.setQueryData(["comments", product.id, ""], (old: Comment[] | undefined) => {
+      queryClient.setQueriesData({ queryKey: ["comments"] }, (old: Comment[] | undefined) => {
         if (!old) return old;
         return removeCommentFromTree(old, data.commentId);
       });
@@ -204,11 +213,12 @@ export default function DiscussionSection({
 
     return () => {
       unsubCommentAdded();
+      unsubSlugCommentAdded();
       unsubCommentUpvoted();
       unsubCommentEdited();
       unsubCommentDeleted();
     };
-  }, [product?.id, subscribe, queryClient]);
+  }, [product?.id, product?.name, subscribe, queryClient]);
 
   const addCommentMutation = useAddCommentMutation();
 
@@ -227,7 +237,10 @@ export default function DiscussionSection({
   useEffect(() => {
     if (highlightedCommentId) {
       const timer = setTimeout(() => {
-        const el = document.getElementById(`comment-${highlightedCommentId}`);
+        let el = document.getElementById(`comment-${highlightedCommentId}`);
+        if (!el) {
+          el = document.querySelector(`[data-comment-id="${highlightedCommentId}"]`);
+        }
         if (el) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
         }
@@ -249,6 +262,24 @@ export default function DiscussionSection({
       setCommentsPage(Math.max(1, totalCommentsPages));
     }
   }, [comments.length, totalCommentsPages, commentsPage]);
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalCommentsPages <= 5) {
+      for (let i = 1; i <= totalCommentsPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (commentsPage > 3) pages.push("...");
+      const start = Math.max(2, commentsPage - 1);
+      const end = Math.min(totalCommentsPages - 1, commentsPage + 1);
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) pages.push(i);
+      }
+      if (commentsPage < totalCommentsPages - 2) pages.push("...");
+      if (!pages.includes(totalCommentsPages)) pages.push(totalCommentsPages);
+    }
+    return pages;
+  };
 
   const handleAddComment = async (e: React.FormEvent, parentId?: string) => {
     e.preventDefault();
@@ -273,6 +304,14 @@ export default function DiscussionSection({
       return;
     }
 
+    // Clear inputs immediately for responsive UX
+    if (parentId) {
+      setReplyBody("");
+      setReplyToId(null);
+    } else {
+      setNewCommentBody("");
+    }
+
     addCommentMutation.mutate({
       productId: product.id,
       userId: user.id,
@@ -280,17 +319,10 @@ export default function DiscussionSection({
       parentId: parentId || null
     }, {
       onSuccess: (newComment) => {
-        if (parentId) {
-          setReplyBody("");
-          setReplyToId(null);
-        } else {
-          setNewCommentBody("");
-        }
         if (newComment) {
           // Instantly update local comments tree cache for immediate realtime UI display
           const updateTree = (old: Comment[] | undefined) => addCommentToTree(old || [], newComment);
           queryClient.setQueriesData({ queryKey: ["comments"] }, updateTree);
-          queryClient.invalidateQueries({ queryKey: ["comments"] });
 
           publish(`product:${product.id}`, "comment_added", newComment);
           const slug = getProductSlug(product.name);
@@ -332,7 +364,7 @@ export default function DiscussionSection({
 
   return (
     <div ref={sentinelRef} className="pb-8 space-y-6">
-      <h3 className="text-base font-semibold text-foreground mb-6 flex items-center gap-2">
+      <h3 id="discussion-comments-heading" suppressHydrationWarning className="text-base font-semibold text-foreground mb-6 flex items-center gap-2">
         <MessageSquare className="w-4 h-4 text-orange-500" />
         <span>Discussion Feed ({product.comments_count})</span>
       </h3>
@@ -340,11 +372,11 @@ export default function DiscussionSection({
       {mounted && user ? (
         <div className="flex items-start gap-3 mb-8">
           <div className="w-8 h-8 rounded-full overflow-hidden bg-muted border border-border flex-shrink-0">
-            <img
+            <Image
               src={user.user_metadata?.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
               alt="User Avatar"
               className="w-8 h-8 rounded-full object-cover"
-            />
+            width={32} height={32} />
           </div>
           <div className="flex-1">
             <RichCommentEditor
@@ -374,7 +406,7 @@ export default function DiscussionSection({
         </div>
       )}
 
-      <div className="space-y-6">
+      <div suppressHydrationWarning className="space-y-6">
         {mounted && isLoading && comments.length === 0 ? (
           <div className="space-y-4 py-4 animate-pulse">
             <div className="flex gap-3 items-center">
@@ -399,7 +431,8 @@ export default function DiscussionSection({
             const commentNumber = (commentsPage - 1) * COMMENTS_PER_PAGE + index + 1;
             const renderCommentNode = (node: Comment, parentUser?: any, isChild: boolean = false) => {
               const upvoteState = commentUpvotes[node.id] ?? { count: node.upvotes_count ?? 0, voted: node.has_upvoted ?? false };
-              const isHighlighted = highlightedCommentId === node.id || highlightedCommentId === String(commentNumber);
+              const isHighlighted = highlightedCommentId === node.id || (!isChild && highlightedCommentId === String(commentNumber));
+              const elementId = isChild ? `comment-${node.id}` : `comment-${commentNumber}`;
               const timeAgo = (() => {
                 if (!mounted) return "";
                 const diff = (Date.now() - new Date(node.created_at).getTime()) / 1000;
@@ -411,8 +444,10 @@ export default function DiscussionSection({
 
               return (
                 <div
-                  id={`comment-${commentNumber}`}
+                  id={elementId}
+                  data-comment-id={node.id}
                   key={node.id}
+                  suppressHydrationWarning
                   className={`relative flex gap-3 p-3.5 rounded-2xl transition-all duration-500 ${isHighlighted ? "bg-[#fff8f5] dark:bg-orange-950/20 border-2 border-orange-500/50 shadow-md ring-4 ring-orange-500/10" : ""}`}
                 >
                   {/* Branch Curve Connector if child */}
@@ -424,7 +459,7 @@ export default function DiscussionSection({
                   <UserHoverCard user={node.user} userId={node.user_id}>
                     <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 overflow-hidden border border-border">
                       {node.user?.avatar_url ? (
-                        <img src={node.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                        <Image src={node.user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                       ) : (
                         (node.user?.full_name?.charAt(0) ?? 'U').toUpperCase()
                       )}
@@ -461,7 +496,7 @@ export default function DiscussionSection({
                       {makerFirstCommentId === node.id && (
                         <span className="text-sm" title="Pinned launch comment">📌</span>
                       )}
-                      <span className="text-xs text-muted-foreground/60">· {timeAgo}</span>
+                      <span suppressHydrationWarning className="text-xs text-muted-foreground/60">· {timeAgo}</span>
                     </div>
 
                     {/* Product card for maker comments */}
@@ -469,7 +504,7 @@ export default function DiscussionSection({
                       <Link href={`/products/${getProductSlug(product.name)}`} className="flex items-center gap-2 mb-1.5 px-2.5 py-1.5 bg-muted/40 border border-border/60 rounded-xl w-fit hover:bg-muted/70 transition-colors">
                         <div className="w-5 h-5 rounded-md overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center">
                           {product.logo_url ? (
-                            <img src={product.logo_url} alt={product.name} className="w-full h-full object-cover" />
+                            <Image src={product.logo_url} alt={product.name} className="w-full h-full object-cover" width={48} height={48} />
                           ) : (
                             <span className="text-[8px] font-medium text-orange-500">{product.name?.charAt(0)}</span>
                           )}
@@ -533,17 +568,21 @@ export default function DiscussionSection({
                         <span>Upvote{upvoteState.count > 0 ? ` (${upvoteState.count})` : ''}</span>
                       </button>
 
-                      {user && (
-                        <button
-                          onClick={() => setReplyToId(replyToId === node.id ? null : node.id)}
-                          className="flex items-center gap-1 text-xs font-normal text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Reply</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          if (!user) {
+                            dispatch(setAuthModalOpen(true));
+                            return;
+                          }
+                          setReplyToId(replyToId === node.id ? null : node.id);
+                        }}
+                        className="flex items-center gap-1 text-xs font-normal text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Reply</span>
+                      </button>
 
-                      {user?.id && user.id === node.user_id && (
+                      {mounted && user?.id === node.user_id && (
                         <button
                           onClick={() => {
                             setEditingCommentId(node.id);
@@ -556,7 +595,7 @@ export default function DiscussionSection({
                         </button>
                       )}
 
-                      {user?.id && user.id === node.user_id && (
+                      {mounted && user?.id === node.user_id && (
                         <button
                           onClick={() => handleDeleteCommentSubmit(node.id)}
                           className="flex items-center gap-1 text-xs font-normal text-muted-foreground hover:text-red-500 transition-colors cursor-pointer"
@@ -566,7 +605,7 @@ export default function DiscussionSection({
                         </button>
                       )}
 
-                      {(!user || user.id !== node.user_id) && (
+                      {(!mounted || !user?.id || user.id !== node.user_id) && (
                         <button
                           onClick={() => {
                             if (!user) {
@@ -713,7 +752,7 @@ export default function DiscussionSection({
 
                     {/* Nested Tree Replies */}
                     {node.replies && node.replies.length > 0 && (
-                      <div className="relative pl-4 sm:pl-6 ml-1 border-l-2 border-border/60 mt-4 space-y-4">
+                      <div suppressHydrationWarning className="relative pl-4 sm:pl-6 ml-1 border-l-2 border-border/60 mt-4 space-y-4">
                         {node.replies.map((reply) => renderCommentNode(reply, node.user, true))}
                       </div>
                     )}
@@ -727,37 +766,104 @@ export default function DiscussionSection({
         )}
       </div>
 
-      {/* Pagination for Main Comments */}
+      {/* ── Numeric Pagination (Standardized across all pages) ── */}
       {totalCommentsPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-6">
-          <button
-            disabled={commentsPage === 1}
-            onClick={() => setCommentsPage(prev => Math.max(prev - 1, 1))}
-            className="px-3.5 py-2 border border-border bg-card rounded-xl text-xs font-semibold text-foreground hover:bg-muted/70 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-sm"
-          >
-            Previous
-          </button>
-          <div className="flex items-center gap-1.5">
-            {Array.from({ length: totalCommentsPages }, (_, idx) => idx + 1).map(page => (
-              <button
-                key={page}
-                onClick={() => setCommentsPage(page)}
-                className={`w-9 h-9 rounded-xl text-xs font-semibold transition-all border ${commentsPage === page
-                  ? "bg-orange-500 border-orange-500 text-white shadow-sm"
-                  : "bg-card border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                }`}
-              >
-                {page}
-              </button>
-            ))}
+        <div suppressHydrationWarning className="pt-8 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Showing <span className="font-semibold text-foreground">{(commentsPage - 1) * COMMENTS_PER_PAGE + 1}</span> to{" "}
+            <span className="font-semibold text-foreground">{Math.min(commentsPage * COMMENTS_PER_PAGE, comments.length)}</span> of{" "}
+            <span className="font-semibold text-foreground">{comments.length}</span> comments
+          </p>
+
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+            {/* First Page */}
+            <button
+              onClick={() => {
+                setCommentsPage(1);
+                const el = document.getElementById("discussion-comments-heading");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              disabled={commentsPage === 1}
+              className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+              title="First Page"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
+            {/* Previous Page */}
+            <button
+              onClick={() => {
+                setCommentsPage(prev => Math.max(1, prev - 1));
+                const el = document.getElementById("discussion-comments-heading");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              disabled={commentsPage === 1}
+              className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Page Numbers */}
+            {getPageNumbers().map((pageNum, idx) => {
+              if (typeof pageNum === "string") {
+                return (
+                  <span
+                    key={`dots-${idx}`}
+                    className="px-2 py-1 text-muted-foreground font-medium select-none"
+                  >
+                    ...
+                  </span>
+                );
+              }
+              const isActive = pageNum === commentsPage;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => {
+                    setCommentsPage(pageNum);
+                    const el = document.getElementById("discussion-comments-heading");
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-[#ff5733] text-white font-semibold shadow-xs"
+                      : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+
+            {/* Next Page */}
+            <button
+              onClick={() => {
+                setCommentsPage(prev => Math.min(totalCommentsPages, prev + 1));
+                const el = document.getElementById("discussion-comments-heading");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              disabled={commentsPage === totalCommentsPages}
+              className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+              title="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Last Page */}
+            <button
+              onClick={() => {
+                setCommentsPage(totalCommentsPages);
+                const el = document.getElementById("discussion-comments-heading");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              disabled={commentsPage === totalCommentsPages}
+              className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
+              title="Last Page"
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            disabled={commentsPage === totalCommentsPages}
-            onClick={() => setCommentsPage(prev => Math.min(prev + 1, totalCommentsPages))}
-            className="px-3.5 py-2 border border-border bg-card rounded-xl text-xs font-semibold text-foreground hover:bg-muted/70 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-sm"
-          >
-            Next
-          </button>
         </div>
       )}
     </div>

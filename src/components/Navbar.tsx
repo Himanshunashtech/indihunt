@@ -771,13 +771,12 @@ export default function Navbar({
                   className="flex sm:hidden items-center transition-all cursor-pointer outline-none"
                   title="My Profile"
                 >
-                  <img
+                  <Image
                     src={avatarUrl}
                     alt={activeUser.email || "user"}
+                    width={36}
+                    height={36}
                     referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=80&h=80&q=80";
-                    }}
                     className="w-9 h-9 rounded-full object-cover border-2 border-slate-200 dark:border-slate-800 hover:border-orange-500"
                   />
                 </Link>
@@ -792,13 +791,12 @@ export default function Navbar({
                     <button 
                       className="flex items-center gap-1.5 p-0.5 hover:bg-muted rounded-full transition-all cursor-pointer outline-none focus:outline-none"
                     >
-                      <img
+                      <Image
                         src={avatarUrl}
                         alt={activeUser.email || "user"}
+                        width={40}
+                        height={40}
                         referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=80&h=80&q=80";
-                        }}
                         className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 dark:border-slate-800 hover:border-orange-500 transition-all"
                       />
                       <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -809,13 +807,12 @@ export default function Navbar({
                         <button 
                           className="flex items-center gap-1.5 p-0.5 hover:bg-muted rounded-full transition-all cursor-pointer outline-none focus:outline-none"
                         >
-                          <img
+                          <Image
                             src={avatarUrl}
                             alt={activeUser.email || "user"}
+                            width={40}
+                            height={40}
                             referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              e.currentTarget.src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=80&h=80&q=80";
-                            }}
                             className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 dark:border-slate-800 hover:border-orange-500 transition-all"
                           />
                           <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${profileOpen ? 'rotate-180 text-orange-500' : ''}`} />
@@ -929,9 +926,9 @@ export default function Navbar({
                   <div key={item.id} className="p-3.5 bg-muted/30 hover:bg-muted/60 rounded-2xl border border-border/60 transition-colors space-y-3">
                     <div className="flex items-start gap-3">
                       <div className="relative w-10 h-10 flex-shrink-0">
-                        <img src={item.actor_avatar} alt="" className="w-10 h-10 rounded-2xl object-cover border border-border" />
+                        <Image src={item.actor_avatar || ""} alt="" width={40} height={40} className="w-10 h-10 rounded-2xl object-cover border border-border" />
                         {item.secondary_avatar && (
-                          <img src={item.secondary_avatar} alt="" className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
+                          <Image src={item.secondary_avatar} alt="" width={20} height={20} className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -997,9 +994,9 @@ export default function Navbar({
                   <div key={item.id} className="p-3.5 bg-muted/30 hover:bg-muted/60 rounded-2xl border border-border/60 transition-colors space-y-2.5">
                     <div className="flex items-start gap-3">
                       <div className="relative w-10 h-10 flex-shrink-0">
-                        <img src={item.product_logo || item.actor_avatar} alt="" className="w-10 h-10 rounded-2xl object-cover border border-border" />
+                        <Image src={item.product_logo || item.actor_avatar || ""} alt="" width={40} height={40} className="w-10 h-10 rounded-2xl object-cover border border-border" />
                         {item.actor_avatar && (
-                          <img src={item.actor_avatar} alt="" className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
+                          <Image src={item.actor_avatar} alt="" width={20} height={20} className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0 space-y-1">
@@ -1035,7 +1032,7 @@ export default function Navbar({
                 <div key={item.id} className="p-3.5 bg-muted/30 hover:bg-muted/60 rounded-2xl border border-border/60 transition-colors space-y-2.5">
                   <div className="flex items-start gap-3">
                     <div className="w-9 h-9 rounded-2xl overflow-hidden bg-muted border border-border flex-shrink-0">
-                      <img src={item.actor_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} alt="" className="w-full h-full object-cover" />
+                      <Image src={item.actor_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} alt="" width={36} height={36} className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <p className="text-xs text-foreground/90 font-normal">
@@ -1119,11 +1116,11 @@ export default function Navbar({
                 router.push("/search");
               }
             }}
-            className="w-full relative flex items-center bg-muted/80 border border-border/80 hover:border-orange-500 rounded-full py-2 pl-9 pr-3 text-xs text-muted-foreground hover:text-foreground transition-all cursor-pointer text-left shadow-xs group"
+            className="w-full relative flex items-center bg-muted/80 border border-border/80 hover:border-orange-500 rounded-full py-2.5 pl-9 pr-3 text-base text-muted-foreground hover:text-foreground transition-all cursor-pointer text-left shadow-xs group"
           >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-hover:text-orange-500 transition-colors" />
-            <span className="truncate text-xs">Search products, discussions...</span>
-            <kbd className="ml-auto pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border border-border bg-card px-1 font-mono text-[9px] font-semibold text-muted-foreground shadow-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-orange-500 transition-colors" />
+            <span className="truncate text-base">Search products, discussions...</span>
+            <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-card px-1.5 font-mono text-[11px] font-semibold text-muted-foreground shadow-xs">
               ⌘K
             </kbd>
           </button>
@@ -1136,14 +1133,14 @@ export default function Navbar({
           <div className="rounded-xl overflow-hidden border border-border/40">
             <button
               onClick={() => setActiveMobileSubmenu((prev) => (prev === "top" ? null : "top"))}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-3.5 py-3 text-base font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <Trophy className="w-4 h-4 text-amber-500" />
-                <span>Top Products & Hunters</span>
+                <Trophy className="w-5 h-5 text-amber-500" />
+                <span className="text-base font-semibold">Top Products & Hunters</span>
               </div>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
                   activeMobileSubmenu === "top" ? "rotate-180 text-orange-500" : ""
                 }`}
               />
@@ -1159,14 +1156,14 @@ export default function Navbar({
                     key={subItem.href}
                     href={subItem.href}
                     onClick={() => setMobileOpen(false)}
-                    className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors"
                   >
-                    <div className={`w-7 h-7 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
-                      <subItem.icon className="w-3.5 h-3.5" />
+                    <div className={`w-8 h-8 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
+                      <subItem.icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-foreground block">{subItem.label}</span>
-                      <span className="text-[10px] text-muted-foreground block leading-tight">{subItem.sub}</span>
+                      <span className="text-base font-medium text-foreground block">{subItem.label}</span>
+                      <span className="text-xs text-muted-foreground block leading-tight">{subItem.sub}</span>
                     </div>
                   </Link>
                 ))}
@@ -1178,14 +1175,14 @@ export default function Navbar({
           <div className="rounded-xl overflow-hidden border border-border/40">
             <button
               onClick={() => setActiveMobileSubmenu((prev) => (prev === "launches" ? null : "launches"))}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-3.5 py-3 text-base font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <Rocket className="w-4 h-4 text-orange-500" />
-                <span>Launches & Products</span>
+                <Rocket className="w-5 h-5 text-orange-500" />
+                <span className="text-base font-semibold">Launches & Products</span>
               </div>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
                   activeMobileSubmenu === "launches" ? "rotate-180 text-orange-500" : ""
                 }`}
               />
@@ -1202,14 +1199,14 @@ export default function Navbar({
                     key={subItem.href}
                     href={subItem.href}
                     onClick={() => setMobileOpen(false)}
-                    className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors"
                   >
-                    <div className={`w-7 h-7 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
-                      <subItem.icon className="w-3.5 h-3.5" />
+                    <div className={`w-8 h-8 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
+                      <subItem.icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-foreground block">{subItem.label}</span>
-                      <span className="text-[10px] text-muted-foreground block leading-tight">{subItem.sub}</span>
+                      <span className="text-base font-medium text-foreground block">{subItem.label}</span>
+                      <span className="text-xs text-muted-foreground block leading-tight">{subItem.sub}</span>
                     </div>
                   </Link>
                 ))}
@@ -1221,14 +1218,14 @@ export default function Navbar({
           <div className="rounded-xl overflow-hidden border border-border/40">
             <button
               onClick={() => setActiveMobileSubmenu((prev) => (prev === "forums" ? null : "forums"))}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-3.5 py-3 text-base font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <MessageSquare className="w-4 h-4 text-orange-500" />
-                <span>Forums & Discussions</span>
+                <MessageSquare className="w-5 h-5 text-orange-500" />
+                <span className="text-base font-semibold">Forums & Discussions</span>
               </div>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
                   activeMobileSubmenu === "forums" ? "rotate-180 text-orange-500" : ""
                 }`}
               />
@@ -1244,14 +1241,14 @@ export default function Navbar({
                     key={subItem.href}
                     href={subItem.href}
                     onClick={() => setMobileOpen(false)}
-                    className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors"
                   >
-                    <div className={`w-7 h-7 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
-                      <subItem.icon className="w-3.5 h-3.5" />
+                    <div className={`w-8 h-8 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
+                      <subItem.icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-foreground block">{subItem.label}</span>
-                      <span className="text-[10px] text-muted-foreground block leading-tight">{subItem.sub}</span>
+                      <span className="text-base font-medium text-foreground block">{subItem.label}</span>
+                      <span className="text-xs text-muted-foreground block leading-tight">{subItem.sub}</span>
                     </div>
                   </Link>
                 ))}
@@ -1263,14 +1260,14 @@ export default function Navbar({
           <div className="rounded-xl overflow-hidden border border-border/40">
             <button
               onClick={() => setActiveMobileSubmenu((prev) => (prev === "news" ? null : "news"))}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-3.5 py-3 text-base font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <Newspaper className="w-4 h-4 text-orange-500" />
-                <span>News & Updates</span>
+                <Newspaper className="w-5 h-5 text-orange-500" />
+                <span className="text-base font-semibold">News & Updates</span>
               </div>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
                   activeMobileSubmenu === "news" ? "rotate-180 text-orange-500" : ""
                 }`}
               />
@@ -1286,14 +1283,14 @@ export default function Navbar({
                     key={subItem.href}
                     href={subItem.href}
                     onClick={() => setMobileOpen(false)}
-                    className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors"
                   >
-                    <div className={`w-7 h-7 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
-                      <subItem.icon className="w-3.5 h-3.5" />
+                    <div className={`w-8 h-8 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
+                      <subItem.icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-xs font-medium text-foreground block">{subItem.label}</span>
-                      <span className="text-[10px] text-muted-foreground block leading-tight">{subItem.sub}</span>
+                      <span className="text-base font-medium text-foreground block">{subItem.label}</span>
+                      <span className="text-xs text-muted-foreground block leading-tight">{subItem.sub}</span>
                     </div>
                   </Link>
                 ))}
@@ -1305,22 +1302,24 @@ export default function Navbar({
           <div className="rounded-xl overflow-hidden border border-border/40">
             <button
               onClick={() => setActiveMobileSubmenu((prev) => (prev === "profile" ? null : "profile"))}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              className="w-full flex items-center justify-between px-3.5 py-3 text-base font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
                 {activeUser?.user_metadata?.avatar_url ? (
-                  <img
+                  <Image
                     src={activeUser.user_metadata.avatar_url}
                     alt={activeUser.email || "user"}
-                    className="w-4 h-4 rounded-full object-cover border border-orange-500/40"
+                    width={20}
+                    height={20}
+                    className="w-5 h-5 rounded-full object-cover border border-orange-500/40"
                   />
                 ) : (
-                  <User className="w-4 h-4 text-orange-500" />
+                  <User className="w-5 h-5 text-orange-500" />
                 )}
-                <span>My Profile</span>
+                <span className="text-base font-semibold">My Profile</span>
               </div>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
                   activeMobileSubmenu === "profile" ? "rotate-180 text-orange-500" : ""
                 }`}
               />
@@ -1338,33 +1337,33 @@ export default function Navbar({
                         key={subItem.href}
                         href={subItem.href}
                         onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors"
+                        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors"
                       >
-                        <div className={`w-7 h-7 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
-                          <subItem.icon className="w-3.5 h-3.5" />
+                        <div className={`w-8 h-8 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
+                          <subItem.icon className="w-4 h-4" />
                         </div>
                         <div>
-                          <span className="text-xs font-medium text-foreground block">{subItem.label}</span>
-                          <span className="text-[10px] text-muted-foreground block leading-tight">{subItem.sub}</span>
+                          <span className="text-base font-medium text-foreground block">{subItem.label}</span>
+                          <span className="text-xs text-muted-foreground block leading-tight">{subItem.sub}</span>
                         </div>
                       </Link>
                     ))}
                     <button
                       onClick={handleThemeToggle}
-                      className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
-                          {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />}
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
+                          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-slate-700 dark:text-slate-300" />}
                         </div>
                         <div>
-                          <span className="text-xs font-medium text-foreground block">
+                          <span className="text-base font-medium text-foreground block">
                             {theme === "dark" ? "Light Mode" : "Dark Mode"}
                           </span>
-                          <span className="text-[10px] text-muted-foreground block leading-tight">Switch appearance theme</span>
+                          <span className="text-xs text-muted-foreground block leading-tight">Switch appearance theme</span>
                         </div>
                       </div>
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
+                      <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
                         {theme}
                       </span>
                     </button>
@@ -1373,14 +1372,14 @@ export default function Navbar({
                         setMobileOpen(false);
                         handleSignOut();
                       }}
-                      className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
-                        <LogOut className="w-3.5 h-3.5" />
+                      <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
+                        <LogOut className="w-4 h-4" />
                       </div>
                       <div>
-                        <span className="text-xs font-medium text-foreground block">Logout</span>
-                        <span className="text-[10px] text-muted-foreground block leading-tight">Sign out of your account</span>
+                        <span className="text-base font-medium text-foreground block">Logout</span>
+                        <span className="text-xs text-muted-foreground block leading-tight">Sign out of your account</span>
                       </div>
                     </button>
                   </>
@@ -1388,20 +1387,20 @@ export default function Navbar({
                   <>
                     <button
                       onClick={handleThemeToggle}
-                      className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
-                          {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />}
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
+                          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-slate-700 dark:text-slate-300" />}
                         </div>
                         <div>
-                          <span className="text-xs font-medium text-foreground block">
+                          <span className="text-base font-medium text-foreground block">
                             {theme === "dark" ? "Light Mode" : "Dark Mode"}
                           </span>
-                          <span className="text-[10px] text-muted-foreground block leading-tight">Switch appearance theme</span>
+                          <span className="text-xs text-muted-foreground block leading-tight">Switch appearance theme</span>
                         </div>
                       </div>
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
+                      <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
                         {theme}
                       </span>
                     </button>
@@ -1410,14 +1409,14 @@ export default function Navbar({
                         setMobileOpen(false);
                         dispatch(setAuthModalOpen(true));
                       }}
-                      className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-orange-500/10 transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-orange-500/10 transition-colors text-left cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center flex-shrink-0">
-                        <User className="w-3.5 h-3.5" />
+                      <div className="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4" />
                       </div>
                       <div>
-                        <span className="text-xs font-semibold text-orange-500 block">Log In / Register</span>
-                        <span className="text-[10px] text-muted-foreground block leading-tight">Access your products & profile</span>
+                        <span className="text-base font-semibold text-orange-500 block">Log In / Register</span>
+                        <span className="text-xs text-muted-foreground block leading-tight">Access your products & profile</span>
                       </div>
                     </button>
                   </>
@@ -1432,7 +1431,7 @@ export default function Navbar({
           <div className="px-4 py-3 border-t border-border flex-shrink-0">
             <button
               onClick={() => { dispatch(setAuthModalOpen(true)); setMobileOpen(false); }}
-              className="w-full bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-xs py-2 rounded-xl cursor-pointer transition-all"
+              className="w-full bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-base py-2.5 rounded-xl cursor-pointer transition-all"
             >
               Log In
             </button>

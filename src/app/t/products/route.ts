@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     let products: any[] = [];
     try {
       const selectFields = isLightweight
-        ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker)'
+        ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker)'
         : '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
 
       let query = supabase
@@ -71,9 +71,8 @@ export async function GET(request: NextRequest) {
       }
 
       if (checkUrl) {
-        const cleanDomain = extractDomain(checkUrl);
         const normUrl = normalizeUrl(checkUrl);
-        query = query.or(`website_url.ilike.%${cleanDomain}%,website_url.ilike.%${normUrl}%`);
+        query = query.or(`website_url.ilike.%${normUrl}%`);
       } else if (queryStr) {
         query = query.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
       }
@@ -85,16 +84,15 @@ export async function GET(request: NextRequest) {
         console.warn('[GET /t/products] Primary query error, falling back to simple select:', error.message);
         let fallbackQuery = supabase
           .from('products')
-          .select(isLightweight ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id' : '*')
+          .select(isLightweight ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch' : '*')
           .order('created_at', { ascending: false })
           .limit(limit);
 
         if (cursor) fallbackQuery = fallbackQuery.lt('created_at', cursor);
         if (makerId) fallbackQuery = fallbackQuery.eq('maker_id', makerId);
         if (checkUrl) {
-          const cleanDomain = extractDomain(checkUrl);
           const normUrl = normalizeUrl(checkUrl);
-          fallbackQuery = fallbackQuery.or(`website_url.ilike.%${cleanDomain}%,website_url.ilike.%${normUrl}%`);
+          fallbackQuery = fallbackQuery.or(`website_url.ilike.%${normUrl}%`);
         } else if (queryStr) {
           fallbackQuery = fallbackQuery.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
         }
@@ -105,6 +103,14 @@ export async function GET(request: NextRequest) {
     } catch (dbErr: any) {
       console.warn('[GET /t/products] Supabase connection error:', dbErr?.message);
     }
+
+    const now = new Date();
+    products = (products || []).map((p: any) => {
+      if (p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now) {
+        return { ...p, status: 'live' };
+      }
+      return p;
+    });
 
     if (!userId && !queryStr && !checkUrl && !makerId && products.length > 0) {
       // 5-min TTL — feed is eventually consistent, saves ~80% Supabase round-trips
@@ -168,26 +174,23 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createServerSupabaseClient();
 
-    // Check for duplicate products by normalized URL, domain, or exact name
+    // Check for duplicate products by normalized URL or exact name
     const normSubmitted = normalizeUrl(website_url);
-    const domainSubmitted = extractDomain(website_url);
     const cleanName = name.trim().toLowerCase();
 
     if (normSubmitted) {
       const { data: existingProds } = await supabase
         .from('products')
         .select('id, name, website_url')
-        .or(`website_url.ilike.%${domainSubmitted}%,name.ilike.${name.trim()}`)
+        .or(`website_url.ilike.%${normSubmitted}%,name.ilike.${name.trim()}`)
         .limit(20);
 
       if (existingProds && existingProds.length > 0) {
         const duplicate = existingProds.find((p: any) => {
           const normExisting = normalizeUrl(p.website_url || '');
-          const domainExisting = extractDomain(p.website_url || '');
           const existingName = (p.name || '').trim().toLowerCase();
           return (
             normExisting === normSubmitted ||
-            (domainSubmitted.includes('.') && domainExisting === domainSubmitted) ||
             existingName === cleanName
           );
         });
@@ -197,6 +200,10 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    const worked_on_launch = body.worked_on_launch !== undefined
+      ? Boolean(body.worked_on_launch)
+      : (body.workedOnLaunch !== undefined ? Boolean(body.workedOnLaunch) : true);
 
     const { data: newProduct, error } = await supabase
       .from('products')
@@ -208,6 +215,21 @@ export async function POST(request: NextRequest) {
         logo_url: logo_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=120&h=120&q=80',
         screenshots: screenshots || [],
         maker_id,
+        worked_on_launch,
+        pricing_type: body.pricing_type || 'free',
+        promo_offer: body.promo_offer || null,
+        promo_code: body.promo_code || null,
+        promo_expiry: body.promo_expiry || null,
+        video_url: body.video_url || null,
+        demo_url: body.demo_url || null,
+        funding_type: body.funding_type || null,
+        is_open_source: body.is_open_source || false,
+        github_url: body.github_url || null,
+        is_student_project: body.is_student_project || false,
+        school: body.school || null,
+        additional_urls: body.additional_urls || [],
+        twitter_url: body.twitter_url || null,
+        country: body.country || 'Global',
         tags: tags || ['SaaS'],
         upvotes_count: 1,
         comments_count: 0,
@@ -219,6 +241,17 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return apiFailure(error.message, 500);
+    }
+
+    if (Array.isArray(body.makers) && body.makers.length > 0) {
+      try {
+        const memberInserts = body.makers.map((uId: string) => ({
+          product_id: newProduct.id,
+          user_id: uId,
+          role: 'maker'
+        }));
+        await supabase.from('product_members').insert(memberInserts);
+      } catch {}
     }
 
     await supabase.from('upvotes').insert({

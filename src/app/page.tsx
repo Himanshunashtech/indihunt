@@ -1,4 +1,4 @@
-import { getProducts, getThreads, getTopHuntersData, getBillboardAds, getPromotedProducts, supabase, getProductSlug, compareProductsForRanking, getISTStartOfDay, Product } from "@/lib/supabase";
+import { getProducts, getThreads, getTopHuntersData, getPromotedProducts, getProductSlug, compareProductsForRanking, getISTStartOfDay, Product } from "@/lib/supabase";
 import HomePageClient from "./HomePageClient";
 
 export const revalidate = 30; // ISR: Revalidate every 30s (faster L1 cache hit rate)
@@ -6,15 +6,18 @@ export const revalidate = 30; // ISR: Revalidate every 30s (faster L1 cache hit 
 const SITE_URL = "https://indihunt.in";
 
 export default async function Home() {
-  // Fetch initial datasets in parallel on the server with in-memory / Redis acceleration
-  const [products, threads, topHunters] = await Promise.all([
-    getProducts().catch(() => [] as Product[]),
+  // Fetch initial datasets in parallel on the server.
+  // getPromotedProducts chains off getProducts() so it runs concurrently and reuses the same product list.
+  const productsPromise = getProducts().catch(() => [] as Product[]);
+  const [products, threads, topHunters, promotedProductsResolved] = await Promise.all([
+    productsPromise,
     getThreads().catch(() => []),
-    getTopHuntersData().catch(() => [])
+    getTopHuntersData().catch(() => []),
+    // Phase 1c: chain off productsPromise — no extra Supabase roundtrip, runs in parallel
+    productsPromise.then(prods => getPromotedProducts(prods).catch(() => [] as Product[])),
   ]);
 
   const billboardAds: any[] = [];
-  const promotedProducts: Product[] = [];
 
   // Group live products strictly by their launch date in Indian Standard Time (IST)
   const now = new Date();
@@ -69,12 +72,11 @@ export default async function Home() {
   const initialVisibleThreads = threads.slice(0, 5);
   const initialVisibleTopHunters = topHunters.slice(0, 5);
 
-  // Build JSON-LD ItemList structured data so AI agents and search bots discover live products instantly on first scan
-  const allLiveDisplay = [
-    ...sortedToday.map((p, idx) => ({ ...p, section: "Today", position: idx + 1 })),
-    ...sortedYesterday.map((p, idx) => ({ ...p, section: "Yesterday", position: sortedToday.length + idx + 1 })),
-    ...sortedLastWeek.map((p, idx) => ({ ...p, section: "Last Week", position: sortedToday.length + sortedYesterday.length + idx + 1 })),
-    ...sortedLastMonth.map((p, idx) => ({ ...p, section: "Last Month", position: sortedToday.length + sortedYesterday.length + sortedLastWeek.length + idx + 1 }))
+  // Build JSON-LD ItemList structured data — capped to top 20 for fast serialization
+  const jsonLdDisplay = [
+    ...sortedToday.slice(0, 10).map((p, idx) => ({ ...p, section: "Today", position: idx + 1 })),
+    ...sortedYesterday.slice(0, 5).map((p, idx) => ({ ...p, section: "Yesterday", position: sortedToday.length + idx + 1 })),
+    ...sortedLastWeek.slice(0, 5).map((p, idx) => ({ ...p, section: "Last Week", position: sortedToday.length + sortedYesterday.length + idx + 1 })),
   ];
 
   const liveProductsItemListSchema = {
@@ -82,7 +84,7 @@ export default async function Home() {
     "@type": "ItemList",
     "name": "Live Product Launches on IndiHunt",
     "description": "Discover live product launches by independent makers and tech startups, updated in real time across Today, Yesterday, Last Week, and Last Month.",
-    "itemListElement": allLiveDisplay.map((item) => {
+    "itemListElement": jsonLdDisplay.map((item) => {
       const slug = getProductSlug(item.name);
       const url = `${SITE_URL}/products/${slug}`;
       return {
@@ -188,7 +190,7 @@ export default async function Home() {
         initialThreads={initialVisibleThreads}
         initialTopHunters={initialVisibleTopHunters}
         initialBillboardAds={billboardAds}
-        initialPromotedProducts={promotedProducts}
+        initialPromotedProducts={promotedProductsResolved}
         initialPulseStats={initialPulseStats}
         initialDateBoundaries={{
           startOfToday: startOfToday.toISOString(),

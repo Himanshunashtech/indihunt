@@ -1,11 +1,13 @@
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { createAdminSupabase } from "@/app/admin/_actions/admin-actions";
 import { AdminSearch } from "@/app/admin/_components/AdminSearch";
 import { AdminPagination } from "@/app/admin/_components/AdminPagination";
 import { Package, ArrowUp, Loader2, Rocket, Calendar, Clock, Eye, Sparkles } from "lucide-react";
 import { ProductActionButtons } from "./ProductActionButtons";
 import { UpcomingProductActions } from "./UpcomingProductActions";
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata = { title: "Products & Upcoming Launches | Admin Console | IndiHunt" };
 
@@ -58,7 +60,8 @@ async function UpcomingProductsTable({
 }) {
   const supabase = await createServerSupabase();
   const offset = (page - 1) * limit;
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const startOfTomorrowIso = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
 
   let query = supabase
     .from("products")
@@ -67,7 +70,8 @@ async function UpcomingProductsTable({
       { count: "exact" }
     )
     .eq("is_deleted", false)
-    .or(`status.eq.scheduled,scheduled_for.gt.${nowIso}`)
+    .eq("status", "scheduled")
+    .gte("scheduled_for", startOfTomorrowIso)
     .order("scheduled_for", { ascending: true })
     .range(offset, offset + limit - 1);
 
@@ -110,11 +114,11 @@ async function UpcomingProductsTable({
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <Image
                         src={prod.logo_url || "/favicon.png"}
                         alt=""
                         className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0 bg-white"
-                      />
+                      width={36} height={36} />
                       <div className="min-w-0">
                         <div className="font-bold text-slate-900 truncate max-w-[180px] flex items-center gap-1.5">
                           {prod.name}
@@ -127,7 +131,7 @@ async function UpcomingProductsTable({
                     <div className="flex items-center gap-2">
                       {maker?.avatar_url && (
                         /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={maker.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                        <Image src={maker.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" width={20} height={20} />
                       )}
                       <span className="text-sm font-medium">@{maker?.username || "maker"}</span>
                     </div>
@@ -256,18 +260,20 @@ async function ProductsTable({
           <tbody className="divide-y divide-slate-100">
             {(products || []).map((prod) => {
               const maker = prod.maker as any;
-              const isScheduled = prod.status === "scheduled" || (prod.scheduled_for && new Date(prod.scheduled_for) > now);
+              const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+              const launchTime = prod.scheduled_for ? new Date(prod.scheduled_for).getTime() : 0;
+              const isScheduled = prod.status === "scheduled" && launchTime >= startOfTomorrow;
 
               return (
                 <tr key={prod.id} className={`hover:bg-slate-50/80 transition-colors ${prod.is_deleted ? "opacity-40" : ""}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <Image
                         src={prod.logo_url || "/favicon.png"}
                         alt=""
                         className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0 bg-white"
-                      />
+                      width={32} height={32} />
                       <div className="min-w-0">
                         <div className="font-semibold text-slate-900 truncate max-w-[150px]">{prod.name}</div>
                         <div className="text-slate-400 truncate max-w-[150px] mt-0.5 text-xs">{prod.tagline}</div>
@@ -334,7 +340,20 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
   const sort = params.sort || "date";
 
   const supabase = await createServerSupabase();
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const startOfTomorrowIso = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+
+  // Auto-promote any scheduled products whose launch date has arrived (today or past) using admin service client
+  try {
+    const adminSupabase = await createAdminSupabase();
+    await adminSupabase
+      .from("products")
+      .update({ status: "live" })
+      .eq("status", "scheduled")
+      .lt("scheduled_for", startOfTomorrowIso);
+  } catch (err) {
+    console.error("[AdminProductsPage] Error auto-promoting scheduled products:", err);
+  }
 
   // Fetch counts for tabs
   const [allCountRes, upcomingCountRes] = await Promise.all([
@@ -343,7 +362,8 @@ export default async function AdminProductsPage({ searchParams }: PageProps) {
       .from("products")
       .select("id", { count: "exact", head: true })
       .eq("is_deleted", false)
-      .or(`status.eq.scheduled,scheduled_for.gt.${nowIso}`),
+      .eq("status", "scheduled")
+      .gte("scheduled_for", startOfTomorrowIso),
   ]);
 
   const allCount = allCountRes.count ?? 0;

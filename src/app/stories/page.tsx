@@ -3,14 +3,15 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   ArrowLeft, 
   BookOpen, 
   Calendar, 
-  MessageSquare,
-  Sparkles,
-  Search,
-  User
+  MessageSquare, 
+  Sparkles, 
+  Search, 
+  User 
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase, getStories, getProductSlug, getCachedStories } from "@/lib/supabase";
@@ -80,10 +81,14 @@ export default function StoriesPage() {
                 className="pb-6  transition-all flex flex-col group cursor-pointer"
               >
                 <div className="aspect-[16/10] bg-muted relative overflow-hidden">
-                  <img 
+                  <Image 
                     src={story.image_url || "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=600&q=80"} 
                     alt={story.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    width={600}
+                    height={375}
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    quality={85}
                   />
                   <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white text-[10px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider">
                     {story.category || "Story"}
@@ -103,10 +108,12 @@ export default function StoriesPage() {
                   <div className="pt-4 border-t border-border/60 flex items-center justify-between text-sm font-medium text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <div className="w-4 h-4 rounded-full overflow-hidden bg-muted border border-border" style={{ width: "16px", height: "16px" }}>
-                        <img 
+                        <Image 
                           src={story.user?.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"} 
                           alt="Author" 
                           className="w-full h-full object-cover"
+                          width={32}
+                          height={32}
                         />
                       </div>
                       <span className="text-sm font-medium text-foreground/80 hover:text-[#ff5733]">@{story.user?.username || "maker"}</span>

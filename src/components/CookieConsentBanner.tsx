@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Cookie, X, Check, Shield, Info, Settings } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
@@ -152,7 +153,7 @@ export default function CookieConsentBanner() {
             <div className="flex items-start justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 bg-orange-500/10 border border-orange-500/20 text-white rounded-xl flex items-center justify-center p-1 shadow-2xs shrink-0 overflow-hidden">
-                  <img
+                  <Image
                     src="/logo.webp"
                     alt="IndiHunt Logo"
                     width={36}
@@ -235,7 +236,7 @@ export default function CookieConsentBanner() {
             <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center justify-center p-1 shrink-0 overflow-hidden">
-                  <img
+                  <Image
                     src="/logo.webp"
                     alt="IndiHunt Logo"
                     width={32}

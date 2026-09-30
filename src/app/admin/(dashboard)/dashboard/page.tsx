@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { StatCard, StatCardSkeleton } from "@/app/admin/_components/StatCard";
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata = {
   title: "Dashboard | Admin Console | IndiHunt",
@@ -208,11 +209,11 @@ async function LiveLaunches() {
             >
               <span className="text-xs font-extrabold text-slate-300 w-5 shrink-0">#{i + 1}</span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <Image
                 src={p.logo_url || "/favicon.png"}
                 alt=""
                 className="w-7 h-7 rounded-lg object-cover shrink-0 border border-slate-200"
-              />
+              width={28} height={28} />
               <span className="text-sm font-medium text-slate-800 flex-1 truncate group-hover:text-orange-500 transition-colors">
                 {p.name}
               </span>

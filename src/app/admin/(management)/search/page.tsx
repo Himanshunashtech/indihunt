@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata = { title: "Global Search | Admin Console | IndiHunt" };
 
@@ -147,11 +148,11 @@ async function SearchResults({ q }: { q: string }) {
                 >
                   {item.logo && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.logo} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" />
+                    <Image src={item.logo} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" width={28} height={28} />
                   )}
                   {item.avatar && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.avatar} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0" />
+                    <Image src={item.avatar} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0" width={28} height={28} />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-slate-800 truncate group-hover:text-orange-500 transition-colors">{item.title}</div>

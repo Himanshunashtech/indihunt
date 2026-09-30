@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
 import {
@@ -46,7 +47,7 @@ async function FeaturedList({ featureType }: { featureType: string }) {
           <div key={f.id} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4 hover:border-slate-300 transition-colors">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={product?.logo_url || "/favicon.png"} alt="" className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0" />
+              <Image src={product?.logo_url || "/favicon.png"} alt="" className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0" width={40} height={40} />
               <div className="min-w-0">
                 <Link href={`/products/${product?.id}`} target="_blank" className="text-sm font-semibold text-slate-800 hover:text-orange-500 transition-colors truncate block">
                   {product?.name || "—"}

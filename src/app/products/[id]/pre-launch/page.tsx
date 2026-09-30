@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter, notFound } from "next/navigation";
 import {
   ArrowLeft,
@@ -254,7 +255,7 @@ export default function PreLaunchDashboardPage() {
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center font-medium text-lg text-orange-500 border border-orange-500/15 overflow-hidden flex-shrink-0">
                   {product.logo_url ? (
-                    <img src={product.logo_url} alt="Logo" className="w-full h-full object-cover" />
+                    <Image src={product.logo_url} alt="Logo" className="w-full h-full object-cover" width={48} height={48} />
                   ) : (
                     product.name.charAt(0)
                   )}
@@ -512,7 +513,7 @@ export default function PreLaunchDashboardPage() {
             <div className="bg-muted/40 border border-border p-4 rounded-2xl flex justify-center items-center">
               <div className="bg-background border border-orange-500/30 rounded-xl px-4 py-2.5 flex items-center gap-3 select-none">
                 <div className="w-6 h-6 rounded-lg overflow-hidden flex-shrink-0 border border-border/30 bg-muted flex items-center justify-center">
-                  <img src="/logo.webp" alt="Logo" className="w-full h-full object-cover" />
+                  <Image src="/logo.webp" alt="Logo" className="w-full h-full object-cover" width={48} height={48} />
                 </div>
                 <div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider block text-muted-foreground">Featured on</span>

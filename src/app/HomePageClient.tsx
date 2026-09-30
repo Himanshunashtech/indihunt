@@ -581,6 +581,30 @@ export default function HomePageClient({
       .catch(() => {});
   }, [initialPulseStats]);
 
+  // Realtime upvote listener to sync external upvotes into homepage cache
+  useEffect(() => {
+    const unsub = subscribe("feed", "product_upvoted", (data: { productId: string; upvotes_count: number }) => {
+      if (!data?.productId) return;
+      queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((p: Product) =>
+          p.id === data.productId || getProductSlug(p.name).toLowerCase() === data.productId.toLowerCase()
+            ? { ...p, upvotes_count: data.upvotes_count }
+            : p
+        );
+      });
+      queryClient.setQueriesData({ queryKey: ["promoted_products"] }, (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((p: Product) =>
+          p.id === data.productId || getProductSlug(p.name).toLowerCase() === data.productId.toLowerCase()
+            ? { ...p, upvotes_count: data.upvotes_count }
+            : p
+        );
+      });
+    });
+    return unsub;
+  }, [subscribe, queryClient]);
+
   // Upvote Handler
   const handleVote = useCallback(
     async (e: React.MouseEvent, productId: string) => {
@@ -590,25 +614,35 @@ export default function HomePageClient({
         dispatch(setAuthModalOpen(true));
         return;
       }
+      const targetProd = (products || []).find((p: any) => p.id === productId || getProductSlug(p.name).toLowerCase() === productId.toLowerCase());
+      const slug = targetProd?.name ? getProductSlug(targetProd.name) : undefined;
+      const targetId = targetProd?.id || productId;
+
       toggleUpvoteMutation.mutate(
-        { productId, userId: activeUserId },
+        { productId: targetId, userId: activeUserId },
         {
           onSuccess: (result) => {
-            if (result.success) {
+            if (result && result.success) {
               publish("feed", "product_upvoted", {
-                productId,
+                productId: targetId,
                 upvotes_count: result.upvotes_count,
               });
-              publish(`product:${productId}`, "product_upvoted", {
-                productId,
+              publish(`product:${targetId}`, "product_upvoted", {
+                productId: targetId,
                 upvotes_count: result.upvotes_count,
               });
+              if (slug && slug !== targetId) {
+                publish(`product:${slug}`, "product_upvoted", {
+                  productId: targetId,
+                  upvotes_count: result.upvotes_count,
+                });
+              }
             }
           },
         }
       );
     },
-    [effectiveUserId, currentUserId, dispatch, toggleUpvoteMutation, queryClient, publish]
+    [effectiveUserId, currentUserId, dispatch, toggleUpvoteMutation, queryClient, publish, products]
   );
 
   const handleOnboardingSubmit = async (e: React.FormEvent) => {
@@ -743,27 +777,27 @@ export default function HomePageClient({
             ...p,
             has_upvoted: freshData.has_upvoted,
             upvotes_count: freshData.upvotes_count,
+            is_promoted: true,
           };
         }
-        return p;
+        return { ...p, is_promoted: true };
       });
 
       if (!organicList || organicList.length === 0)
-        return hydratedPromotedList.map((p) => ({ ...p, is_promoted: true }));
+        return hydratedPromotedList;
 
       const result: Product[] = [];
       const promotedQueue = [...hydratedPromotedList];
       let promotedIndex = 0;
 
       for (let i = 0; i < organicList.length; i++) {
-        result.push(organicList[i]);
+        if (!result.some((r) => r.id === organicList[i].id)) {
+          result.push(organicList[i]);
+        }
 
         if (organicList.length < 3 && promotedIndex === 0 && i === 0) {
-          const nextPromoted = {
-            ...promotedQueue[promotedIndex % promotedQueue.length],
-            is_promoted: true,
-          };
-          if (result[0]?.id !== nextPromoted.id) {
+          const nextPromoted = promotedQueue[promotedIndex % promotedQueue.length];
+          if (!result.some((r) => r.id === nextPromoted.id)) {
             result.push(nextPromoted);
             promotedIndex++;
           }
@@ -771,11 +805,8 @@ export default function HomePageClient({
         }
 
         if ((i + 1) % 3 === 0 && promotedIndex < promotedQueue.length) {
-          const nextPromoted = {
-            ...promotedQueue[promotedIndex % promotedQueue.length],
-            is_promoted: true,
-          };
-          if (result[result.length - 1]?.id !== nextPromoted.id) {
+          const nextPromoted = promotedQueue[promotedIndex % promotedQueue.length];
+          if (!result.some((r) => r.id === nextPromoted.id)) {
             result.push(nextPromoted);
             promotedIndex++;
           }
@@ -783,10 +814,7 @@ export default function HomePageClient({
       }
 
       while (promotedIndex < promotedQueue.length) {
-        const nextPromoted = {
-          ...promotedQueue[promotedIndex],
-          is_promoted: true,
-        };
+        const nextPromoted = promotedQueue[promotedIndex];
         if (!result.some((r) => r.id === nextPromoted.id)) {
           result.push(nextPromoted);
         }
@@ -853,7 +881,7 @@ export default function HomePageClient({
   const feedSections: FeedSectionData[] = useMemo(() => {
     if (activeFeedTab === "upcoming") {
       const rawUpcoming = upcomingProducts.slice(0, upcomingLimit);
-      const visibleUpcoming = interleavePromoted(rawUpcoming, promotedProducts);
+      const visibleUpcoming = interleavePromoted(rawUpcoming, currentPromotedProducts);
       const hasMore = upcomingProducts.length > upcomingLimit;
       return [
         {
@@ -897,7 +925,7 @@ export default function HomePageClient({
       isTodayExpanded
         ? sortByUpvotes(today)
         : sortByUpvotes(today).slice(0, 20),
-      promotedProducts
+      currentPromotedProducts
     );
     const sortedYesterday = sortByUpvotes(yesterday).slice(0, 5);
     const sortedLastWeek = sortByUpvotes(lastWeek).slice(0, 5);
@@ -908,7 +936,7 @@ export default function HomePageClient({
     // Pre-launch rollover window (8:00 PM to 2:00 AM IST): Feature upcoming launches at top
     if (isPreLaunchWindow && hasMounted && upcomingProducts.length > 0) {
       const rawUpcoming = upcomingProducts.slice(0, 20);
-      const visibleUpcoming = interleavePromoted(rawUpcoming, promotedProducts);
+      const visibleUpcoming = interleavePromoted(rawUpcoming, currentPromotedProducts);
       sections.push({
         id: "upcoming-prelaunch",
         title: "🚀 Scheduled Upcoming Launches",
@@ -981,7 +1009,7 @@ export default function HomePageClient({
     expandedSections,
     isPreLaunchWindow,
     hasMounted,
-    promotedProducts,
+    currentPromotedProducts,
     interleavePromoted,
     yesterdayHref,
     lastWeekHref,

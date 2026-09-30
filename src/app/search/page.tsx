@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
@@ -321,11 +322,11 @@ function SearchContent() {
                               className="p-4 rounded-2xl bg-card border border-border hover:bg-muted/40 transition-all flex items-center justify-between gap-4 cursor-pointer group"
                             >
                               <div className="flex items-center gap-3.5 min-w-0">
-                                <img
+                                <Image
                                   src={p.logo_url}
                                   alt={p.name}
                                   className="w-12 h-12 rounded-xl object-cover border border-border shrink-0"
-                                />
+                                width={48} height={48} />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-base text-foreground/90 group-hover:text-foreground transition-colors truncate">
@@ -390,11 +391,11 @@ function SearchContent() {
                               className="p-4 rounded-2xl bg-card border border-border hover:bg-muted/40 transition-all flex items-center justify-between gap-4 group"
                             >
                               <div className="flex items-center gap-3.5 min-w-0">
-                                <img
+                                <Image
                                   src={u.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
                                   alt={u.full_name || "User"}
                                   className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
-                                />
+                                width={40} height={40} />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <h4 className="font-medium text-base text-foreground/90 group-hover:text-foreground transition-colors truncate">
@@ -434,11 +435,11 @@ function SearchContent() {
                             className="p-4 rounded-2xl bg-card border border-border hover:bg-muted/40 transition-all flex items-center justify-between gap-4 cursor-pointer group"
                           >
                             <div className="flex items-center gap-3.5 min-w-0">
-                              <img
+                              <Image
                                 src={product.logo_url}
                                 alt={product.name}
                                 className="w-12 h-12 rounded-xl object-cover border border-border shrink-0"
-                              />
+                              width={48} height={48} />
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-semibold text-sm text-foreground group-hover:text-[#ff5733] transition-colors truncate">
@@ -519,11 +520,11 @@ function SearchContent() {
                             className="p-4 rounded-2xl bg-card border border-border hover:bg-muted/40 transition-all flex items-center justify-between gap-3 group"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <img
+                              <Image
                                 src={user.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
                                 alt={user.full_name || "User"}
                                 className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
-                              />
+                              width={40} height={40} />
                               <div className="min-w-0">
                                 <h4 className="font-medium text-base text-foreground/90 transition-colors truncate">
                                   {user.full_name || user.username}

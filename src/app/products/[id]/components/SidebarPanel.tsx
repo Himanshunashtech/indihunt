@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ChevronLeft,
   ChevronRight,
@@ -278,7 +279,7 @@ export default function SidebarPanel({
                 <div key={follower.id} className="relative group cursor-pointer" title={follower.full_name}>
                   <div className="w-8 h-8 rounded-full overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-xs text-orange-500">
                     {follower.avatar_url ? (
-                      <img src={follower.avatar_url} alt={follower.full_name} className="w-full h-full object-cover" />
+                      <Image src={follower.avatar_url} alt={follower.full_name} className="w-full h-full object-cover" width={48} height={48} />
                     ) : (
                       follower.full_name.charAt(0)
                     )}
@@ -438,7 +439,7 @@ export default function SidebarPanel({
                 <div key={idx} className="flex gap-3.5 items-start  pb-3.5 last:border-0 last:pb-0">
                   <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center font-semibold text-sm text-orange-500 border border-orange-500/15 flex-shrink-0 overflow-hidden">
                     {item.logo_url ? (
-                      <img src={item.logo_url} alt="" className="w-full h-full object-cover" />
+                      <Image src={item.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                     ) : (
                       item.name.charAt(0)
                     )}

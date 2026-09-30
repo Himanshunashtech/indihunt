@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -282,11 +283,11 @@ export default function BigSearchModal({
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-10 h-10 rounded-lg overflow-hidden bg-card border border-border p-0.5 flex-shrink-0 flex items-center justify-center">
-                              <img
+                              <Image
                                 src={product.logo_url}
                                 alt=""
                                 className="w-full h-full object-cover rounded"
-                              />
+                              width={48} height={48} />
                             </div>
                             <div className="min-w-0">
                               <span className="font-semibold text-base text-foreground group-hover:text-[#ff5733] transition-colors block">

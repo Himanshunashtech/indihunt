@@ -350,8 +350,10 @@ export function normalizeProductUrl(rawUrl: string): string {
 }
 
 export function extractDomainFromUrl(rawUrl: string): string {
+  if (!rawUrl) return "";
   const norm = normalizeProductUrl(rawUrl);
-  return norm.split('/')[0] || norm;
+  const hostname = norm.split('/')[0] || norm;
+  return hostname.split(':')[0] || hostname;
 }
 
 export async function checkProductUrlExists(
@@ -379,8 +381,7 @@ export async function checkProductUrlExists(
         }
         if (p.is_deleted) return false;
         const normExisting = normalizeProductUrl(p.website_url);
-        const domainExisting = extractDomainFromUrl(p.website_url);
-        return normExisting === normalizedInput || (domainInput.includes('.') && domainExisting === domainInput);
+        return normExisting === normalizedInput;
       });
 
       if (match) {
@@ -399,7 +400,7 @@ export async function checkProductUrlExists(
       const { data: dbMatches } = await supabase
         .from('products')
         .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)')
-        .or(`website_url.ilike.%${domainInput}%,website_url.ilike.%${normalizedInput}%`)
+        .or(`website_url.ilike.%${normalizedInput}%`)
         .limit(20);
 
       if (dbMatches && dbMatches.length > 0) {
@@ -409,8 +410,7 @@ export async function checkProductUrlExists(
           }
           if (p.is_deleted) return false;
           const normExisting = normalizeProductUrl(p.website_url || '');
-          const domainExisting = extractDomainFromUrl(p.website_url || '');
-          return normExisting === normalizedInput || (domainInput.includes('.') && domainExisting === domainInput);
+          return normExisting === normalizedInput;
         });
 
         if (match) {
@@ -435,8 +435,7 @@ export async function checkProductUrlExists(
         }
         if (p.is_deleted) return false;
         const normExisting = normalizeProductUrl(p.website_url || '');
-        const domainExisting = extractDomainFromUrl(p.website_url || '');
-        return normExisting === normalizedInput || (domainInput.includes('.') && domainExisting === domainInput);
+        return normExisting === normalizedInput;
       });
 
       if (match) {
@@ -872,16 +871,33 @@ export async function toggleUpvote(productId: string, userId: string): Promise<{
 
 async function getCommentsRaw(productId?: string, threadId?: string): Promise<Comment[]> {
   function buildTree(list: Comment[]): Comment[] {
+    const flatList: Comment[] = [];
+    const seen = new Set<string>();
+
+    const flatten = (items: Comment[]) => {
+      for (const item of items) {
+        if (!item || !item.id) continue;
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          flatList.push(item);
+        }
+        if (item.replies && Array.isArray(item.replies) && item.replies.length > 0) {
+          flatten(item.replies);
+        }
+      }
+    };
+    flatten(list);
+
     const commentMap: Record<string, Comment> = {};
-    list.forEach(c => {
+    flatList.forEach(c => {
       commentMap[c.id] = {
         ...c,
-        replies: c.replies ? [...c.replies] : []
+        replies: []
       };
     });
 
     const roots: Comment[] = [];
-    list.forEach(c => {
+    flatList.forEach(c => {
       const item = commentMap[c.id];
       if (c.parent_id && commentMap[c.parent_id]) {
         const parent = commentMap[c.parent_id];
@@ -889,7 +905,9 @@ async function getCommentsRaw(productId?: string, threadId?: string): Promise<Co
           parent.replies!.push(item);
         }
       } else if (!c.parent_id) {
-        roots.push(item);
+        if (!roots.some(r => r.id === item.id)) {
+          roots.push(item);
+        }
       }
     });
     return roots;
@@ -935,7 +953,21 @@ async function getCommentsRaw(productId?: string, threadId?: string): Promise<Co
 
   const cacheKey = productId ? `indihunt_comments_${productId}` : `indihunt_comments_thread_${threadId}`;
   if (typeof window !== 'undefined') {
-    const cached = localStorage.getItem(cacheKey);
+    let cached = localStorage.getItem(cacheKey);
+    if (!cached && productId) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
+      if (isUUID) {
+        try {
+          const products: Product[] = JSON.parse(localStorage.getItem('indihunt_products') || '[]');
+          const prod = products.find(p => p.id === productId);
+          if (prod?.name) {
+            const slug = getProductSlug(prod.name);
+            if (slug) cached = localStorage.getItem(`indihunt_comments_${slug}`);
+          }
+        } catch {}
+      }
+    }
+
     if (!cached) {
       return [];
     }
@@ -991,6 +1023,36 @@ export async function addComment(productId: string | null, userId: string, body:
     });
 
     if (res && res.success && res.data) {
+      // Sync local storage as well for seamless fallback consistency
+      if (typeof window !== 'undefined') {
+        const targetKeys = new Set<string>();
+        if (productId) targetKeys.add(`indihunt_comments_${productId}`);
+        if (actualProductId) targetKeys.add(`indihunt_comments_${actualProductId}`);
+        if (threadId) targetKeys.add(`indihunt_comments_thread_${threadId}`);
+        if (actualThreadId) targetKeys.add(`indihunt_comments_thread_${actualThreadId}`);
+
+        targetKeys.forEach(k => {
+          let existingFlat: Comment[] = [];
+          try {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              const flatten = (items: Comment[]) => {
+                for (const item of items) {
+                  if (!item) continue;
+                  const { replies, ...rest } = item;
+                  existingFlat.push(rest as Comment);
+                  if (replies && Array.isArray(replies) && replies.length > 0) flatten(replies);
+                }
+              };
+              flatten(Array.isArray(parsed) ? parsed : [parsed]);
+            }
+          } catch {}
+
+          const nextFlat = [...existingFlat.filter(c => c.id !== res.data!.id), res.data!];
+          localStorage.setItem(k, JSON.stringify(nextFlat));
+        });
+      }
       return res.data;
     }
   } catch (err) {
@@ -999,12 +1061,10 @@ export async function addComment(productId: string | null, userId: string, body:
 
   // Fallback logic
   if (typeof window !== 'undefined') {
-    const cacheKey = productId ? `indihunt_comments_${productId}` : `indihunt_comments_thread_${threadId}`;
-    const comments = await getComments(productId || undefined, threadId || undefined);
     const newComment: Comment = {
       id: `comm-dyn-${Date.now()}`,
-      product_id: productId || undefined,
-      thread_id: threadId,
+      product_id: actualProductId || productId || undefined,
+      thread_id: actualThreadId || threadId,
       user_id: userId,
       user: profile,
       parent_id: parentId || null,
@@ -1013,34 +1073,51 @@ export async function addComment(productId: string | null, userId: string, body:
       replies: []
     };
 
-    let nextComments: Comment[];
-    if (parentId) {
-      nextComments = comments.map(c => {
-        if (c.id === parentId) {
-          return { ...c, replies: [...(c.replies || []), newComment] };
+    const targetKeys = new Set<string>();
+    if (productId) targetKeys.add(`indihunt_comments_${productId}`);
+    if (actualProductId) targetKeys.add(`indihunt_comments_${actualProductId}`);
+    if (threadId) targetKeys.add(`indihunt_comments_thread_${threadId}`);
+    if (actualThreadId) targetKeys.add(`indihunt_comments_thread_${actualThreadId}`);
+
+    targetKeys.forEach(k => {
+      let existingFlat: Comment[] = [];
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const flatten = (items: Comment[]) => {
+            for (const item of items) {
+              if (!item) continue;
+              const { replies, ...rest } = item;
+              existingFlat.push(rest as Comment);
+              if (replies && Array.isArray(replies) && replies.length > 0) flatten(replies);
+            }
+          };
+          flatten(Array.isArray(parsed) ? parsed : [parsed]);
         }
-        return c;
-      });
-    } else {
-      nextComments = [...comments, newComment];
-    }
-    localStorage.setItem(cacheKey, JSON.stringify(nextComments));
+      } catch {}
+
+      const nextFlat = [...existingFlat.filter(c => c.id !== newComment.id), newComment];
+      localStorage.setItem(k, JSON.stringify(nextFlat));
+    });
 
     // Update comments count in product or thread fallback
-    if (productId) {
+    if (actualProductId || productId) {
+      const pid = actualProductId || productId;
       const products = await getProducts();
       const updatedProducts = products.map(p => {
-        if (p.id === productId) {
-          return { ...p, comments_count: p.comments_count + 1 };
+        if (p.id === pid || p.id === productId || (p.name && getProductSlug(p.name) === productId)) {
+          return { ...p, comments_count: (p.comments_count || 0) + 1 };
         }
         return p;
       });
       localStorage.setItem('indihunt_products', JSON.stringify(updatedProducts));
-    } else if (threadId) {
+    } else if (actualThreadId || threadId) {
+      const tid = actualThreadId || threadId;
       const threads = await getThreads();
       const updatedThreads = threads.map(t => {
-        if (t.id === threadId) {
-          return { ...t, comments_count: t.comments_count + 1 };
+        if (t.id === tid || t.id === threadId) {
+          return { ...t, comments_count: (t.comments_count || 0) + 1 };
         }
         return t;
       });
@@ -1055,9 +1132,9 @@ export async function addComment(productId: string | null, userId: string, body:
 export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count' | 'comments_count' | 'created_at' | 'maker'>, userId: string): Promise<Product | null> {
   const profile = {
     id: userId,
-    username: "maker_new",
-    full_name: "Awesome Innovator",
-    is_maker: true
+    username: "hunter_new",
+    full_name: "Hunter",
+    is_maker: product.worked_on_launch !== false
   };
 
   const dupCheck = await checkProductUrlExists(product.website_url);
@@ -1100,13 +1177,10 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
   if (typeof window !== 'undefined') {
     const products = await getProducts();
     const normInput = normalizeProductUrl(product.website_url);
-    const domainInput = extractDomainFromUrl(product.website_url);
-    // Exclude soft-deleted products from the URL duplicate check
     const existing = products.find(p => {
       if (p.is_deleted) return false;
       const normP = normalizeProductUrl(p.website_url || '');
-      const domainP = extractDomainFromUrl(p.website_url || '');
-      return normP === normInput || (domainInput.includes('.') && domainP === domainInput);
+      return normP === normInput;
     });
     if (existing) {
       throw new Error(`This product (${existing.name}) has already been launched on IndiHunt!`);
@@ -1887,82 +1961,149 @@ export async function inviteProductMember(productId: string, usernameOrEmail: st
   return null;
 }
 
-async function compressImage(file: File, maxSizeBytes: number = 100 * 1024): Promise<File> {
-  if (file.size <= maxSizeBytes) {
+export interface ImageCompressionOptions {
+  maxSizeBytes?: number;
+  maxDimension?: number;
+  type?: 'icon' | 'screenshot' | 'general';
+}
+
+export async function compressImage(
+  file: File,
+  optionsOrMaxBytes?: number | ImageCompressionOptions
+): Promise<File> {
+  if (typeof window === "undefined" || !file || !file.type.startsWith("image/")) {
     return file;
+  }
+
+  // Determine configuration
+  let maxSizeBytes = 20 * 1024; // Default 20KB
+  let maxDimension = 1200;
+  let isIcon = false;
+
+  if (typeof optionsOrMaxBytes === "number") {
+    maxSizeBytes = optionsOrMaxBytes;
+    if (maxSizeBytes <= 10 * 1024) {
+      maxDimension = 256;
+      isIcon = true;
+    }
+  } else if (optionsOrMaxBytes) {
+    if (optionsOrMaxBytes.type === "icon") {
+      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 5 * 1024; // 5KB for favicon / logo
+      maxDimension = optionsOrMaxBytes.maxDimension ?? 256;
+      isIcon = true;
+    } else if (optionsOrMaxBytes.type === "screenshot") {
+      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 20 * 1024; // 20KB for screenshot
+      maxDimension = optionsOrMaxBytes.maxDimension ?? 1200;
+      isIcon = false;
+    } else {
+      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 20 * 1024;
+      maxDimension = optionsOrMaxBytes.maxDimension ?? (maxSizeBytes <= 10 * 1024 ? 256 : 1200);
+      isIcon = maxSizeBytes <= 10 * 1024;
+    }
   }
 
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
+      const img = new (window as any).Image();
       img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
+        const origWidth = img.naturalWidth || img.width;
+        const origHeight = img.naturalHeight || img.height;
 
-        const maxDimension = 1200;
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
+        if (!origWidth || !origHeight) {
+          resolve(file);
+          return;
+        }
+
+        // Initial dimension calculation preserving exact aspect ratio
+        let targetWidth = origWidth;
+        let targetHeight = origHeight;
+
+        if (targetWidth > maxDimension || targetHeight > maxDimension) {
+          if (targetWidth > targetHeight) {
+            targetHeight = Math.round((targetHeight * maxDimension) / targetWidth);
+            targetWidth = maxDimension;
           } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
+            targetWidth = Math.round((targetWidth * maxDimension) / targetHeight);
+            targetHeight = maxDimension;
           }
         }
 
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext("2d");
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d", { alpha: true });
         if (!ctx) {
           resolve(file);
           return;
         }
 
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-        let quality = 0.9;
-        const checkAndResolve = () => {
+        let quality = isIcon ? 0.90 : 0.82;
+        let scaleFactor = 1.0;
+        let attempts = 0;
+        const maxAttempts = 12;
+
+        const processBlob = () => {
+          attempts++;
           canvas.toBlob(
             (blob) => {
               if (!blob) {
-                // Fallback to jpeg if WebP canvas export is unsupported
+                // Fallback to jpeg if webp canvas not supported
                 canvas.toBlob(
                   (jpegBlob) => {
                     if (!jpegBlob) {
                       resolve(file);
                       return;
                     }
-                    const compressedFile = new File([jpegBlob], file.name, {
-                      type: "image/jpeg",
-                      lastModified: Date.now(),
-                    });
-                    resolve(compressedFile);
+                    const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+                    resolve(new File([jpegBlob], newName, { type: "image/jpeg", lastModified: Date.now() }));
                   },
                   "image/jpeg",
-                  quality
+                  Math.max(quality, 0.4)
                 );
                 return;
               }
-              if (blob.size <= maxSizeBytes || quality <= 0.1) {
+
+              // Check if requirement met (<= maxSizeBytes) or if reached max refinement attempts
+              if (blob.size <= maxSizeBytes || attempts >= maxAttempts) {
                 const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
-                const compressedFile = new File([blob], newName, {
-                  type: "image/webp",
-                  lastModified: Date.now(),
-                });
-                resolve(compressedFile);
+                resolve(new File([blob], newName, { type: "image/webp", lastModified: Date.now() }));
+                return;
+              }
+
+              // If still larger than target, adjust quality and/or dimension
+              if (quality > 0.45) {
+                quality = Math.max(0.40, quality - 0.08);
+                processBlob();
+              } else if (scaleFactor > 0.6) {
+                // Resample canvas down slightly while maintaining clarity
+                scaleFactor -= 0.12;
+                const newW = Math.max(isIcon ? 64 : 400, Math.round(targetWidth * scaleFactor));
+                const newH = Math.max(isIcon ? 64 : 300, Math.round(targetHeight * scaleFactor));
+                
+                canvas.width = newW;
+                canvas.height = newH;
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = "high";
+                ctx.drawImage(img, 0, 0, newW, newH);
+                
+                quality = isIcon ? 0.85 : 0.75;
+                processBlob();
               } else {
-                quality -= 0.1;
-                checkAndResolve();
+                const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+                resolve(new File([blob], newName, { type: "image/webp", lastModified: Date.now() }));
               }
             },
             "image/webp",
             quality
           );
         };
-        checkAndResolve();
+
+        processBlob();
       };
       img.onerror = () => resolve(file);
       img.src = event.target?.result as string;
@@ -1972,11 +2113,63 @@ async function compressImage(file: File, maxSizeBytes: number = 100 * 1024): Pro
   });
 }
 
-export async function uploadImage(bucketName: string, file: File, filePath: string): Promise<string | null> {
+export async function compressIconImage(file: File): Promise<File> {
+  return compressImage(file, { type: 'icon', maxSizeBytes: 5 * 1024, maxDimension: 256 });
+}
+
+export async function compressScreenshotImage(file: File): Promise<File> {
+  return compressImage(file, { type: 'screenshot', maxSizeBytes: 20 * 1024, maxDimension: 1200 });
+}
+
+export async function uploadImage(
+  bucketName: string,
+  file: File,
+  filePath: string,
+  options?: ImageCompressionOptions
+): Promise<string | null> {
   let fileToUpload = file;
+  let finalPath = filePath;
+
   if (file.type.startsWith("image/")) {
     try {
-      fileToUpload = await compressImage(file, 100 * 1024);
+      const isIcon = options?.type === 'icon' ||
+        filePath.toLowerCase().includes('logo') ||
+        filePath.toLowerCase().includes('favicon') ||
+        filePath.toLowerCase().includes('avatar') ||
+        bucketName === 'avatars';
+
+      const isScreenshot = options?.type === 'screenshot' ||
+        filePath.toLowerCase().includes('screenshot') ||
+        filePath.toLowerCase().includes('gallery') ||
+        filePath.toLowerCase().includes('story') ||
+        bucketName === 'product-screenshots';
+
+      let targetBytes = options?.maxSizeBytes;
+      let targetDimension = options?.maxDimension;
+      let targetType: 'icon' | 'screenshot' | 'general' = 'general';
+
+      if (isIcon) {
+        targetBytes = targetBytes ?? 5 * 1024; // 5KB for favicon / logo
+        targetDimension = targetDimension ?? 256;
+        targetType = 'icon';
+      } else if (isScreenshot) {
+        targetBytes = targetBytes ?? 20 * 1024; // 20KB for screenshot
+        targetDimension = targetDimension ?? 1200;
+        targetType = 'screenshot';
+      } else {
+        targetBytes = targetBytes ?? (options?.maxSizeBytes ?? 20 * 1024);
+        targetDimension = targetDimension ?? 1200;
+      }
+
+      fileToUpload = await compressImage(file, {
+        maxSizeBytes: targetBytes,
+        maxDimension: targetDimension,
+        type: targetType
+      });
+
+      if (fileToUpload.type === "image/webp" && !finalPath.endsWith(".webp")) {
+        finalPath = finalPath.replace(/\.[^/.]+$/, "") + ".webp";
+      }
     } catch (err) {
       console.error("Compression failed, uploading original:", err);
     }
@@ -2003,8 +2196,9 @@ export async function uploadImage(bucketName: string, file: File, filePath: stri
 
   const { data, error } = await supabase.storage
     .from(bucketName)
-    .upload(filePath, fileToUpload, {
-      cacheControl: '3600',
+    .upload(finalPath, fileToUpload, {
+      cacheControl: '31536000',
+      contentType: fileToUpload.type || 'image/webp',
       upsert: true
     });
 
@@ -2015,7 +2209,7 @@ export async function uploadImage(bucketName: string, file: File, filePath: stri
 
   const { data: { publicUrl } } = supabase.storage
     .from(bucketName)
-    .getPublicUrl(filePath);
+    .getPublicUrl(finalPath);
 
   return publicUrl;
 }
@@ -2308,25 +2502,22 @@ export async function getProductThreads(productId: string, currentUserId?: strin
   if (typeof window !== 'undefined') {
     const key = `indihunt_threads_${productId}`;
     const cached = localStorage.getItem(key);
-    if (!cached) {
-      const initial: Thread[] = [
-        {
-          id: `thread-1-${productId}`,
-          title: `How are you using this product in your daily workflow?`,
-          body: `Love to know feedback, usecases, and any integration suggestions you have for the developers!`,
-          user_id: 'user-2',
-          user: MOCK_PROFILES['user-2'],
-          category: 'General',
-          upvotes_count: 3,
-          comments_count: 0,
-          created_at: new Date().toISOString(),
-          product_id: productId
-        }
-      ];
-      localStorage.setItem(key, JSON.stringify(initial));
-      return initial;
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) { }
     }
-    return JSON.parse(cached);
+
+    try {
+      const allThreadsRaw = localStorage.getItem('indihunt_threads');
+      if (allThreadsRaw) {
+        const allThreads: Thread[] = JSON.parse(allThreadsRaw);
+        const filtered = allThreads.filter(t => t.product_id === productId);
+        if (filtered.length > 0) return filtered;
+      }
+    } catch (e) { }
+
+    return [];
   }
   return [];
 }
@@ -4377,14 +4568,49 @@ export async function deleteAdCampaign(campaignId: string): Promise<boolean> {
 }
 
 export async function getActiveAdsPool(excludeProductId?: string): Promise<AdCampaign[]> {
+  const adsCacheKey = 'public_active_ads_pool';
+
+  // L1/L2 cache check first
+  const cachedAds = await getRedisCache<AdCampaign[]>(adsCacheKey);
+  if (cachedAds && Array.isArray(cachedAds) && cachedAds.length > 0) {
+    const valid = cachedAds.filter(c => {
+      if (c.status !== 'active') return false;
+      if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) return false;
+      return excludeProductId ? c.product_id !== excludeProductId : true;
+    });
+    if (valid.length > 0) return valid;
+  }
+
+  // === PERF FIX: Direct Supabase query on server (avoids self HTTP loopback roundtrip) ===
+  if (typeof window === 'undefined' && supabase) {
+    try {
+      const { data: dbCampaigns } = await supabase
+        .from('ad_campaigns')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+      if (dbCampaigns && dbCampaigns.length > 0) {
+        setRedisCache(adsCacheKey, dbCampaigns, 120).catch(() => {});
+        const valid = (dbCampaigns as AdCampaign[]).filter(c => {
+          if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) return false;
+          return excludeProductId ? c.product_id !== excludeProductId : true;
+        });
+        return valid;
+      }
+      // No active ads — still cache empty to avoid repeated DB hits
+      setRedisCache(adsCacheKey, [], 60).catch(() => {});
+      return [];
+    } catch { }
+  }
+
+  // Client-side / fallback: API call
   try {
     const res = await secureApiFetch<AdCampaign[]>('/t/ads/campaigns?all=true');
     if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      setRedisCache(adsCacheKey, res.data, 120).catch(() => {});
       const valid = (res.data as AdCampaign[]).filter(c => {
         if (c.status !== 'active') return false;
-        if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) {
-          return false;
-        }
+        if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) return false;
         return excludeProductId ? c.product_id !== excludeProductId : true;
       });
       return valid;
@@ -5752,10 +5978,67 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
     return cachedHunters;
   }
 
+  // === PERF FIX: Direct Supabase query on server (avoids self HTTP loopback roundtrip) ===
+  if (typeof window === 'undefined' && supabase) {
+    try {
+      const now = Date.now();
+      let timeLimitMs = 0;
+      if (timeframe === 'weekly' || timeframe === 'last_week') timeLimitMs = 7 * 86400000;
+      else if (timeframe === 'monthly' || timeframe === 'last_month') timeLimitMs = 30 * 86400000;
+      else if (timeframe === 'yearly' || timeframe === 'last_year') timeLimitMs = 365 * 86400000;
+
+      const hunterMap = new Map<string, Hunter>();
+
+      const { data: dbProducts } = await supabase
+        .from('products')
+        .select('id, maker_id, upvotes_count, comments_count, featured, quality_score, created_at, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, karma_points, is_verified)')
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (dbProducts && dbProducts.length > 0) {
+        (dbProducts as any[]).forEach((p: any) => {
+          if (timeLimitMs > 0 && p.created_at && (now - new Date(p.created_at).getTime()) > timeLimitMs) return;
+          const maker = p.maker || (p.maker_id ? { id: p.maker_id } : null);
+          if (!maker) return;
+          const key = (maker.username || maker.id || p.maker_id || '').toLowerCase();
+          if (!key) return;
+          const existing = hunterMap.get(key) || {
+            id: maker.id || p.maker_id || key,
+            name: maker.full_name || maker.username || 'Indie Maker',
+            username: maker.username || key,
+            avatar_url: maker.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+            bio: maker.bio || maker.headline || 'IndiHunt Creator',
+            hunts_count: 0, upvotes_count: 0, comments_count: 0,
+            first_places_count: 0, avg_upvotes: 0, avg_comments: 0,
+            is_verified: !!maker.is_verified
+          };
+          existing.hunts_count += 1;
+          existing.upvotes_count += (p.upvotes_count || 0);
+          existing.comments_count += (p.comments_count || 0);
+          if (p.featured || (p.quality_score && p.quality_score >= 75)) existing.first_places_count += 1;
+          hunterMap.set(key, existing);
+        });
+      }
+
+      if (hunterMap.size > 0) {
+        const serverList = Array.from(hunterMap.values());
+        serverList.forEach(h => {
+          h.avg_upvotes = h.hunts_count > 0 ? Math.round(h.upvotes_count / h.hunts_count) : h.upvotes_count;
+          h.avg_comments = h.hunts_count > 0 ? Math.round(h.comments_count / h.hunts_count) : h.comments_count;
+        });
+        serverList.sort((a, b) => b.hunts_count - a.hunts_count || b.upvotes_count - a.upvotes_count);
+        const top100 = serverList.slice(0, 100);
+        setRedisCache(cacheKey, top100, 300).catch(() => {});
+        return top100;
+      }
+    } catch { }
+  }
+
+  // Client-side or server-cache-miss fallback via API
   try {
     const res = await secureApiFetch<Hunter[]>(`/t/leaderboard/top-hunters?timeRange=${encodeURIComponent(timeframe)}&limit=100`);
     if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-      setRedisCache(cacheKey, res.data, 60).catch(() => { });
+      setRedisCache(cacheKey, res.data, 300).catch(() => { });
       return res.data;
     }
   } catch { }
@@ -5986,12 +6269,29 @@ export async function deleteBillboardAd(id: string): Promise<boolean> {
 }
 
 export async function uploadBillboardImage(file: File): Promise<string | null> {
+  let fileToUpload = file;
+  if (file.type.startsWith("image/")) {
+    try {
+      fileToUpload = await compressImage(file, {
+        type: 'screenshot',
+        maxSizeBytes: 20 * 1024,
+        maxDimension: 1200
+      });
+    } catch (err) {
+      console.error("Billboard compression failed:", err);
+    }
+  }
+
   if (supabase) {
-    const fileExt = file.name.split('.').pop();
+    const fileExt = fileToUpload.type === 'image/webp' ? 'webp' : (file.name.split('.').pop() || 'png');
     const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
     const filePath = `ads/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage.from('billboard-ads').upload(filePath, file);
+    const { error: uploadError } = await supabase.storage.from('billboard-ads').upload(filePath, fileToUpload, {
+      contentType: fileToUpload.type || 'image/webp',
+      cacheControl: '31536000',
+      upsert: true
+    });
     if (!uploadError) {
       const { data } = supabase.storage.from('billboard-ads').getPublicUrl(filePath);
       return data.publicUrl;
@@ -6005,7 +6305,7 @@ export async function uploadBillboardImage(file: File): Promise<string | null> {
       reader.onloadend = () => {
         resolve(reader.result as string);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(fileToUpload);
     });
   }
   return null;
@@ -6831,33 +7131,80 @@ export async function deleteLaunchTag(id: string): Promise<{ success: boolean; e
 
 // Get scheduled product counts grouped by date (YYYY-MM-DD)
 export async function getScheduledProductCounts(): Promise<Record<string, number>> {
+  // 1. Primary path: API route
+  try {
+    const res = await secureApiFetch<Record<string, number>>('/t/products/scheduled-counts');
+    if (res && res.data && typeof res.data === 'object' && Object.keys(res.data).length > 0) {
+      return res.data;
+    }
+  } catch (e) { }
+
   const counts: Record<string, number> = {};
 
-  const toDateKey = (isoString: string): string => {
+  const recordProductDate = (dateVal: string | Date | undefined) => {
+    if (!dateVal) return;
     try {
-      const d = new Date(isoString);
-      if (isNaN(d.getTime())) return '';
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    } catch {
-      return '';
-    }
+      const dateKeys = new Set<string>();
+      if (typeof dateVal === 'string') {
+        const match = dateVal.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          dateKeys.add(`${match[1]}-${match[2]}-${match[3]}`);
+        }
+      }
+      const d = new Date(dateVal);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        dateKeys.add(`${yyyy}-${mm}-${dd}`);
+
+        // Also UTC date representation
+        const utcYyyy = d.getUTCFullYear();
+        const utcMm = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const utcDd = String(d.getUTCDate()).padStart(2, '0');
+        dateKeys.add(`${utcYyyy}-${utcMm}-${utcDd}`);
+      }
+
+      dateKeys.forEach((key) => {
+        counts[key] = (counts[key] || 0) + 1;
+      });
+    } catch {}
   };
 
-  const prods = await getProducts();
-  if (prods && prods.length > 0) {
-    prods.forEach((p: any) => {
-      if (p.status === 'scheduled' && p.scheduled_for) {
-        const key = toDateKey(p.scheduled_for);
-        if (key) counts[key] = (counts[key] || 0) + 1;
+  // 2. Direct Supabase query during SSR / fallback
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, scheduled_for, status, is_deleted')
+        .eq('is_deleted', false)
+        .not('scheduled_for', 'is', null);
+
+      if (!error && data && data.length > 0) {
+        data.forEach((p: any) => {
+          if (!p.is_deleted && p.scheduled_for) {
+            recordProductDate(p.scheduled_for);
+          }
+        });
+        if (Object.keys(counts).length > 0) return counts;
       }
-    });
-    return counts;
+    } catch (e) { }
   }
 
-  // Local storage fallback
+  // 2. Fallback via getProducts API
+  try {
+    const prods = await getProducts();
+    if (prods && prods.length > 0) {
+      prods.forEach((p: any) => {
+        if (!p.is_deleted && p.scheduled_for) {
+          recordProductDate(p.scheduled_for);
+        }
+      });
+      if (Object.keys(counts).length > 0) return counts;
+    }
+  } catch (e) { }
+
+  // 3. Local storage fallback
   if (typeof window !== 'undefined') {
     try {
       const local = localStorage.getItem('indihunt_products');
@@ -6865,9 +7212,8 @@ export async function getScheduledProductCounts(): Promise<Record<string, number
         const parsed = JSON.parse(local);
         if (Array.isArray(parsed)) {
           parsed.forEach((p: any) => {
-            if (p.status === 'scheduled' && p.scheduled_for) {
-              const key = toDateKey(p.scheduled_for);
-              if (key) counts[key] = (counts[key] || 0) + 1;
+            if (!p.is_deleted && p.scheduled_for) {
+              recordProductDate(p.scheduled_for);
             }
           });
         }
@@ -7340,6 +7686,44 @@ export function getSimilarProducts(
   scored.sort((a, b) => b.score - a.score || (b.product.upvotes_count || 0) - (a.product.upvotes_count || 0));
   return scored.slice(0, limit).map((s) => s.product);
 }
+
+/**
+ * Returns all product launches sharing the exact same root website domain.
+ */
+export function getCompanyLaunches(
+  product: Product | null | undefined,
+  allProducts: Product[] = []
+): Product[] {
+  if (!product || !product.website_url) return [];
+
+  const currentDomain = extractDomainFromUrl(product.website_url || "").toLowerCase();
+  if (!currentDomain || !currentDomain.includes(".")) {
+    return [product];
+  }
+
+  const launchesMap = new Map<string, Product>();
+  launchesMap.set(product.id, product);
+
+  if (Array.isArray(allProducts)) {
+    allProducts.forEach((p) => {
+      if (!p || p.id === product.id || p.is_deleted || p.status === "draft") return;
+      if (!p.website_url) return;
+      const pDomain = extractDomainFromUrl(p.website_url || "").toLowerCase();
+      const sameDomain = Boolean(
+        pDomain &&
+        pDomain.includes(".") &&
+        pDomain === currentDomain
+      );
+
+      if (sameDomain) {
+        launchesMap.set(p.id, p);
+      }
+    });
+  }
+
+  return Array.from(launchesMap.values());
+}
+
 
 
 

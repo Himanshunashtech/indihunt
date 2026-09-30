@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { AdminSearch } from "@/app/admin/_components/AdminSearch";
@@ -73,7 +74,7 @@ async function UsersTable({ page, limit, q, role }: { page: number; limit: numbe
                     <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-slate-900 font-semibold text-base shrink-0 overflow-hidden">
                       {user.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                        <Image src={user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                       ) : (
                         (user.full_name?.charAt(0) || "U").toUpperCase()
                       )}

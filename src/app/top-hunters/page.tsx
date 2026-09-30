@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import { SponsoredAd } from "@/components/SponsoredAd";
 import { getTopHuntersData, getProducts, getCachedProducts, Hunter, Product } from "@/lib/supabase";
@@ -161,13 +162,13 @@ function TopHuntersChart({ hunters, isDark }: { hunters: Hunter[]; isDark: boole
                 className="w-2.5 h-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: isVisible ? color : "#94a3b8" }}
               />
-              <img
+              <Image
                 src={hunter.avatar_url}
                 alt={hunter.name}
                 loading="eager"
                 decoding="async"
                 className="w-4 h-4 rounded-full object-cover border border-border"
-              />
+              width={16} height={16} />
               <span>{hunter.name}</span>
             </button>
           );
@@ -319,11 +320,11 @@ function TopHuntersChart({ hunters, isDark }: { hunters: Hunter[]; isDark: boole
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ backgroundColor: hoveredPoint.color }}
             />
-            <img
+            <Image
               src={hoveredPoint.avatar}
               alt={hoveredPoint.name}
               className="w-5 h-5 rounded-full object-cover"
-            />
+            width={20} height={20} />
             <div className="text-base font-bold text-white whitespace-nowrap">
               {hoveredPoint.name}: <span className="text-[#ff6154] font-black">{hoveredPoint.count} hunts</span>
               <div className={`text-[10px] font-mono font-normal ${isDark ? "text-[#a89d91]" : "text-slate-400"
@@ -542,14 +543,14 @@ export default function TopHuntersPage() {
                 title={product.name}
               >
                 {product.logo_url ? (
-                  <img
+                  <Image
                     src={product.logo_url}
                     alt={product.name}
                     loading="eager"
                     decoding="async"
                     fetchPriority="high"
                     className="w-full h-full object-cover"
-                  />
+                  width={48} height={48} />
                 ) : (
                   <div className="w-full h-full bg-orange-500/10 text-orange-500 flex items-center justify-center font-extrabold text-base">
                     {product.name[0]}
@@ -623,14 +624,14 @@ export default function TopHuntersPage() {
                 title={product.name}
               >
                 {product.logo_url ? (
-                  <img
+                  <Image
                     src={product.logo_url}
                     alt={product.name}
                     loading="eager"
                     decoding="async"
                     fetchPriority="high"
                     className="w-full h-full object-cover"
-                  />
+                  width={48} height={48} />
                 ) : (
                   <div className="w-full h-full bg-orange-500/10 text-orange-500 flex items-center justify-center font-extrabold text-base">
                     {product.name[0]}
@@ -767,13 +768,13 @@ export default function TopHuntersPage() {
 
                     <Link href={`/@${(hunter.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3.5 min-w-0 group">
                       <div className="relative shrink-0">
-                        <img
+                        <Image
                           src={hunter.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                           alt={hunter.name || 'Hunter'}
                           loading="eager"
                           decoding="async"
                           className="w-10 h-10 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                        />
+                        width={40} height={40} />
                         {hunter.is_verified && (
                           <CheckCircle2 className="w-3.5 h-3.5 text-orange-500 absolute -bottom-0.5 -right-0.5 rounded-full bg-background" />
                         )}
@@ -947,13 +948,13 @@ export default function TopHuntersPage() {
                     <span>Most featured</span>
                   </div>
                   <Link href={`/@${(mostFeatured.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
-                    <img
+                    <Image
                       src={mostFeatured.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                       alt={mostFeatured.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                    />
+                    width={36} height={36} />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
                         {mostFeatured.name || mostFeatured.username || 'Hunter'}
@@ -977,13 +978,13 @@ export default function TopHuntersPage() {
                     <span>Most #1s</span>
                   </div>
                   <Link href={`/@${(mostFirsts.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
-                    <img
+                    <Image
                       src={mostFirsts.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                       alt={mostFirsts.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                    />
+                    width={36} height={36} />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
                         {mostFirsts.name || mostFirsts.username || 'Hunter'}
@@ -1007,13 +1008,13 @@ export default function TopHuntersPage() {
                     <span>Highest avg upvotes</span>
                   </div>
                   <Link href={`/@${(highestAvgUpvotes.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
-                    <img
+                    <Image
                       src={highestAvgUpvotes.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                       alt={highestAvgUpvotes.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                    />
+                    width={36} height={36} />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
                         {highestAvgUpvotes.name || highestAvgUpvotes.username || 'Hunter'}
@@ -1037,13 +1038,13 @@ export default function TopHuntersPage() {
                     <span>Most discussed</span>
                   </div>
                   <Link href={`/@${(mostDiscussed.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
-                    <img
+                    <Image
                       src={mostDiscussed.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                       alt={mostDiscussed.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                    />
+                    width={36} height={36} />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
                         {mostDiscussed.name || mostDiscussed.username || 'Hunter'}
@@ -1067,13 +1068,13 @@ export default function TopHuntersPage() {
                     <span>Most upvotes</span>
                   </div>
                   <Link href={`/@${(mostUpvotes.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
-                    <img
+                    <Image
                       src={mostUpvotes.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                       alt={mostUpvotes.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                    />
+                    width={36} height={36} />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
                         {mostUpvotes.name || mostUpvotes.username || 'Hunter'}
@@ -1097,13 +1098,13 @@ export default function TopHuntersPage() {
                     <span>Most comments</span>
                   </div>
                   <Link href={`/@${(mostComments.username || 'maker').replace(/^@/, '')}`} className="flex items-center gap-3 group">
-                    <img
+                    <Image
                       src={mostComments.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
                       alt={mostComments.name || 'Hunter'}
                       loading="eager"
                       decoding="async"
                       className="w-9 h-9 rounded-full object-cover border border-border group-hover:border-orange-500 transition-all"
-                    />
+                    width={36} height={36} />
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-foreground group-hover:text-orange-500 truncate transition-colors">
                         {mostComments.name || mostComments.username || 'Hunter'}

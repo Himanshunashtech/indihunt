@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Star, Search, ThumbsUp, Share2, Flag, Eye, Clock } from "lucide-react";
 import { Review } from "@/lib/supabase";
 import { recordView } from "@/lib/supabase";
@@ -304,7 +305,7 @@ export default function ReviewsTab({ reviews, productId, user, setReportModalSta
                   <div className="flex items-center gap-3">
                     <Link href={rev.user?.username ? `/@${rev.user.username}` : `/profile?id=${rev.user_id}`} className="w-10 h-10 rounded-full overflow-hidden bg-muted border border-border flex items-center justify-center font-semibold text-xs text-orange-500 flex-shrink-0 hover:opacity-90 transition-opacity">
                       {rev.user?.avatar_url ? (
-                        <img src={rev.user.avatar_url} alt={rev.user.full_name} className="w-10 h-10 object-cover" />
+                        <Image src={rev.user.avatar_url} alt={rev.user.full_name} className="w-10 h-10 object-cover" width={40} height={40} />
                       ) : (
                         rev.user?.full_name?.charAt(0) || "U"
                       )}

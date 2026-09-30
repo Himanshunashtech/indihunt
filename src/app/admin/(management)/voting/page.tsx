@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { AdminPagination } from "@/app/admin/_components/AdminPagination";
@@ -95,7 +96,7 @@ async function FlaggedProductsTable({ page, limit }: { page: number; limit: numb
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2.5">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.logo_url || "/favicon.png"} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" />
+                    <Image src={p.logo_url || "/favicon.png"} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" width={28} height={28} />
                     <span className="font-medium text-slate-800 truncate max-w-[180px]">{p.name}</span>
                   </div>
                 </td>

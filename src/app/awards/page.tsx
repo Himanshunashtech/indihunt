@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Award,
   Trophy,
@@ -469,11 +470,11 @@ export default function AwardsPage() {
                       href={`/products/${award.productId}`}
                       className="flex items-center gap-3 group/link p-2 rounded-xl hover:bg-muted/60 transition-colors"
                     >
-                      <img
+                      <Image
                         src={award.productLogo}
                         alt={award.productName}
                         className="w-10 h-10 rounded-xl object-cover border border-border shrink-0"
-                      />
+                      width={40} height={40} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-semibold text-foreground truncate group-hover/link:text-orange-500 transition-colors">

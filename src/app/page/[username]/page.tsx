@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Head from "next/head";
 import { useParams } from "next/navigation";
 import {
@@ -158,11 +159,11 @@ export default function IndiePageView() {
                 style={{ border: `3px solid ${theme.border}` }}
               >
                 {profile.avatar_url ? (
-                  <img
+                  <Image
                     src={profile.avatar_url}
                     alt={profile.full_name}
                     className="w-full h-full object-cover"
-                  />
+                  width={48} height={48} />
                 ) : (
                   <div
                     className="w-full h-full flex items-center justify-center text-3xl lg:text-5xl font-bold"

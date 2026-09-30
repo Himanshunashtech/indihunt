@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { BillboardAd } from "@/lib/supabase";
 
 interface FeedBillboardAdProps {
@@ -19,11 +20,16 @@ export default function FeedBillboardAd({
     const content = (
       <>
         <div className="relative w-full" style={{ paddingBottom: "25%" }}>
-          <img
+          <Image
             src={ad.image_url}
             alt={ad.title || "Promoted Ad"}
             decoding="async"
             className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            width={1200}
+            height={300}
+            sizes="(max-width: 768px) 100vw, 1200px"
+            quality={90}
+            priority
           />
         </div>
         <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-slate-900/80 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm shadow-xs">
@@ -116,11 +122,15 @@ export default function FeedBillboardAd({
         className="block relative w-full overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 bg-muted/40"
       >
         <div className="relative w-full" style={{ paddingBottom: "25%" }}>
-          <img
+          <Image
             src="/supabase_ad_banner.webp"
             alt="Supabase — Build in a weekend, scale to millions"
             decoding="async"
             className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            width={1200}
+            height={300}
+            sizes="(max-width: 768px) 100vw, 1200px"
+            quality={90}
           />
         </div>
         <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-emerald-500/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
@@ -136,11 +146,15 @@ export default function FeedBillboardAd({
       className="block relative w-full overflow-hidden border border-orange-500/30 shadow-md hover:border-orange-500/60 group transition-all duration-300 bg-muted/40"
     >
       <div className="relative w-full" style={{ paddingBottom: "25%" }}>
-        <img
+        <Image
           src="/indihunt_horizontal_banner.webp"
           alt="IndiHunt — Promoted Ad"
           decoding="async"
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+          width={1200}
+          height={300}
+          sizes="(max-width: 768px) 100vw, 1200px"
+          quality={90}
         />
       </div>
       <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-orange-500/90 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">

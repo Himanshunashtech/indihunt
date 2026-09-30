@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -272,11 +273,11 @@ export default function MyProductsPage() {
                     className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-muted/30 transition-all group"
                   >
                     <div className="flex items-center gap-2 overflow-hidden mr-2">
-                      <img
+                      <Image
                         src={product.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80"}
                         alt=""
                         className="w-5 h-5 rounded-md object-cover border border-border flex-shrink-0"
-                      />
+                      width={20} height={20} />
                       <span className="text-base font-medium text-foreground/90 truncate">{product.name || "Untitled"}</span>
                     </div>
 
@@ -372,11 +373,11 @@ export default function MyProductsPage() {
                       className="bg-card border border-border/80 hover:border-border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all"
                     >
                       <div className="flex items-start gap-4">
-                        <img
+                        <Image
                           src={product.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80"}
                           alt={product.name}
                           className="w-14 h-14 rounded-2xl object-cover border border-border bg-muted flex-shrink-0"
-                        />
+                        width={56} height={56} />
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-base font-medium text-foreground/90">{product.name || "Untitled Draft"}</span>

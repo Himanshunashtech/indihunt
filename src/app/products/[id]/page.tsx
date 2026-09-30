@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect, RedirectType } from "next/navigation";
-import { getProductById, getProducts, calculateProductRank, getProductSlug, getSimilarProducts, getComments } from "@/lib/supabase";
+import { getProductById, getProducts, getCachedProducts, calculateProductRank, getProductSlug, getSimilarProducts, getComments, type Product } from "@/lib/supabase";
+import { getCachedData as getRedisCache } from "@/lib/redis";
 import ProductDetailPageClient from "./ProductDetailPageClient";
 
 export const revalidate = 60; // ISR: Revalidate page data at most every 60 seconds
@@ -58,11 +59,26 @@ export default async function ProductDetailPage({ params }: PageProps) {
     redirect(`/products/${slug}`, RedirectType.replace);
   }
 
-  // Server-side rank, similar products, and initial comments
-  const allProducts = await getProducts().catch(() => []);
+  // Phase 2a PERF: Run Redis cache lookup + getComments in parallel — both are independent.
+  // Redis 'public_products' is primed by the home page visit (TTL 5 min).
+  // Falls back to in-memory cache then full getProducts() only on cold start.
+  const [redisListResult, initialComments] = await Promise.all([
+    getRedisCache<Product[]>('public_products'),
+    getComments(product.id).catch(() => []),
+  ]);
+
+  let allProducts: Product[] = [];
+  if (redisListResult && Array.isArray(redisListResult) && redisListResult.length > 0) {
+    allProducts = redisListResult;
+  } else {
+    allProducts = getCachedProducts();
+    if (!allProducts || allProducts.length === 0) {
+      allProducts = await getProducts().catch(() => []);
+    }
+  }
+
   const rankDetails = calculateProductRank(product, allProducts.length > 0 ? allProducts : [product]);
   const similarProducts = getSimilarProducts(product, allProducts, 3);
-  const initialComments = await getComments(product.id).catch(() => []);
 
   return (
     <ProductDetailPageClient
@@ -72,6 +88,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
       initialComments={initialComments}
       initialReviews={[]}
       initialAlternatives={[]}
+      initialAllProducts={allProducts}
       initialRank={rankDetails.rank}
       initialRankLabel={rankDetails.rankLabel}
       initialIsTopHunt={rankDetails.isTopHunt}
@@ -80,4 +97,3 @@ export default async function ProductDetailPage({ params }: PageProps) {
     />
   );
 }
-

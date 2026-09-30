@@ -688,14 +688,11 @@ function NewLaunchWizard() {
               <div className="p-3.5 mb-3 bg-card border border-border/70 rounded-2xl flex items-center gap-3 shadow-xs">
                 <div className="w-10 h-10 rounded-xl overflow-hidden border border-border/80 bg-muted flex-shrink-0 flex items-center justify-center shadow-xs">
                   {submitLogo ? (
-                    <img
+                    <Image
                       src={submitLogo}
                       alt=""
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
+                    width={48} height={48} />
                   ) : (
                     <span className="text-sm font-bold text-[#ff5733]">
                       {submitName ? submitName.charAt(0).toUpperCase() : "🚀"}
@@ -1092,7 +1089,7 @@ function NewLaunchWizard() {
                       <div className="flex items-center gap-4 flex-wrap">
                         <div className="w-16 h-16 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center flex-shrink-0">
                           {submitLogo ? (
-                            <img src={submitLogo} alt="Logo preview" className="w-16 h-16 object-cover" />
+                            <Image src={submitLogo} alt="Logo preview" className="w-16 h-16 object-cover" width={64} height={64} />
                           ) : (
                             <Upload className="w-5 h-5 text-muted-foreground" />
                           )}
@@ -1114,7 +1111,7 @@ function NewLaunchWizard() {
                                 const file = e.target.files?.[0];
                                 if (!file || !user) return;
                                 const path = `logo_${user.id}_${Date.now()}_${file.name}`;
-                                const url = await uploadImage("products", file, path);
+                                const url = await uploadImage("products", file, path, { type: 'icon', maxSizeBytes: 5 * 1024, maxDimension: 256 });
                                 if (url) {
                                   setSubmitLogo(url);
                                 }
@@ -1145,7 +1142,7 @@ function NewLaunchWizard() {
                               try {
                                 const uploadPromises = Array.from(files).map(async (file, index) => {
                                   const path = `screenshot_${user.id}_${Date.now()}_${index}_${file.name}`;
-                                  const url = await uploadImage("products", file, path);
+                                  const url = await uploadImage("products", file, path, { type: 'screenshot', maxSizeBytes: 20 * 1024, maxDimension: 1200 });
                                   return url;
                                 });
                                 const urls = await Promise.all(uploadPromises);
@@ -1198,7 +1195,7 @@ function NewLaunchWizard() {
                                     const file = e.target.files?.[0];
                                     if (!file || !user) return;
                                     const path = `screenshot_${user.id}_${Date.now()}_${idx}_${file.name}`;
-                                    const url = await uploadImage("products", file, path);
+                                    const url = await uploadImage("products", file, path, { type: 'screenshot', maxSizeBytes: 20 * 1024, maxDimension: 1200 });
                                     if (url) {
                                       const updated = [...galleryImages];
                                       updated[idx] = url;
@@ -1281,11 +1278,11 @@ function NewLaunchWizard() {
                         {workedOnLaunch === "yes" && profile && (
                           <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
                             <span className="text-[9px] bg-[#ff5733]/10 text-[#ff5733] font-semibold px-2 py-0.5 rounded-full border border-[#ff5733]/10">Maker</span>
-                            <img
+                            <Image
                               src={profile.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
                               alt="Maker Avatar"
                               className="w-8 h-8 rounded-full object-cover border border-[#ff5733]/30"
-                            />
+                            width={32} height={32} />
                           </div>
                         )}
                       </label>
@@ -1307,11 +1304,11 @@ function NewLaunchWizard() {
                         {workedOnLaunch === "no" && profile && (
                           <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
                             <span className="text-[9px] bg-blue-500/10 text-blue-600 font-semibold px-2 py-0.5 rounded-full border border-blue-500/10">Hunter</span>
-                            <img
+                            <Image
                               src={profile.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
                               alt="Hunter Avatar"
                               className="w-8 h-8 rounded-full object-cover border border-blue-500/30"
-                            />
+                            width={32} height={32} />
                           </div>
                         )}
                       </label>
@@ -1328,7 +1325,7 @@ function NewLaunchWizard() {
                             <div key={maker.id} className="flex items-center gap-2 bg-card border border-border px-2.5 py-1 rounded-full shadow-sm">
                               <div className="w-5 h-5 rounded-full bg-muted overflow-hidden flex items-center justify-center flex-shrink-0">
                                 {maker.avatar_url ? (
-                                  <img src={maker.avatar_url} alt={maker.full_name} className="w-full h-full object-cover" />
+                                  <Image src={maker.avatar_url} alt={maker.full_name} className="w-full h-full object-cover" width={48} height={48} />
                                 ) : (
                                   <span className="text-[9px] font-medium text-muted-foreground uppercase">{maker.full_name.charAt(0)}</span>
                                 )}
@@ -1371,7 +1368,7 @@ function NewLaunchWizard() {
                               >
                                 <div className="w-7 h-7 rounded-full bg-muted overflow-hidden flex items-center justify-center flex-shrink-0">
                                   {userProfile.avatar_url ? (
-                                    <img src={userProfile.avatar_url} alt={userProfile.full_name} className="w-full h-full object-cover" />
+                                    <Image src={userProfile.avatar_url} alt={userProfile.full_name} className="w-full h-full object-cover" width={48} height={48} />
                                   ) : (
                                     <span className="text-[10px] font-medium text-muted-foreground uppercase">{userProfile.full_name.charAt(0)}</span>
                                   )}
@@ -1470,7 +1467,7 @@ function NewLaunchWizard() {
                                     <div className="flex items-center gap-2.5">
                                       <div className="w-6 h-6 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center flex-shrink-0">
                                         {matched?.logo_url ? (
-                                          <img src={matched.logo_url} alt="" className="w-full h-full object-cover" />
+                                          <Image src={matched.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                                         ) : (
                                           <span className="text-[10px] font-semibold text-orange-500">{shout.shouted_product_name.charAt(0)}</span>
                                         )}
@@ -1522,7 +1519,7 @@ function NewLaunchWizard() {
                                           >
                                             <div className="w-8 h-8 rounded-lg overflow-hidden border border-border bg-muted flex items-center justify-center flex-shrink-0">
                                               {p.logo_url ? (
-                                                <img src={p.logo_url} alt={p.name} className="w-full h-full object-cover" />
+                                                <Image src={p.logo_url} alt={p.name} className="w-full h-full object-cover" width={48} height={48} />
                                               ) : (
                                                 <span className="text-xs font-semibold text-orange-500">{p.name.charAt(0)}</span>
                                               )}

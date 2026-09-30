@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React, { useEffect, useState } from "react";
 import { AdCampaign, getProductById } from "@/lib/supabase";
 import { secureApiFetch } from "@/lib/api/client";
@@ -134,14 +136,11 @@ export function SponsoredAd({ excludeProductId, placement = "product_pages", cat
     >
       <div className="flex items-center gap-3 sm:gap-5 min-w-0 w-full sm:w-auto overflow-hidden">
         <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl overflow-hidden border border-border flex-shrink-0 bg-background flex items-center justify-center p-1">
-          <img
+          <Image
             src={logoSrc}
             alt={adTitle}
             className="w-full h-full object-contain"
-            onError={(e) => {
-              e.currentTarget.src = "/logo.webp";
-            }}
-          />
+          width={48} height={48} />
         </div>
         <div className="min-w-0 flex-1 overflow-hidden">
           <span className="font-semibold text-foreground text-sm sm:text-[15px] block transition-colors truncate">

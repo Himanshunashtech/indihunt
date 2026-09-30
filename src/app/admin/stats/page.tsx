@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { BarChart3, TrendingUp, Users, Package, ArrowUp, MessageSquare, Loader2 } from "lucide-react";
@@ -23,7 +24,7 @@ async function TopProducts() {
           <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100/50 transition-colors">
             <span className="text-base font-extrabold text-slate-300 w-5 shrink-0">#{i + 1}</span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.logo_url || "/favicon.png"} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0 border border-slate-200" />
+            <Image src={p.logo_url || "/favicon.png"} alt="" className="w-7 h-7 rounded-lg object-cover shrink-0 border border-slate-200" width={28} height={28} />
             <span className="text-base font-medium text-slate-800 flex-1 truncate">{p.name}</span>
             <div className="flex items-center gap-1 text-orange-400 text-base font-semibold shrink-0">
               <ArrowUp className="w-3 h-3" />{p.upvotes_count}
@@ -57,7 +58,7 @@ async function TopUsers() {
             <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-slate-900 font-semibold text-xs shrink-0 overflow-hidden">
               {u.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                <Image src={u.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
               ) : (
                 (u.full_name?.charAt(0) || "U").toUpperCase()
               )}

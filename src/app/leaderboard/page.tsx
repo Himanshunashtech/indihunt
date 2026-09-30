@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import {
@@ -212,11 +213,11 @@ function LeaderboardContent() {
                       <span className="font-extrabold text-base text-foreground/70 shrink-0">
                         #{idx + 1}
                       </span>
-                      <img
+                      <Image
                         src={prod.logo_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=100&q=80"}
                         alt={prod.name}
                         className="w-8 h-8 rounded-xl object-cover border border-border/60 shrink-0"
-                      />
+                      width={32} height={32} />
                       <div className="min-w-0">
                         <h4 className="font-bold text-base text-foreground group-hover:text-[#ff5733] transition-colors truncate">
                           {prod.name}
@@ -440,11 +441,11 @@ function LeaderboardContent() {
                           </span>
 
                           {/* Logo */}
-                          <img
+                          <Image
                             src={prod.logo_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80"}
                             alt={prod.name}
                             className="w-12 h-12 rounded-2xl object-cover border border-border/60 shrink-0 shadow-2xs"
-                          />
+                          width={48} height={48} />
 
                           {/* Text Details */}
                           <div className="min-w-0 space-y-1">

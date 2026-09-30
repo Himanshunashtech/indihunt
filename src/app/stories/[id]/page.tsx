@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { 
   ArrowLeft, 
@@ -163,7 +164,7 @@ export default function StoryDetailPage() {
         <div className="flex items-start gap-2.5">
           <Link href={c.user?.username ? `/@${c.user.username}` : (c.user_id ? `/profile?id=${c.user_id}` : `#`)} className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 hover:opacity-90 transition-opacity">
             {c.user?.avatar_url ? (
-              <img src={c.user.avatar_url} alt="" className="w-full h-full object-cover" />
+              <Image src={c.user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
             ) : (
               c.user?.full_name?.charAt(0).toUpperCase() || "M"
             )}
@@ -252,7 +253,7 @@ export default function StoryDetailPage() {
           <div className="flex items-center gap-3 pt-2 border-t border-border/40 text-xs font-semibold text-muted-foreground">
             <Link href={story.user?.username ? `/@${story.user.username}` : (story.user_id ? `/profile?id=${story.user_id}` : `#`)} className="w-7 h-7 rounded-full overflow-hidden bg-muted flex items-center justify-center hover:opacity-90 transition-opacity">
               {story.user?.avatar_url ? (
-                <img src={story.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                <Image src={story.user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
               ) : (
                 <User className="w-4 h-4" />
               )}
@@ -276,10 +277,15 @@ export default function StoryDetailPage() {
         {/* Cover Image */}
         {story.image_url && (
           <div className="w-full aspect-[21/9] rounded-3xl overflow-hidden bg-muted border border-border shadow-lg">
-            <img 
+            <Image 
               src={story.image_url} 
               alt="Cover" 
               className="w-full h-full object-cover"
+              width={1200}
+              height={514}
+              sizes="(max-width: 768px) 100vw, 1200px"
+              quality={90}
+              priority
             />
           </div>
         )}

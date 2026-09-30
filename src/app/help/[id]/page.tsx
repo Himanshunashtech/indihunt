@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Clock, User, Heart, ThumbsUp, ThumbsDown, Check, CreditCard, ShieldCheck, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -346,11 +347,11 @@ export default function ArticleDetailPage() {
           {/* Author Owner Row */}
           <div className="flex items-center gap-3 border-y border-border/60 py-4">
             <div className="w-10 h-10 rounded-full overflow-hidden border border-border flex-shrink-0">
-              <img
+              <Image
                 src={article.author.avatar}
                 alt={article.author.name}
                 className="w-full h-full object-cover"
-              />
+              width={48} height={48} />
             </div>
             <div className="space-y-0.5">
               <span className="text-xs font-semibold text-foreground block leading-none">

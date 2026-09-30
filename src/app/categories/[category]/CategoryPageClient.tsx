@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -200,7 +201,7 @@ export default function CategoryPageClient({
     return filtered;
   }, [products, sortBy]);
 
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 20;
   const totalPages = Math.max(1, Math.ceil(displayedProducts.length / ITEMS_PER_PAGE));
   const validCurrentPage = Math.min(currentPage, totalPages);
 
@@ -209,23 +210,48 @@ export default function CategoryPageClient({
     return displayedProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [displayedProducts, validCurrentPage]);
 
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = [];
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (validCurrentPage > 3) pages.push("...");
-      const start = Math.max(2, validCurrentPage - 1);
-      const end = Math.min(totalPages - 1, validCurrentPage + 1);
-      for (let i = start; i <= end; i++) {
-        if (!pages.includes(i)) pages.push(i);
+  const handlePageChange = (newPage: number) => {
+    const validPage = Math.max(1, Math.min(totalPages, newPage));
+    setCurrentPage(validPage);
+
+    // Sync URL query without full reload
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (validPage === 1) {
+        params.delete("page");
+      } else {
+        params.set("page", validPage.toString());
       }
-      if (validCurrentPage < totalPages - 2) pages.push("...");
-      if (!pages.includes(totalPages)) pages.push(totalPages);
+      const newQuery = params.toString() ? `?${params.toString()}` : "";
+      window.history.pushState(null, "", `${window.location.pathname}${newQuery}`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
-    return pages;
   };
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | string)[] = [];
+    pages.push(1);
+
+    if (validCurrentPage > 3) {
+      pages.push("dots-left");
+    }
+
+    const start = Math.max(2, validCurrentPage - 1);
+    const end = Math.min(totalPages - 1, validCurrentPage + 1);
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    if (validCurrentPage < totalPages - 2) {
+      pages.push("dots-right");
+    }
+
+    pages.push(totalPages);
+    return pages;
+  }, [totalPages, validCurrentPage]);
 
   const handleVote = async (e: React.MouseEvent, productId: string) => {
     e.stopPropagation();
@@ -349,14 +375,11 @@ export default function CategoryPageClient({
                   style={{ zIndex: logosToShow.length - idx }}
                   title={logo.name}
                 >
-                  <img
+                  <Image
                     src={logo.logo_url}
                     alt={logo.name}
                     className="w-full h-full object-contain rounded-xl"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
+                  width={48} height={48} />
                   <span className="text-xs font-semibold truncate max-w-full leading-none">
                     {logo.name.slice(0, 2)}
                   </span>
@@ -375,14 +398,11 @@ export default function CategoryPageClient({
                   className={`flex flex-col items-center justify-center transform ${leftTilt} hover:rotate-0 hover:scale-115 transition-transform cursor-default select-none p-1.5`}
                   title={logo.name}
                 >
-                  <img
+                  <Image
                     src={logo.logo_url}
                     alt={logo.name}
                     className="w-16 h-16 sm:w-18 sm:h-18 object-contain rounded-2xl border border-border/40 shadow-sm filter dark:brightness-110 drop-shadow-md"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
+                  width={64} height={64} />
                   <span className="text-xs font-medium text-muted-foreground/80 truncate w-full text-center mt-2 block leading-none">{logo.name}</span>
                 </div>
               );
@@ -472,7 +492,7 @@ export default function CategoryPageClient({
                       {(['recent', 'upvotes', 'alphabetical'] as const).map((mode) => (
                         <button
                           key={mode}
-                          onClick={() => { setSortBy(mode); setIsSortDropdownOpen(false); setCurrentPage(1); }}
+                          onClick={() => { setSortBy(mode); setIsSortDropdownOpen(false); handlePageChange(1); }}
                           className={`w-full text-left px-4 py-2.5 text-xs font-medium hover:bg-muted/70 transition-colors ${sortBy === mode ? 'text-orange-500 bg-orange-500/5' : 'text-foreground'}`}
                         >
                           {mode === 'recent' && 'Most Recent'}
@@ -526,14 +546,11 @@ export default function CategoryPageClient({
                         <div className="flex items-start gap-4 min-w-0 flex-1">
                           {/* Logo */}
                           <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-muted border border-border/80 flex-shrink-0 flex items-center justify-center p-0.5 shadow-xs">
-                            <img
+                            <Image
                               src={product.logo_url}
                               alt={product.name}
                               className="object-cover rounded-xl group-hover:scale-105 transition-transform w-full h-full"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
+                            width={48} height={48} />
                           </div>
 
                           {/* Product Info */}
@@ -723,7 +740,7 @@ export default function CategoryPageClient({
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
                   {/* First Page */}
                   <button
-                    onClick={() => setCurrentPage(1)}
+                    onClick={() => handlePageChange(1)}
                     disabled={validCurrentPage === 1}
                     className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
                     title="First Page"
@@ -733,7 +750,7 @@ export default function CategoryPageClient({
 
                   {/* Previous Page */}
                   <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    onClick={() => handlePageChange(validCurrentPage - 1)}
                     disabled={validCurrentPage === 1}
                     className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
                     title="Previous Page"
@@ -742,7 +759,7 @@ export default function CategoryPageClient({
                   </button>
 
                   {/* Page Numbers */}
-                  {getPageNumbers().map((pageNum, idx) => {
+                  {pageNumbers.map((pageNum, idx) => {
                     if (typeof pageNum === "string") {
                       return (
                         <span
@@ -757,7 +774,7 @@ export default function CategoryPageClient({
                     return (
                       <button
                         key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
+                        onClick={() => handlePageChange(pageNum)}
                         className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
                           isActive
                             ? "bg-[#ff5733] text-white font-semibold shadow-xs"
@@ -771,7 +788,7 @@ export default function CategoryPageClient({
 
                   {/* Next Page */}
                   <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    onClick={() => handlePageChange(validCurrentPage + 1)}
                     disabled={validCurrentPage === totalPages}
                     className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
                     title="Next Page"
@@ -781,7 +798,7 @@ export default function CategoryPageClient({
 
                   {/* Last Page */}
                   <button
-                    onClick={() => setCurrentPage(totalPages)}
+                    onClick={() => handlePageChange(totalPages)}
                     disabled={validCurrentPage === totalPages}
                     className="p-2 rounded-xl text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer border border-border/40 bg-card"
                     title="Last Page"

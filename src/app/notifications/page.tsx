@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Bell,
   MessageSquare,
@@ -157,9 +158,9 @@ export default function NotificationsPage() {
                   >
                     <div className="flex items-start gap-3.5">
                       <div className="relative w-11 h-11 flex-shrink-0">
-                        <img src={item.actor_avatar} alt="" className="w-11 h-11 rounded-2xl object-cover border border-border" />
+                        <Image src={item.actor_avatar || ""} alt="" className="w-11 h-11 rounded-2xl object-cover border border-border" width={44} height={44} />
                         {item.secondary_avatar && (
-                          <img src={item.secondary_avatar} alt="" className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
+                          <Image src={item.secondary_avatar} alt="" className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" width={20} height={20} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -239,9 +240,9 @@ export default function NotificationsPage() {
                   >
                     <div className="flex items-start gap-3.5">
                       <div className="relative w-11 h-11 flex-shrink-0">
-                        <img src={item.product_logo || item.actor_avatar} alt="" className="w-11 h-11 rounded-2xl object-cover border border-border" />
+                        <Image src={item.product_logo || item.actor_avatar || ""} alt="" className="w-11 h-11 rounded-2xl object-cover border border-border" width={44} height={44} />
                         {item.actor_avatar && (
-                          <img src={item.actor_avatar} alt="" className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
+                          <Image src={item.actor_avatar} alt="" className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" width={20} height={20} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0 space-y-1">
@@ -283,7 +284,7 @@ export default function NotificationsPage() {
                 >
                   <div className="flex items-start gap-3.5">
                     <div className="w-10 h-10 rounded-2xl overflow-hidden bg-muted border border-border flex-shrink-0">
-                      <img src={item.actor_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} alt="" className="w-full h-full object-cover" />
+                      <Image src={item.actor_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"} alt="" className="w-full h-full object-cover" width={48} height={48} />
                     </div>
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <p className="text-sm text-foreground/90 font-normal">

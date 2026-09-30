@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase, Profile, getUserProfile, getStreakLeaderboard, updateUserStreak, toggleFollowUser, isFollowingUser } from "@/lib/supabase";
@@ -148,7 +149,7 @@ export default function StreakPage() {
                       </span>
                       <Link href={leader.username ? `/@${leader.username}` : `/profile?id=${leader.id}`} className="w-12 h-12 rounded-full overflow-hidden border border-border bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white text-base font-semibold hover:opacity-90 transition-opacity flex-shrink-0" style={{ width: "48px", height: "48px" }}>
                         {leader.avatar_url ? (
-                          <img src={leader.avatar_url} alt="" className="w-full h-full object-cover" />
+                          <Image src={leader.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                         ) : (
                           leader.full_name?.charAt(0).toUpperCase() || 'M'
                         )}

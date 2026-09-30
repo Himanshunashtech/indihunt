@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { CheckCircle2, ShieldCheck, Globe, ExternalLink } from "lucide-react";
 import { Github, Twitter, Linkedin } from "@/components/icons";
 import { Profile, supabase, toggleFollowUser, isFollowingUser } from "@/lib/supabase";
@@ -164,13 +165,12 @@ export function UserHoverCard({ user: propUser, userId, children, align = "left"
                 <Link href={profileHref} className="relative group flex-shrink-0">
                   <div className="w-12 h-12 rounded-full overflow-hidden border border-border bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center font-semibold text-white text-base">
                     {profile?.avatar_url ? (
-                      <img 
+                      <Image 
                         src={profile.avatar_url} 
                         alt={profile.full_name || "User Avatar"} 
+                        width={48}
+                        height={48}
                         referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          e.currentTarget.src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profile.full_name || profile.username || "User")}`;
-                        }}
                         className="w-full h-full object-cover" 
                       />
                     ) : (

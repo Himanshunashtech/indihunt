@@ -3,6 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import { ArrowLeft, Rocket, Users, Sparkles, Heart, Award, ShieldCheck } from "lucide-react";
 
@@ -32,11 +33,11 @@ export default function MakersPage() {
 
         {/* Big Team Image Section */}
         <section className="relative aspect-[16/9] w-full rounded-3xl overflow-hidden border border-border shadow-2xl group">
-          <img 
+          <Image 
             src="/team/team_office.webp" 
             alt="IndiHunt Team Office" 
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
+          width={48} height={48} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex items-end p-6 sm:p-10">
             <div className="space-y-2">
               <span className="text-xs font-medium text-orange-400 uppercase tracking-wider block">IndiHunt Bangalore Headquarters</span>
@@ -105,11 +106,11 @@ export default function MakersPage() {
             {/* Engineering Manager Card */}
             <div className="pb-6  flex flex-col sm:flex-row items-center sm:items-start gap-6">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border border-border flex-shrink-0">
-                <img 
+                <Image 
                   src="/team/manager.webp" 
                   alt="Ananya Roy" 
                   className="w-full h-full object-cover"
-                />
+                width={48} height={48} />
               </div>
               <div className="space-y-2 text-center sm:text-left">
                 <h3 className="text-base font-medium text-foreground/90">Ananya Roy</h3>
@@ -123,11 +124,11 @@ export default function MakersPage() {
             {/* Product Manager Card */}
             <div className="pb-6  flex flex-col sm:flex-row items-center sm:items-start gap-6">
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border border-border flex-shrink-0">
-                <img 
+                <Image 
                   src="/team/pm.webp" 
                   alt="Rohan Verma" 
                   className="w-full h-full object-cover"
-                />
+                width={48} height={48} />
               </div>
               <div className="space-y-2 text-center sm:text-left">
                 <h3 className="text-base font-medium text-foreground/90">Rohan Verma</h3>
@@ -155,11 +156,11 @@ export default function MakersPage() {
           </div>
 
           <div className="aspect-[4/3] rounded-3xl overflow-hidden border border-border shadow-lg">
-            <img 
+            <Image 
               src="/team/meeting.webp" 
               alt="Engineering Meeting" 
               className="w-full h-full object-cover"
-            />
+            width={48} height={48} />
           </div>
         </section>
 
@@ -167,11 +168,11 @@ export default function MakersPage() {
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           
           <div className="order-2 lg:order-1 aspect-[4/3] rounded-3xl overflow-hidden border border-border shadow-lg">
-            <img 
+            <Image 
               src="/team/lounge.webp" 
               alt="Office Lounge Area" 
               className="w-full h-full object-cover"
-            />
+            width={48} height={48} />
           </div>
 
           <div className="order-1 lg:order-2 space-y-6 text-base text-foreground/80 leading-relaxed">

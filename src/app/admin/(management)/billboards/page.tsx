@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React, { useState, useEffect } from "react";
 import { 
   getBillboardAds, 
@@ -128,7 +130,7 @@ export default function BillboardsAdminPage() {
                   <tr key={ad.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-3 w-48">
                       <div className="aspect-[4/1] w-40 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
-                        <img src={ad.image_url} alt={ad.title || "Ad"} className="w-full h-full object-cover" />
+                        <Image src={ad.image_url} alt={ad.title || "Ad"} className="w-full h-full object-cover" width={600} height={150} />
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -275,10 +277,12 @@ export default function BillboardsAdminPage() {
             <div className="p-6 space-y-6">
               {/* Image Preview */}
               <div className="aspect-[4/1] w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-50 relative group">
-                <img 
+                <Image 
                   src={selectedAdForStats.image_url} 
                   alt={selectedAdForStats.title || "Ad Preview"} 
                   className="w-full h-full object-cover" 
+                  width={600} 
+                  height={150} 
                 />
               </div>
 
@@ -337,7 +341,7 @@ export default function BillboardsAdminPage() {
 
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
               <button 
-                onClick={() => setSelectedAdForStats(null)}
+                onClick={() => setSelectedAdForStats(null)} 
                 className="px-5 py-2 rounded-xl font-semibold bg-slate-950 text-white hover:bg-slate-800 transition-colors"
               >
                 Close

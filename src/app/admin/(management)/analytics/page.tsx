@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Suspense } from "react";
 import { createServerSupabase } from "@/lib/supabase-server";
 import {
@@ -181,7 +182,7 @@ async function TopPerforming({ range }: { range: string }) {
             <div key={p.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors">
               <span className="text-xs font-extrabold text-slate-300 w-5 shrink-0">#{i + 1}</span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.logo_url || "/favicon.png"} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" />
+              <Image src={p.logo_url || "/favicon.png"} alt="" className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" width={28} height={28} />
               <span className="text-sm font-medium text-slate-800 flex-1 truncate">{p.name}</span>
               <div className="flex items-center gap-3 shrink-0 text-xs">
                 <span className="text-orange-400 font-semibold">{p.upvotes_count} ↑</span>

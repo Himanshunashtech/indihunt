@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React from "react";
 import { X as CloseIcon } from "lucide-react";
 import { Github, Facebook, Linkedin, Twitter } from "./icons";
@@ -47,7 +49,7 @@ export default function AuthModal() {
         {/* Logo and Headings */}
         <div className="flex flex-col items-center text-center space-y-4">
           <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-border/80 bg-muted flex items-center justify-center relative shadow-md">
-            <img src="/logo.webp" alt="Logo" width={80} height={80} decoding="async" className="w-full h-full object-cover" />
+            <Image src="/logo.webp" alt="Logo" width={80} height={80} decoding="async" className="w-full h-full object-cover" />
           </div>
           <div className="space-y-1">
             <h2 className="text-xl font-extrabold text-foreground tracking-tight">Log in to IndiHunt</h2>

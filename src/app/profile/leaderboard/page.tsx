@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { supabase, Profile, getUserProfile, getKarmaLeaderboard, toggleFollowUser, isFollowingUser } from "@/lib/supabase";
@@ -180,12 +181,12 @@ export default function LeaderboardPage() {
                       <UserHoverCard user={leader}>
                         <div className="shrink-0">
                           {leader.avatar_url ? (
-                            <img
+                            <Image
                               src={leader.avatar_url}
                               alt={leader.full_name}
                               className="w-12 h-12 rounded-full object-cover border border-border/80"
                               style={{ width: "48px", height: "48px" }}
-                            />
+                            width={48} height={48} />
                           ) : (
                             <div className="w-12 h-12 rounded-full bg-[#ff5733]/10 text-[#ff5733] flex items-center justify-center font-semibold text-base border border-[#ff5733]/20" style={{ width: "48px", height: "48px" }}>
                               {leader.full_name?.charAt(0) || "U"}

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ExternalLink, Star, LayoutGrid, X, ChevronLeft, ChevronRight } from "lucide-react";
@@ -28,6 +29,7 @@ import {
   createCollection,
   calculateProductRank,
   getSimilarProducts,
+  getCompanyLaunches,
   Product,
   Review,
   Comment,
@@ -54,6 +56,9 @@ import MakersSection from "./components/MakersSection";
 import DiscussionSection from "./components/DiscussionSection";
 
 // Dynamically load secondary tabs on demand to keep initial client bundle ultra-lean
+const LaunchesTab = dynamic(() => import("./components/LaunchesTab"), {
+  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading company launches...</div>,
+});
 const ReviewsTab = dynamic(() => import("./components/ReviewsTab"), {
   loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading reviews...</div>,
 });
@@ -227,7 +232,7 @@ function ProductDetailsContent({
     if (initialTab) return initialTab;
     const tabParam = searchParams?.get("tab");
     if (tabParam) {
-      const found = ["Overview", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"].find(
+      const found = ["Overview", "Launches", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"].find(
         t => t.toLowerCase() === tabParam.toLowerCase()
       );
       if (found) return found;
@@ -239,8 +244,8 @@ function ProductDetailsContent({
 
   // TanStack Query Hooks
   const { data: queryProduct, isLoading: isQueryLoading, isPending } = useProduct(productId, effectiveUserId || undefined, initialProduct);
-  const isAlternativesTab = activeSubTab === "Alternatives";
-  const { data: dbAllProducts = [] } = useProducts(effectiveUserId || undefined, initialAllProducts, isAlternativesTab);
+  const isAllProductsNeeded = activeSubTab === "Alternatives" || activeSubTab === "Launches" || initialAllProducts.length === 0;
+  const { data: dbAllProducts = [] } = useProducts(effectiveUserId || undefined, initialAllProducts, isAllProductsNeeded);
   const toggleUpvoteMutation = useToggleUpvoteMutation();
 
   const [localProduct, setLocalProduct] = useState<any>(initialProduct || null);
@@ -280,25 +285,48 @@ function ProductDetailsContent({
         const productSlug = getProductSlug(target.name);
         const isVoted = votedSet.has(target.id) || (productSlug ? votedSet.has(productSlug) : false);
         if (isVoted !== !!target.has_upvoted) {
-          setLocalProduct((prev: any) => prev ? { ...prev, has_upvoted: isVoted } : prev);
+          setLocalProduct((prev: any) => {
+            if (!prev) return prev;
+            const currentCount = prev.upvotes_count ?? target.upvotes_count ?? 0;
+            const adjustedCount = isVoted
+              ? (!target.has_upvoted ? currentCount + 1 : currentCount)
+              : (target.has_upvoted ? Math.max(0, currentCount - 1) : currentCount);
+            return { ...prev, has_upvoted: isVoted, upvotes_count: adjustedCount };
+          });
         }
       }
     } catch {}
   }, [effectiveUserId, localProduct?.id, initialProduct?.id]);
 
   useEffect(() => {
-    if (!productId) return;
-    const unsubscribe = subscribe(`product:${productId}`, "product_upvoted", (data: { productId: string; upvotes_count: number }) => {
-      setLocalProduct((prev: any) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          upvotes_count: data.upvotes_count
-        };
-      });
-    });
-    return unsubscribe;
-  }, [productId, subscribe]);
+    if (!productId && !localProduct?.id && !initialProduct?.id) return;
+    const targetId = localProduct?.id || initialProduct?.id || productId;
+    const targetName = localProduct?.name || initialProduct?.name;
+    const slug = targetName ? getProductSlug(targetName) : (typeof productId === 'string' ? productId.toLowerCase() : '');
+
+    const handleRealtimeUpvote = (data: { productId: string; upvotes_count: number }) => {
+      if (!data?.productId) return;
+      if (data.productId === targetId || (slug && data.productId === slug) || data.productId === productId) {
+        setLocalProduct((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            upvotes_count: data.upvotes_count,
+          };
+        });
+      }
+    };
+
+    const unsubFeed = subscribe("feed", "product_upvoted", handleRealtimeUpvote);
+    const unsubProduct = targetId ? subscribe(`product:${targetId}`, "product_upvoted", handleRealtimeUpvote) : () => {};
+    const unsubSlug = slug && slug !== targetId ? subscribe(`product:${slug}`, "product_upvoted", handleRealtimeUpvote) : () => {};
+
+    return () => {
+      unsubFeed();
+      unsubProduct();
+      unsubSlug();
+    };
+  }, [productId, localProduct?.id, localProduct?.name, initialProduct?.id, initialProduct?.name, subscribe]);
 
   const product = localProduct || queryProduct || initialProduct;
 
@@ -397,6 +425,12 @@ function ProductDetailsContent({
     if (initialAllProducts && initialAllProducts.length > 0) return initialAllProducts;
     return [];
   }, [allProductsList, dbAllProducts, initialAllProducts]);
+
+  const companyLaunches = useMemo(() => {
+    const target = product || initialProduct;
+    if (!target) return [];
+    return getCompanyLaunches(target, effectiveAllProducts);
+  }, [product, initialProduct, effectiveAllProducts]);
 
   const similarProducts = useMemo(() => {
     if (initialSimilarProducts && initialSimilarProducts.length > 0) {
@@ -593,7 +627,7 @@ function ProductDetailsContent({
   // HANDLERS
   // ==========================================================================
 
-  const handleVote = async (e?: React.MouseEvent) => {
+  const handleVote = async (e?: React.MouseEvent, targetProductId?: string) => {
     e?.preventDefault();
     e?.stopPropagation();
     const activeUser = user || reduxUser || reduxProfile;
@@ -601,12 +635,16 @@ function ProductDetailsContent({
       dispatch(setAuthModalOpen(true));
       return;
     }
-    if (!product) return;
+    const currentTarget = (!targetProductId || targetProductId === product?.id)
+      ? product
+      : (effectiveAllProducts.find(p => p.id === targetProductId) || { id: targetProductId, has_upvoted: false, upvotes_count: 0 });
 
-    const isCurrentlyUpvoted = !!product.has_upvoted;
+    if (!currentTarget) return;
+
+    const isCurrentlyUpvoted = !!currentTarget.has_upvoted;
     const newCount = isCurrentlyUpvoted
-      ? Math.max(0, (product.upvotes_count || 1) - 1)
-      : (product.upvotes_count || 0) + 1;
+      ? Math.max(0, (currentTarget.upvotes_count || 1) - 1)
+      : (currentTarget.upvotes_count || 0) + 1;
 
     // Immediately update localStorage synchronously
     if (typeof window !== 'undefined') {
@@ -614,10 +652,13 @@ function ProductDetailsContent({
         const rawUser = activeUser.id ? localStorage.getItem(`indihunt_upvotes_${activeUser.id}`) : null;
         const rawGuest = localStorage.getItem('indihunt_upvotes');
         const votes = new Set<string>(JSON.parse(rawUser || rawGuest || '[]'));
+        const productSlug = currentTarget.name ? getProductSlug(currentTarget.name) : undefined;
         if (isCurrentlyUpvoted) {
-          votes.delete(product.id);
+          votes.delete(currentTarget.id);
+          if (productSlug) votes.delete(productSlug);
         } else {
-          votes.add(product.id);
+          votes.add(currentTarget.id);
+          if (productSlug) votes.add(productSlug);
         }
         const nextArr = Array.from(votes);
         localStorage.setItem('indihunt_upvotes', JSON.stringify(nextArr));
@@ -629,35 +670,45 @@ function ProductDetailsContent({
 
     // Optimistically update product state in component and Query cache immediately
     const optimisticProduct = {
-      ...product,
+      ...currentTarget,
       _userToggled: true,
       has_upvoted: !isCurrentlyUpvoted,
       upvotes_count: newCount,
     };
 
-    setProduct(optimisticProduct);
+    if (!targetProductId || targetProductId === product?.id) {
+      setProduct(optimisticProduct);
+    }
     clearCache();
 
     toggleUpvoteMutation.mutate(
-      { productId: product.id, userId: activeUser.id },
+      { productId: currentTarget.id, userId: activeUser.id },
       {
         onSuccess: (res) => {
           if (res && typeof res.upvotes_count === 'number') {
             const confirmedUpvoted = typeof res.has_upvoted === 'boolean' ? res.has_upvoted : !isCurrentlyUpvoted;
-            setProduct((prev: any) => ({
-              ...(prev || optimisticProduct),
-              _userToggled: true,
-              has_upvoted: confirmedUpvoted,
-              upvotes_count: res.upvotes_count,
-            }));
-            // Publish the upvote event to both global feed and product room
-            publish("feed", "product_upvoted", { productId: product.id, upvotes_count: res.upvotes_count });
-            publish(`product:${product.id}`, "product_upvoted", { productId: product.id, upvotes_count: res.upvotes_count });
+            if (!targetProductId || targetProductId === product?.id) {
+              setProduct((prev: any) => ({
+                ...(prev || optimisticProduct),
+                _userToggled: true,
+                has_upvoted: confirmedUpvoted,
+                upvotes_count: res.upvotes_count,
+              }));
+            }
+            const productSlug = currentTarget.name ? getProductSlug(currentTarget.name) : undefined;
+            // Publish the upvote event to global feed, product room, and product slug room
+            publish("feed", "product_upvoted", { productId: currentTarget.id, upvotes_count: res.upvotes_count });
+            publish(`product:${currentTarget.id}`, "product_upvoted", { productId: currentTarget.id, upvotes_count: res.upvotes_count });
+            if (productSlug && productSlug !== currentTarget.id) {
+              publish(`product:${productSlug}`, "product_upvoted", { productId: currentTarget.id, upvotes_count: res.upvotes_count });
+            }
           }
         },
         onError: () => {
           // Revert optimistic update on failure
-          setProduct(product);
+          if (!targetProductId || targetProductId === product?.id) {
+            setProduct(product);
+          }
         }
       }
     );
@@ -903,6 +954,8 @@ function ProductDetailsContent({
               onTabChange={handleTabChange}
               product={product}
               user={user}
+              launchesCount={companyLaunches.length}
+              reviewsCount={reviews.length}
               onReport={() => {
                 if (!user) { dispatch(setAuthModalOpen(true)); return; }
                 setReportModalState({
@@ -929,6 +982,16 @@ function ProductDetailsContent({
                   sentinelRef={commentsSentinelRef}
                 />
               </div>
+            )}
+
+            {activeSubTab === "Launches" && (
+              <LaunchesTab
+                currentProduct={product}
+                launches={companyLaunches}
+                allProductsList={effectiveAllProducts}
+                user={user}
+                onVote={handleVote}
+              />
             )}
 
             {activeSubTab === "Reviews" && (
@@ -1208,7 +1271,7 @@ function ProductHeader({
           <div className="flex items-start gap-4">
             {/* Logo */}
             <div className="w-14 h-14 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center">
-              <img src={product.logo_url} alt={product.name} className="w-14 h-14 object-cover" />
+              <Image src={product.logo_url} alt={product.name} width={56} height={56} className="w-14 h-14 object-cover" />
             </div>
 
             <div>
@@ -1293,6 +1356,8 @@ function TabNavigation({
   user,
   onReport,
   onShare,
+  launchesCount = 0,
+  reviewsCount = 0,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -1300,24 +1365,52 @@ function TabNavigation({
   user: any;
   onReport: () => void;
   onShare: () => void;
+  launchesCount?: number;
+  reviewsCount?: number;
 }) {
-  const tabs = ["Overview", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"];
+  const tabs = [
+    { name: "Overview", count: null },
+    ...(launchesCount > 1 ? [{ name: "Launches", count: launchesCount }] : []),
+    { name: "Reviews", count: reviewsCount > 0 ? reviewsCount : null },
+    { name: "AI Insights", count: null },
+    { name: "Demo Video", count: null },
+    { name: "Alternatives", count: null },
+    { name: "Forum", count: null },
+    { name: "Team", count: null },
+    { name: "Awards", count: null },
+    { name: "Analytics", count: null },
+  ];
 
   return (
-    <div className="flex  py-2 gap-2 overflow-x-auto items-center justify-between no-scrollbar">
+    <div className="flex py-2 gap-2 overflow-x-auto items-center justify-between no-scrollbar">
       <div className="flex items-center gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => onTabChange(tab)}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${activeTab === tab
-              ? "bg-slate-200 dark:bg-slate-800 text-foreground font-semibold shadow-sm"
-              : "text-muted-foreground hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-foreground"
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.name;
+          return (
+            <button
+              key={tab.name}
+              onClick={() => onTabChange(tab.name)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                isActive
+                  ? "bg-slate-200 dark:bg-slate-800 text-foreground font-semibold shadow-sm"
+                  : "text-muted-foreground hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-foreground"
               }`}
-          >
-            {tab}
-          </button>
-        ))}
+            >
+              <span>{tab.name}</span>
+              {tab.count !== null && (
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full font-semibold transition-colors ${
+                    isActive
+                      ? "bg-foreground/10 text-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {tab.count >= 1000 ? `${(tab.count / 1000).toFixed(0)}K` : tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
 
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
@@ -1466,7 +1559,7 @@ function ShareModal({
         <div className="text-center space-y-6">
           {/* Logo */}
           <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden bg-muted border border-border/80 shadow-md flex items-center justify-center">
-            <img src={product.logo_url} alt={product.name} className="w-full h-full object-cover" />
+            <Image src={product.logo_url} alt={product.name} width={64} height={64} className="w-full h-full object-cover" />
           </div>
 
           {/* Title */}

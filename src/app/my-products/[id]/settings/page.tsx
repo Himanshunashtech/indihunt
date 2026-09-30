@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { CircularLoader } from "@/components/CircularLoader";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -679,11 +680,11 @@ export default function ProductSettingsPage() {
 
         {/* Banner Title */}
         <div className="flex items-center gap-4">
-          <img
+          <Image
             src={product.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80"}
             alt=""
             className="w-16 h-16 rounded-2xl object-cover border border-border bg-muted flex-shrink-0"
-          />
+          width={64} height={64} />
           <div>
             <h1 className="text-3xl md:text-4xl font-medium tracking-tight text-foreground/90 leading-tight">Settings & members</h1>
             <p className="text-base text-foreground/80 leading-relaxed mt-0.5">Manage {product.name} Product Page</p>
@@ -965,14 +966,11 @@ export default function ProductSettingsPage() {
                     {/* Live Logo Preview Box */}
                     <div className="w-14 h-14 rounded-2xl border border-border bg-card p-1.5 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm relative">
                       {logoUrl ? (
-                        <img
+                        <Image
                           src={logoUrl}
                           alt="Product Logo Preview"
                           className="w-full h-full object-cover rounded-xl"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
+                        width={48} height={48} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-orange-500/10 to-amber-500/10 text-orange-500 font-bold text-base rounded-xl">
                           {name ? name.charAt(0).toUpperCase() : "P"}
@@ -1421,11 +1419,11 @@ export default function ProductSettingsPage() {
                     members.map(member => (
                       <div key={member.id} className="flex items-center justify-between p-4 hover:bg-muted/10 transition-colors">
                         <div className="flex items-center gap-3">
-                          <img
+                          <Image
                             src={member.avatar_url || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"}
                             alt=""
                             className="w-10 h-10 rounded-full object-cover border border-border"
-                          />
+                          width={40} height={40} />
                           <div>
                             <span className="text-xs font-semibold text-foreground block">{member.full_name}</span>
                             <span className="text-[10px] text-muted-foreground block">@{member.username}</span>
@@ -1538,7 +1536,7 @@ export default function ProductSettingsPage() {
                                     <div className="flex items-center gap-2.5">
                                       <div className="w-6 h-6 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center flex-shrink-0">
                                         {matched?.logo_url ? (
-                                          <img src={matched.logo_url} alt="" className="w-full h-full object-cover" />
+                                          <Image src={matched.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                                         ) : (
                                           <span className="text-[10px] font-semibold text-orange-500">{shout.shouted_product_name.charAt(0)}</span>
                                         )}
@@ -1592,7 +1590,7 @@ export default function ProductSettingsPage() {
                                             className="w-full px-3 py-2 text-left hover:bg-muted text-xs text-foreground font-medium flex items-center gap-2 cursor-pointer  last:border-0"
                                           >
                                             <div className="w-5 h-5 rounded overflow-hidden bg-muted flex-shrink-0">
-                                              {p.logo_url && <img src={p.logo_url} alt="" className="w-full h-full object-cover" />}
+                                              {p.logo_url && <Image src={p.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />}
                                             </div>
                                             <span>{p.name}</span>
                                           </button>

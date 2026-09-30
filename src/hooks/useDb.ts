@@ -19,6 +19,28 @@ import {
   getCachedPromotedProducts
 } from "@/lib/supabase";
 
+function syncProductUpvoteWithLocalStorage(p: Product, currentUserId?: string): Product {
+  if (typeof window === 'undefined' || !p) return p;
+  try {
+    const raw = (currentUserId ? localStorage.getItem(`indihunt_upvotes_${currentUserId}`) : null) || localStorage.getItem('indihunt_upvotes');
+    if (!raw) return p;
+    const votedSet = new Set<string>(JSON.parse(raw));
+    const slug = getProductSlug(p.name);
+    const isVoted = votedSet.has(p.id) || (slug ? votedSet.has(slug) : false);
+    const wasVoted = !!p.has_upvoted;
+    if (isVoted === wasVoted) return p;
+    return {
+      ...p,
+      has_upvoted: isVoted,
+      upvotes_count: isVoted
+        ? (p.upvotes_count || 0) + 1
+        : Math.max(0, (p.upvotes_count || 1) - 1),
+    };
+  } catch (e) {
+    return p;
+  }
+}
+
 // 1. Fetch all products
 export function useProducts(currentUserId?: string, initialData?: Product[], enabled = true) {
   const queryClient = useQueryClient();
@@ -30,30 +52,16 @@ export function useProducts(currentUserId?: string, initialData?: Product[], ena
     refetchOnWindowFocus: false,
     initialData: initialData && initialData.length > 0
       ? () => {
-          if (currentUserId && typeof window !== 'undefined') {
-            try {
-              const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-              const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-              return initialData.map((p) => ({
-                ...p,
-                has_upvoted: votedSet.has(p.id),
-              }));
-            } catch (e) {}
+          if (typeof window !== 'undefined') {
+            return initialData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
           }
           return initialData;
         }
       : () => {
           const guestData = queryClient.getQueryData<Product[]>(["products", "guest"]);
           if (guestData && guestData.length > 0) {
-            if (currentUserId && typeof window !== 'undefined') {
-              try {
-                const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-                const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-                return guestData.map((p) => ({
-                  ...p,
-                  has_upvoted: votedSet.has(p.id),
-                }));
-              } catch (e) {}
+            if (typeof window !== 'undefined') {
+              return guestData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
             }
             return guestData;
           }
@@ -62,15 +70,8 @@ export function useProducts(currentUserId?: string, initialData?: Product[], ena
     initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
     placeholderData: (previousData) => {
       if (previousData && previousData.length > 0) {
-        if (currentUserId && typeof window !== 'undefined') {
-          try {
-            const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-            const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-            return previousData.map((p) => ({
-              ...p,
-              has_upvoted: votedSet.has(p.id),
-            }));
-          } catch (e) {}
+        if (typeof window !== 'undefined') {
+          return previousData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
         }
         return previousData;
       }
@@ -87,7 +88,8 @@ export function usePromotedProducts(existingProducts?: Product[], initialData?: 
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     initialData: initialData && initialData.length > 0 ? initialData : undefined,
-    placeholderData: (previousData) => previousData,
+    initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
+    placeholderData: (previousData) => previousData || (initialData && initialData.length > 0 ? initialData : undefined),
   });
 }
 
@@ -102,35 +104,26 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
     refetchOnWindowFocus: false,
     initialData: initialData
       ? () => {
-          if (currentUserId && typeof window !== 'undefined') {
-            try {
-              const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-              const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-              return {
-                ...initialData,
-                has_upvoted: votedSet.has(initialData.id),
-              };
-            } catch (e) {}
+          if (typeof window !== 'undefined') {
+            return syncProductUpvoteWithLocalStorage(initialData, currentUserId);
           }
           return initialData;
         }
       : () => {
           const guestProduct = queryClient.getQueryData<Product>(["product", productId, "guest"]);
-          if (guestProduct) return guestProduct;
+          if (guestProduct) {
+            if (typeof window !== 'undefined') {
+              return syncProductUpvoteWithLocalStorage(guestProduct, currentUserId);
+            }
+            return guestProduct;
+          }
           return undefined;
         },
     initialDataUpdatedAt: initialData ? Date.now() : undefined,
     placeholderData: (previousData) => {
       if (previousData) {
-        if (currentUserId && typeof window !== 'undefined') {
-          try {
-            const raw = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-            const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-            return {
-              ...previousData,
-              has_upvoted: votedSet.has(previousData.id),
-            };
-          } catch (e) {}
+        if (typeof window !== 'undefined') {
+          return syncProductUpvoteWithLocalStorage(previousData, currentUserId);
         }
         return previousData;
       }
@@ -142,12 +135,7 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
           if (existing && Array.isArray(existing)) {
             const match = existing.find(p => p.id === productId || getProductSlug(p.name) === normalized);
             if (match) {
-              const raw = currentUserId ? (localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes')) : null;
-              const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-              return {
-                ...match,
-                has_upvoted: currentUserId ? votedSet.has(match.id) : !!match.has_upvoted,
-              };
+              return syncProductUpvoteWithLocalStorage(match, currentUserId);
             }
           }
         } catch (e) {}
@@ -364,12 +352,12 @@ export function useToggleUpvoteMutation() {
       // Cancel any outgoing refetches so they don't overwrite optimistic update
       await queryClient.cancelQueries({ queryKey: ["products"] });
       await queryClient.cancelQueries({ queryKey: ["promoted_products"] });
-      await queryClient.cancelQueries({ queryKey: ["product", productId] });
+      await queryClient.cancelQueries({ queryKey: ["product"] });
 
       // Snapshot previous value for rollback
       const previousProducts = queryClient.getQueriesData({ queryKey: ["products"] });
       const previousPromoted = queryClient.getQueriesData({ queryKey: ["promoted_products"] });
-      const previousProduct = queryClient.getQueriesData({ queryKey: ["product", productId] });
+      const previousProduct = queryClient.getQueriesData({ queryKey: ["product"] });
 
       const matchesTarget = (p: Product) =>
         p.id === productId ||
@@ -411,9 +399,10 @@ export function useToggleUpvoteMutation() {
         });
       });
 
-      queryClient.setQueriesData({ queryKey: ["product", productId] }, (old: unknown) => {
-        if (!old || typeof old !== "object") return old;
+      queryClient.setQueriesData({ queryKey: ["product"] }, (old: unknown) => {
+        if (!old || typeof old !== "object" || Array.isArray(old)) return old;
         const p = old as Product;
+        if (!matchesTarget(p)) return old;
         const wasUpvoted = !!p.has_upvoted;
         return {
           ...p,
@@ -453,7 +442,11 @@ export function useToggleUpvoteMutation() {
           p.id === resolvedId ||
           p.id === variables.productId ||
           getProductSlug(p.name).toLowerCase() === variables.productId.toLowerCase() ||
-          ((p as any).slug && (p as any).slug.toLowerCase() === variables.productId.toLowerCase());
+          getProductSlug(p.name).toLowerCase() === resolvedId.toLowerCase() ||
+          ((p as any).slug && (
+            (p as any).slug.toLowerCase() === variables.productId.toLowerCase() ||
+            (p as any).slug.toLowerCase() === resolvedId.toLowerCase()
+          ));
 
         queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
           if (!Array.isArray(old)) return old;
@@ -481,19 +474,16 @@ export function useToggleUpvoteMutation() {
           );
         });
 
-        const updateSingleProduct = (old: unknown) => {
-          if (!old || typeof old !== "object") return old;
+        queryClient.setQueriesData({ queryKey: ["product"] }, (old: unknown) => {
+          if (!old || typeof old !== "object" || Array.isArray(old)) return old;
+          const p = old as Product;
+          if (!matchesTarget(p)) return old;
           return {
-            ...(old as Product),
+            ...p,
             upvotes_count: data.upvotes_count,
             ...(hasUpvoted !== undefined ? { has_upvoted: hasUpvoted } : {}),
           };
-        };
-
-        queryClient.setQueriesData({ queryKey: ["product", variables.productId] }, updateSingleProduct);
-        if (resolvedId && resolvedId !== variables.productId) {
-          queryClient.setQueriesData({ queryKey: ["product", resolvedId] }, updateSingleProduct);
-        }
+        });
       }
     },
   });
@@ -558,14 +548,6 @@ export function useAddCommentMutation() {
             );
           });
         }
-      }
-      queryClient.invalidateQueries({ queryKey: ["comments"] });
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      if (variables.productId) {
-        queryClient.invalidateQueries({ queryKey: ["product", variables.productId] });
-      }
-      if (variables.threadId) {
-        queryClient.invalidateQueries({ queryKey: ["threads"] });
       }
     },
   });

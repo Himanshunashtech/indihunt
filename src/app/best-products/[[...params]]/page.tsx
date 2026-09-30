@@ -559,12 +559,12 @@ export default function BestProductsCatchAllPage() {
                             {product.maker && (
                               <div>
                                 <div className="flex flex-row items-center gap-1.5">
-                                  <img
+                                  <Image
                                     src={product.maker.avatar_url || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=40&h=40&q=80"}
                                     alt=""
                                     className="w-4 h-4 rounded-full object-cover"
                                     style={{ width: "16px", height: "16px" }}
-                                  />
+                                  width={16} height={16} />
                                   <Link
                                     href={product.maker.username ? `/@${product.maker.username}` : `/profile?id=${product.maker.id}`}
                                     onClick={(e) => e.stopPropagation()}

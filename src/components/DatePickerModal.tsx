@@ -40,16 +40,29 @@ export default function DatePickerModal({
 
   if (!isOpen) return null;
 
-  // Generate dates starting from tomorrow up to December 31 of the next calendar year
+  // Generate dates starting from today up to December 31 of the next calendar year
   const dates: Date[] = [];
   const start = new Date();
-  start.setDate(start.getDate() + 1); // Start tomorrow
   const end = new Date(start.getFullYear() + 2, 11, 31); // December 31 of the year after next
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     dates.push(new Date(d));
   }
 
+  const isSameDay = (d1?: Date, d2?: Date) => {
+    if (!d1 || !d2) return false;
+    return (
+      d1.getDate() === d2.getDate() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getFullYear() === d2.getFullYear()
+    );
+  };
+
   const formatDay = (d: Date) => {
+    const today = new Date();
+    if (isSameDay(d, today)) return "Today";
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (isSameDay(d, tomorrow)) return "Tomorrow";
     return d.toLocaleDateString("en-US", { weekday: "short" });
   };
 
@@ -64,20 +77,11 @@ export default function DatePickerModal({
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const isSameDay = (d1?: Date, d2?: Date) => {
-    if (!d1 || !d2) return false;
-    return (
-      d1.getDate() === d2.getDate() &&
-      d1.getMonth() === d2.getMonth() &&
-      d1.getFullYear() === d2.getFullYear()
-    );
-  };
-
   const handleScheduleClick = () => {
     if (selectedDate) {
-      // Set to midnight PT or equivalent local midnight to match guidelines
+      // Set to noon (12:00:00) so timezone offsets don't shift the date day
       const scheduledDate = new Date(selectedDate);
-      scheduledDate.setHours(0, 0, 0, 0);
+      scheduledDate.setHours(12, 0, 0, 0);
       onSelectDate(scheduledDate);
     }
   };

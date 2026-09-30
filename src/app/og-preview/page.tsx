@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Share2,
   Copy,
@@ -196,11 +197,11 @@ export default function OgPreviewPage() {
               <div className="bg-[#0b141a] p-4 rounded-2xl border border-slate-800 space-y-2">
                 <div className="bg-[#111b21] rounded-2xl overflow-hidden border border-[#222d34] shadow-md">
                   <div className="aspect-[1200/630] relative overflow-hidden bg-slate-950">
-                    <img
+                    <Image
                       src="/og-image.webp"
                       alt="IndiHunt OG Card"
                       className="w-full h-full object-cover"
-                    />
+                    width={48} height={48} />
                   </div>
                   <div className="p-3 bg-[#182229] space-y-1">
                     <p className="text-xs font-medium text-slate-200 line-clamp-1">{title}</p>
@@ -257,11 +258,11 @@ export default function OgPreviewPage() {
 
                 <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950">
                   <div className="aspect-[1200/630] relative">
-                    <img
+                    <Image
                       src="/og-image.webp"
                       alt="Twitter Large Card Preview"
                       className="w-full h-full object-cover"
-                    />
+                    width={48} height={48} />
                   </div>
                   <div className="p-3 bg-slate-950 border-t border-slate-900 space-y-1">
                     <p className="text-xs text-slate-500 uppercase tracking-wider font-mono">indihunt.in</p>
@@ -314,11 +315,11 @@ export default function OgPreviewPage() {
 
                 <div className="rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
                   <div className="aspect-[1200/630] relative">
-                    <img
+                    <Image
                       src="/og-image.webp"
                       alt="LinkedIn Article Card"
                       className="w-full h-full object-cover"
-                    />
+                    width={48} height={48} />
                   </div>
                   <div className="p-3 bg-[#282c31] border-t border-slate-700 space-y-1">
                     <h5 className="text-sm font-semibold text-white line-clamp-1">{title}</h5>
@@ -367,11 +368,11 @@ export default function OgPreviewPage() {
                   <p className="text-xs text-slate-300 line-clamp-2">{description}</p>
                   
                   <div className="rounded-lg overflow-hidden border border-slate-800 aspect-[1200/630]">
-                    <img
+                    <Image
                       src="/og-image.webp"
                       alt="Discord Card Image"
                       className="w-full h-full object-cover"
-                    />
+                    width={48} height={48} />
                   </div>
                 </div>
               </div>
@@ -405,11 +406,11 @@ export default function OgPreviewPage() {
                   <p className="text-xs font-semibold text-white">{title}</p>
                   <p className="text-xs text-slate-300 line-clamp-2">{description}</p>
                   <div className="aspect-[1200/630] rounded-xl overflow-hidden border border-slate-700">
-                    <img
+                    <Image
                       src="/og-image.webp"
                       alt="Telegram Web Preview"
                       className="w-full h-full object-cover"
-                    />
+                    width={48} height={48} />
                   </div>
                 </div>
               </div>
@@ -457,11 +458,11 @@ export default function OgPreviewPage() {
 
                 <div className="rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
                   <div className="aspect-[1200/630] relative">
-                    <img
+                    <Image
                       src="/og-image.webp"
                       alt="Facebook Feed Preview"
                       className="w-full h-full object-cover"
-                    />
+                    width={48} height={48} />
                   </div>
                   <div className="p-3 bg-[#3a3b3c] space-y-1">
                     <p className="text-[11px] text-slate-400 uppercase font-mono">INDIHUNT.IN</p>

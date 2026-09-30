@@ -164,7 +164,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           data-domain="indihunt.in"
           strategy="afterInteractive"
         />
-        <script
+        <Script
+          id="session-cleanup"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `try{localStorage.removeItem('indihunt_user_session');}catch(e){}`,
           }}

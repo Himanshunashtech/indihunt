@@ -308,9 +308,9 @@ export default function ProfileSettingsPage() {
             <div className="flex flex-row items-center gap-4 py-2">
               <div className="w-20 h-20 rounded-full overflow-hidden border border-border bg-muted flex items-center justify-center text-2xl font-medium text-foreground flex-shrink-0">
                 {editAvatar ? (
-                  <img src={editAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                  <Image src={editAvatar} alt="Avatar" className="w-full h-full object-cover" width={48} height={48} />
                 ) : profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                  <Image src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" width={48} height={48} />
                 ) : (
                   profile?.full_name?.charAt(0).toUpperCase() || "U"
                 )}

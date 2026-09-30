@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
@@ -121,11 +122,11 @@ export default function PagesLandingPage() {
                     href={`/page/${maker.username}`}
                     className="bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-orange-500/40 p-3 px-4 rounded-2xl flex items-center gap-3 shrink-0 text-slate-900 transition-all hover:-translate-y-0.5 cursor-pointer min-w-[210px]"
                   >
-                    <img
+                    <Image
                       src={maker.avatar}
                       alt={maker.name}
                       className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
-                    />
+                    width={40} height={40} />
                     <div className="min-w-0 flex-1">
                       <h4 className="font-extrabold text-base text-slate-900 truncate leading-tight">
                         {maker.name}
@@ -150,11 +151,11 @@ export default function PagesLandingPage() {
                     href={`/page/${maker.username}`}
                     className="bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-orange-500/40 p-3 px-4 rounded-2xl flex items-center gap-3 shrink-0 text-slate-900 transition-all hover:-translate-y-0.5 cursor-pointer min-w-[210px]"
                   >
-                    <img
+                    <Image
                       src={maker.avatar}
                       alt={maker.name}
                       className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
-                    />
+                    width={40} height={40} />
                     <div className="min-w-0 flex-1">
                       <h4 className="font-extrabold text-base text-slate-900 truncate leading-tight">
                         {maker.name}
@@ -183,11 +184,11 @@ export default function PagesLandingPage() {
                 {/* Left Column: Maker Profile (Himanshu Sharma) */}
                 <div className="lg:col-span-4 space-y-5">
                   <div className="relative">
-                    <img
+                    <Image
                       src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300"
                       alt="Himanshu Sharma"
                       className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-white shadow-md"
-                    />
+                    width={96} height={96} />
                   </div>
 
                   <div className="space-y-1.5">

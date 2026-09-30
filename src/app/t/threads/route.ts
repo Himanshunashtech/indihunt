@@ -12,10 +12,13 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const authorId = searchParams.get('authorId') || searchParams.get('author_id');
     const category = searchParams.get('category');
+    const productId = searchParams.get('productId') || searchParams.get('product_id');
     const queryStr = searchParams.get('q') || searchParams.get('search');
     const limit = parseInt(searchParams.get('limit') || (queryStr ? '100' : '50'), 10);
 
-    const cacheKey = `threads_${category || 'all'}_${limit}`;
+    const cacheKey = productId
+      ? `threads_product_${productId}_${limit}`
+      : `threads_${category || 'all'}_${limit}`;
 
     if (!userId && !authorId && !queryStr) {
       const cached = await getCachedData<any[]>(cacheKey);
@@ -30,6 +33,10 @@ export async function GET(request: NextRequest) {
       .select('id, title, body, category, product_id, upvotes_count, comments_count, created_at, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (productId) {
+      query = query.eq('product_id', productId);
+    }
 
     if (authorId) {
       query = query.eq('user_id', authorId);
@@ -122,6 +129,10 @@ export async function POST(request: NextRequest) {
 
     await invalidateCache('threads_all_50');
     if (category) await invalidateCache(`threads_${category}_50`);
+    if (linkedProductId) {
+      await invalidateCache(`threads_product_${linkedProductId}_50`);
+      await invalidateCache(`threads_product_${linkedProductId}_100`);
+    }
 
     return apiSuccessSecure({ ...newThread, has_upvoted: true }, 201);
   } catch (error: any) {

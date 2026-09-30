@@ -618,7 +618,7 @@ export default function ThreadDetailPage() {
                               <UserHoverCard user={node.user} userId={node.user_id}>
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 overflow-hidden border border-border">
                                   {node.user?.avatar_url ? (
-                                    <img src={node.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                    <Image src={node.user.avatar_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
                                   ) : (
                                     (node.user?.full_name?.charAt(0) ?? 'U').toUpperCase()
                                   )}

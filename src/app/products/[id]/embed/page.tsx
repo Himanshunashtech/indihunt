@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Check, ExternalLink, Code, Star, Award, MessageSquare, Search, ChevronDown, CheckCircle2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
@@ -454,7 +455,7 @@ export default function EmbedBadgePage() {
 
                     {/* Badge Live Preview Box */}
                     <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50/90 dark:bg-slate-900/70 rounded-2xl border border-border/60 min-h-[130px]">
-                      <img
+                      <Image
                         src={previewUrl}
                         alt={style.name}
                         width={style.width}
@@ -646,11 +647,11 @@ export default function EmbedBadgePage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden bg-orange-500/10 border border-orange-500/20 flex-shrink-0 flex items-center justify-center">
                           {reviewerAvatar ? (
-                            <img
+                            <Image
                               src={reviewerAvatar}
                               alt={reviewerName}
                               className="w-full h-full object-cover"
-                            />
+                            width={48} height={48} />
                           ) : (
                             <span className="text-sm font-bold text-orange-500">
                               {reviewerName.charAt(0).toUpperCase()}
@@ -769,7 +770,7 @@ export default function EmbedBadgePage() {
                           </button>
                         </div>
                         <div className="flex justify-center p-2">
-                          <img
+                          <Image
                             src={reviewCardUrl}
                             alt="Testimonial Card Preview"
                             width={500}
