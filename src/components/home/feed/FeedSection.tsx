@@ -82,7 +82,7 @@ export default function FeedSection({
             {section.emptyMessage}
           </p>
           {showBillboardAd && (
-            <div className="pt-2 pb-1 sm:pb-2">
+            <div className="pt-2 pb-1 sm:pb-2" suppressHydrationWarning>
               <FeedBillboardAd
                 ad={billboardAd}
                 type="indihunt_fallback"
@@ -99,7 +99,7 @@ export default function FeedSection({
                 (idx === 4 ||
                   (section.items.length <= 4 &&
                     idx === section.items.length - 1)) && (
-                  <div className="pt-2 pb-1 sm:pt-4 sm:pb-2">
+                  <div className="pt-2 pb-1 sm:pt-4 sm:pb-2" suppressHydrationWarning>
                     <FeedBillboardAd
                       ad={billboardAd}
                       type="indihunt_fallback"

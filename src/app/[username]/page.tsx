@@ -20,23 +20,33 @@ interface PageProps {
   }>;
 }
 
+import { MOCK_PROFILES } from "@/lib/supabase";
+
 // React cache memoization ensures generateMetadata and UsernameProfilePage share the single query
 const fetchProfileForSeo = reactCache(async (cleanUsername: string) => {
   try {
     const supabase = getServiceSupabase();
     if (supabase) {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from("profiles")
-        .select("id, username, full_name, avatar_url, bio, headline, website_url, twitter_url, github_url, linkedin_url, location, job_title, karma_points, streak_count, is_maker, created_at")
+        .select("*")
         .ilike("username", cleanUsername)
         .maybeSingle();
 
-      if (profile) return profile;
+      if (profile && !error) return profile;
+      if (error) {
+        console.error("Error fetching SEO profile from Supabase:", error);
+      }
     }
   } catch (e) {
     console.error("Error fetching SEO profile:", e);
   }
-  return null;
+
+  // Fallback to MOCK_PROFILES if database lookup fails
+  const found = Object.values(MOCK_PROFILES).find(
+    (p) => p.username?.toLowerCase() === cleanUsername.toLowerCase()
+  );
+  return found || null;
 });
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -156,7 +166,8 @@ export default async function UsernameProfilePage({ params }: PageProps) {
       ...(profile?.avatar_url && { "image": profile.avatar_url }),
       ...(profile?.bio && { "description": profile.bio }),
       ...(profile?.job_title && { "jobTitle": profile.job_title }),
-      ...(profile?.website_url && { "sameAs": [profile.website_url] }),
+      ...(profile?.website && { "sameAs": [profile.website] }),
+      ...(!(profile?.website) && (profile as any)?.website_url && { "sameAs": [(profile as any).website_url] }),
     },
   };
 

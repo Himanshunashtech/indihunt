@@ -29,7 +29,6 @@ export default function FeedBillboardAd({
             height={300}
             sizes="(max-width: 768px) 100vw, 1200px"
             quality={90}
-            priority
           />
         </div>
         <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 bg-slate-900/80 text-white text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm shadow-xs">
@@ -66,6 +65,7 @@ export default function FeedBillboardAd({
             href={ad.destination_url}
             onClick={handleBillboardClick}
             className={linkClasses}
+            suppressHydrationWarning
           >
             {content}
           </Link>
@@ -104,12 +104,13 @@ export default function FeedBillboardAd({
           rel="noopener noreferrer"
           onClick={handleBillboardClick}
           className={linkClasses}
+          suppressHydrationWarning
         >
           {content}
         </a>
       );
     }
-    return <div className={linkClasses}>{content}</div>;
+    return <div className={linkClasses} suppressHydrationWarning>{content}</div>;
   }
 
   // Fallbacks
@@ -120,6 +121,7 @@ export default function FeedBillboardAd({
         target="_blank"
         rel="noopener noreferrer"
         className="block relative w-full overflow-hidden border border-emerald-500/30 shadow-md hover:border-emerald-500/60 group transition-all duration-300 bg-muted/40"
+        suppressHydrationWarning
       >
         <div className="relative w-full" style={{ paddingBottom: "25%" }}>
           <Image
@@ -144,6 +146,7 @@ export default function FeedBillboardAd({
     <Link
       href="/advertise"
       className="block relative w-full overflow-hidden border border-orange-500/30 shadow-md hover:border-orange-500/60 group transition-all duration-300 bg-muted/40"
+      suppressHydrationWarning
     >
       <div className="relative w-full" style={{ paddingBottom: "25%" }}>
         <Image

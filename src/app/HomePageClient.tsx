@@ -186,23 +186,10 @@ export default function HomePageClient({
   const [selectedBillboardAds, setSelectedBillboardAds] = useState<
     BillboardAd[]
   >(() => {
-    let list = [...initialBillboardAds];
-    if (list.length === 0) {
-      list = [...DEFAULT_BILLBOARDS];
+    if (initialBillboardAds && initialBillboardAds.length > 0) {
+      return [...initialBillboardAds];
     }
-    if (typeof window !== "undefined") {
-      try {
-        const lastId = sessionStorage.getItem("ih_last_billboard_id");
-        if (lastId && list.length > 1) {
-          const idx = list.findIndex((a) => a.id === lastId);
-          if (idx !== -1) {
-            const nextIdx = (idx + 1) % list.length;
-            list = [...list.slice(nextIdx), ...list.slice(0, nextIdx)];
-          }
-        }
-      } catch (e) {}
-    }
-    return list;
+    return [...DEFAULT_BILLBOARDS];
   });
 
   // Payment Status Banner state from checkout redirect
