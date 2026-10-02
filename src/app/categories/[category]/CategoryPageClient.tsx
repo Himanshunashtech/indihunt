@@ -23,8 +23,10 @@ import {
   toggleUpvote,
   Product,
   supabase,
-  getProductSlug
+  getProductSlug,
+  getProducts
 } from "@/lib/supabase";
+import { isProductInCategory } from "@/lib/categoryMatcher";
 import Navbar from "@/components/Navbar";
 import { SponsoredAd } from "@/components/SponsoredAd";
 import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
@@ -64,6 +66,22 @@ export default function CategoryPageClient({
 
   const [products, setProducts] = useState<Product[]>(initialProducts);
 
+  // Sync products when initialProducts prop updates or fetch client-side fallback if empty
+  useEffect(() => {
+    if (initialProducts && initialProducts.length > 0) {
+      setProducts(initialProducts);
+    } else {
+      getProducts()
+        .then((all) => {
+          if (Array.isArray(all) && all.length > 0) {
+            const matched = all.filter((p) => isProductInCategory(p, slug, categoryName));
+            setProducts(matched);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [initialProducts, slug, categoryName]);
+
   useEffect(() => {
     try {
       let uid = reduxUser?.id;
@@ -87,7 +105,7 @@ export default function CategoryPageClient({
         );
       }
     } catch (e) {}
-  }, [reduxUser?.id, initialProducts]);
+  }, [reduxUser?.id]);
 
   const [sortBy, setSortBy] = useState<'recent' | 'upvotes' | 'alphabetical'>('recent');
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);

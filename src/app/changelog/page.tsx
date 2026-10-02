@@ -68,6 +68,22 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.3.8",
+    date: "October 2026",
+    title: "Product Category Matching Engine & Client-Side Hydration",
+    summary: "Built a centralized category matching system across all 54 categories supporting safe tag parsing, broad SaaS matching, keyword search, and client-side fallback hydration.",
+    icon: Sparkles,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Bugfix", "Architecture", "Categories"],
+    features: [
+      { icon: Sparkles, text: "Created categoryMatcher.ts with comprehensive keyword, alias, and tag normalization for all 54 product categories." },
+      { icon: Database, text: "Added client-side hydration in CategoryPageClient to ensure products load immediately even during cold SSR start or client-side navigation." },
+      { icon: ShieldCheck, text: "Fixed JSON/array string tag parsing so products with various tag formats are accurately categorized." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.3.7",
     date: "October 2026",
     title: "Launch Widget Maker-Only Visibility & Clean Top Hunters Leaderboard",
@@ -81,7 +97,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Users, text: "Filtered out demo / mock accounts (john_doe, jane_smith, user-1, user-2) from Top Hunters and removed mock profile fallback injection." },
       { icon: Sparkles, text: "Added graceful empty state to TopHuntersWidget on the home page when no hunters are active." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.3.6",
