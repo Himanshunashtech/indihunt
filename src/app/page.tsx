@@ -17,8 +17,8 @@ const SITE_URL = "https://indihunt.in";
 
 export default async function Home() {
   // 1. Direct DB service layer calls wrapped in Promise.all (zero HTTP self-fetch)
-  const productsPromise = getHomeProductsDirect(150).catch(() => [] as Product[]);
-  const threadsPromise = getHomeThreadsDirect(15).catch(() => []);
+  const productsPromise = getHomeProductsDirect(30).catch(() => [] as Product[]);
+  const threadsPromise = getHomeThreadsDirect(10).catch(() => []);
 
   const [products, threads] = await Promise.all([
     productsPromise,
@@ -84,7 +84,19 @@ export default async function Home() {
   const sortedLastWeek = sortByUpvotes(lastWeekList);
   const sortedLastMonth = sortByUpvotes(lastMonthList);
 
-  const initialVisibleThreads = threads.slice(0, 10);
+  // Sliced visible datasets for minimal initial wire payload (20 today + 5 yesterday + 5 last week + 5 last month + 20 upcoming)
+  const visibleToday = sortedToday.slice(0, 20);
+  const visibleYesterday = sortedYesterday.slice(0, 5);
+  const visibleLastWeek = sortedLastWeek.slice(0, 5);
+  const visibleLastMonth = sortedLastMonth.slice(0, 5);
+  const visibleUpcoming = upcomingList.slice(0, 20);
+
+  const initialVisibleMap = new Map<string, Product>();
+  [...visibleUpcoming, ...visibleToday, ...visibleYesterday, ...visibleLastWeek, ...visibleLastMonth].forEach(p => {
+    if (p && p.id) initialVisibleMap.set(p.id, p);
+  });
+  const initialVisibleProducts = Array.from(initialVisibleMap.values());
+  const initialVisibleThreads = threads.slice(0, 5);
   const initialVisibleTopHunters = topHunters.slice(0, 5);
 
   // Build JSON-LD ItemList structured data — capped to top 20 for fast serialization
@@ -201,7 +213,7 @@ export default async function Home() {
       </div>
 
       <HomePageClient
-        initialProducts={products}
+        initialProducts={initialVisibleProducts}
         initialThreads={initialVisibleThreads}
         initialTopHunters={initialVisibleTopHunters}
         initialBillboardAds={billboardAds}

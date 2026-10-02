@@ -4689,20 +4689,36 @@ export async function getActiveAdsPool(excludeProductId?: string): Promise<AdCam
     (!excludeProductId || c.product_id !== excludeProductId));
 
   const cached = await getRedisCache<AdCampaign[]>(key);
-  if (Array.isArray(cached)) return valid(cached);
+  if (Array.isArray(cached) && cached.length > 0) return valid(cached);
 
+  // 1. Direct Supabase query when available
+  if (supabase) {
+    try {
+      const { data: dbAds, error } = await supabase
+        .from('ad_campaigns')
+        .select('*')
+        .eq('status', 'active');
+      if (!error && dbAds && dbAds.length > 0) {
+        setRedisCache(key, dbAds, 120).catch(() => {});
+        return valid(dbAds as AdCampaign[]);
+      }
+    } catch {}
+  }
+
+  // 2. Fetch via API endpoint
   try {
     const res = await secureApiFetch<AdCampaign[]>('/t/ads/campaigns?all=true');
-    if (res && res.success && Array.isArray(res.data)) {
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
       setRedisCache(key, res.data, 120).catch(() => {});
       return valid(res.data);
     }
   } catch {}
 
+  // 3. Fallback to localStorage
   if (typeof window !== 'undefined') {
-    const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
+    const cachedLocal = localStorage.getItem('indihunt_ad_campaigns') || '[]';
     try {
-      const list: AdCampaign[] = JSON.parse(cached);
+      const list: AdCampaign[] = JSON.parse(cachedLocal);
       const validList = list.filter(c => !c.target_impressions || (c.delivered_impressions || 0) < c.target_impressions);
       if (validList.length !== list.length) {
         localStorage.setItem('indihunt_ad_campaigns', JSON.stringify(validList));
@@ -4732,23 +4748,67 @@ export async function getPromotedProducts(existingProducts?: Product[]): Promise
   const [activeAds, allProducts] = await Promise.all([activeAdsPromise, productsPromise]);
 
   if (!activeAds || activeAds.length === 0) return [];
-  if (!allProducts || allProducts.length === 0) return [];
 
   const productMap = new Map<string, Product>();
-  allProducts.forEach(p => productMap.set(p.id, p));
+  if (Array.isArray(allProducts)) {
+    allProducts.forEach(p => productMap.set(p.id, p));
+  }
+
+  // Identify any active ad product IDs that were not included in allProducts
+  const missingProductIds = activeAds
+    .map(ad => ad.product_id)
+    .filter((id): id is string => Boolean(id && !productMap.has(id)));
+
+  if (missingProductIds.length > 0 && supabase) {
+    try {
+      const { data: missingProducts } = await supabase
+        .from('products')
+        .select('id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)')
+        .in('id', missingProductIds);
+
+      if (Array.isArray(missingProducts)) {
+        missingProducts.forEach((p: any) => {
+          productMap.set(p.id, p as Product);
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch missing promoted products by ID:', err);
+    }
+  }
 
   const promotedProducts: Product[] = [];
   const seenProductIds = new Set<string>();
 
   for (const ad of activeAds) {
-    if (!ad.product_id || seenProductIds.has(ad.product_id)) continue;
-    const prod = productMap.get(ad.product_id);
-    if (prod) {
-      seenProductIds.add(ad.product_id);
+    if (ad.product_id) {
+      if (seenProductIds.has(ad.product_id)) continue;
+      const prod = productMap.get(ad.product_id);
+      if (prod) {
+        seenProductIds.add(ad.product_id);
+        promotedProducts.push({
+          ...prod,
+          is_promoted: true
+        });
+      }
+    } else if (ad.name || ad.headline) {
+      // Standalone ad campaign without a pre-existing product ID
+      const adId = `ad_${ad.id}`;
+      if (seenProductIds.has(adId)) continue;
+      seenProductIds.add(adId);
       promotedProducts.push({
-        ...prod,
-        is_promoted: true
-      });
+        id: ad.id,
+        name: ad.name || "Featured Product",
+        tagline: ad.headline || ad.description || "Sponsored on IndiHunt",
+        description: ad.description || "",
+        website_url: ad.destination_url || "#",
+        logo_url: ad.image_url || "/og-image.webp",
+        tags: ["Promoted"],
+        status: "live",
+        created_at: ad.created_at || new Date().toISOString(),
+        upvotes_count: 0,
+        comments_count: 0,
+        is_promoted: true,
+      } as Product);
     }
   }
 
