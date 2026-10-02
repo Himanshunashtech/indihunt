@@ -3,7 +3,6 @@ import { decodePayload } from './obfuscate';
 function getBaseUrl(): string {
   if (typeof window !== 'undefined') return '';
   const port = process.env.PORT || '3000';
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return `http://127.0.0.1:${port}`;
 }
@@ -73,15 +72,20 @@ export async function secureApiFetch<T = any>(
         ? { 'X-Internal-SSR': '1', 'User-Agent': 'IndiHunt-SSR/1.0' }
         : {};
 
+      const controller = new AbortController();
+      const timeoutMs = isServer ? 3500 : 9000;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
       const res = await fetch(fullUrl, {
         ...options,
+        signal: options?.signal || controller.signal,
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           ...internalHeaders,
           ...(options?.headers || {}),
         },
-      });
+      }).finally(() => clearTimeout(timeoutId));
 
       const json = await res.json().catch(() => null);
 

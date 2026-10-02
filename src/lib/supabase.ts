@@ -1,5 +1,6 @@
 import { createBrowserClient as createClient } from '@supabase/ssr';
 import { cache as reactCache } from 'react';
+import { unstable_cache } from 'next/cache';
 import { secureApiFetch, clearClientApiCache } from '@/lib/api/client';
 import {
   getCachedData as getRedisCache,
@@ -2000,29 +2001,29 @@ export async function compressImage(
   }
 
   // Determine configuration
-  let maxSizeBytes = 20 * 1024; // Default 20KB
-  let maxDimension = 1200;
+  let maxSizeBytes = 800 * 1024; // Default 800KB
+  let maxDimension = 1600;
   let isIcon = false;
 
   if (typeof optionsOrMaxBytes === "number") {
     maxSizeBytes = optionsOrMaxBytes;
-    if (maxSizeBytes <= 10 * 1024) {
-      maxDimension = 256;
+    if (maxSizeBytes <= 300 * 1024) {
+      maxDimension = 512;
       isIcon = true;
     }
   } else if (optionsOrMaxBytes) {
     if (optionsOrMaxBytes.type === "icon") {
-      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 5 * 1024; // 5KB for favicon / logo
-      maxDimension = optionsOrMaxBytes.maxDimension ?? 256;
+      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 300 * 1024; // 300KB for favicon / logo
+      maxDimension = optionsOrMaxBytes.maxDimension ?? 512;
       isIcon = true;
     } else if (optionsOrMaxBytes.type === "screenshot") {
-      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 20 * 1024; // 20KB for screenshot
-      maxDimension = optionsOrMaxBytes.maxDimension ?? 1200;
+      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 800 * 1024; // 800KB for screenshot
+      maxDimension = optionsOrMaxBytes.maxDimension ?? 1600;
       isIcon = false;
     } else {
-      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 20 * 1024;
-      maxDimension = optionsOrMaxBytes.maxDimension ?? (maxSizeBytes <= 10 * 1024 ? 256 : 1200);
-      isIcon = maxSizeBytes <= 10 * 1024;
+      maxSizeBytes = optionsOrMaxBytes.maxSizeBytes ?? 800 * 1024;
+      maxDimension = optionsOrMaxBytes.maxDimension ?? (maxSizeBytes <= 300 * 1024 ? 512 : 1600);
+      isIcon = maxSizeBytes <= 300 * 1024;
     }
   }
 
@@ -2069,7 +2070,7 @@ export async function compressImage(
         let quality = isIcon ? 0.90 : 0.82;
         let scaleFactor = 1.0;
         let attempts = 0;
-        const maxAttempts = 12;
+        const maxAttempts = 8;
 
         const processBlob = () => {
           attempts++;
@@ -2138,11 +2139,11 @@ export async function compressImage(
 }
 
 export async function compressIconImage(file: File): Promise<File> {
-  return compressImage(file, { type: 'icon', maxSizeBytes: 5 * 1024, maxDimension: 256 });
+  return compressImage(file, { type: 'icon', maxSizeBytes: 300 * 1024, maxDimension: 512 });
 }
 
 export async function compressScreenshotImage(file: File): Promise<File> {
-  return compressImage(file, { type: 'screenshot', maxSizeBytes: 20 * 1024, maxDimension: 1200 });
+  return compressImage(file, { type: 'screenshot', maxSizeBytes: 800 * 1024, maxDimension: 1600 });
 }
 
 export async function uploadImage(
@@ -2153,6 +2154,23 @@ export async function uploadImage(
 ): Promise<string | null> {
   let fileToUpload = file;
   let finalPath = filePath;
+
+  const toBase64 = (f: File | Blob): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          resolve(URL.createObjectURL(f));
+        }
+      };
+      reader.onerror = () => {
+        resolve(URL.createObjectURL(f));
+      };
+      reader.readAsDataURL(f);
+    });
+  };
 
   if (file.type.startsWith("image/")) {
     try {
@@ -2173,16 +2191,16 @@ export async function uploadImage(
       let targetType: 'icon' | 'screenshot' | 'general' = 'general';
 
       if (isIcon) {
-        targetBytes = targetBytes ?? 5 * 1024; // 5KB for favicon / logo
-        targetDimension = targetDimension ?? 256;
+        targetBytes = targetBytes ?? 300 * 1024; // 300KB for favicon / logo
+        targetDimension = targetDimension ?? 512;
         targetType = 'icon';
       } else if (isScreenshot) {
-        targetBytes = targetBytes ?? 20 * 1024; // 20KB for screenshot
-        targetDimension = targetDimension ?? 1200;
+        targetBytes = targetBytes ?? 800 * 1024; // 800KB for screenshot
+        targetDimension = targetDimension ?? 1600;
         targetType = 'screenshot';
       } else {
-        targetBytes = targetBytes ?? (options?.maxSizeBytes ?? 20 * 1024);
-        targetDimension = targetDimension ?? 1200;
+        targetBytes = targetBytes ?? (options?.maxSizeBytes ?? 800 * 1024);
+        targetDimension = targetDimension ?? 1600;
       }
 
       fileToUpload = await compressImage(file, {
@@ -2201,29 +2219,49 @@ export async function uploadImage(
 
   if (!supabase) {
     if (typeof window !== "undefined") {
-      return URL.createObjectURL(fileToUpload);
+      return await toBase64(fileToUpload);
     }
     return null;
   }
 
-  const { data, error } = await supabase.storage
-    .from(bucketName)
-    .upload(finalPath, fileToUpload, {
-      cacheControl: '31536000',
-      contentType: fileToUpload.type || 'image/webp',
-      upsert: true
-    });
+  try {
+    const sanitizedPath = finalPath.replace(/[^a-zA-Z0-9/._-]/g, '_');
 
-  if (error) {
-    console.error("Error uploading image:", error);
+    // Run upload with a 5-second timeout to prevent pending/hanging
+    const uploadPromise = supabase.storage
+      .from(bucketName)
+      .upload(sanitizedPath, fileToUpload, {
+        cacheControl: '31536000',
+        contentType: fileToUpload.type || 'image/webp',
+        upsert: true
+      });
+
+    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+      setTimeout(() => reject(new Error('Storage upload timeout')), 5000)
+    );
+
+    const result = await Promise.race([uploadPromise, timeoutPromise]) as any;
+
+    if (result && result.error) {
+      console.warn("Supabase storage upload error, falling back to Base64:", result.error);
+      if (typeof window !== "undefined") {
+        return await toBase64(fileToUpload);
+      }
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(sanitizedPath);
+
+    return publicUrl || (await toBase64(fileToUpload));
+  } catch (error) {
+    console.warn("Supabase storage upload failed or timed out, falling back to Base64:", error);
+    if (typeof window !== "undefined") {
+      return await toBase64(fileToUpload);
+    }
     return null;
   }
-
-  const { data: { publicUrl } } = supabase.storage
-    .from(bucketName)
-    .getPublicUrl(finalPath);
-
-  return publicUrl;
 }
 
 export async function deleteImage(bucketName: string, publicUrl: string): Promise<boolean> {
@@ -7655,6 +7693,61 @@ export function getCompanyLaunches(
 
   return Array.from(launchesMap.values());
 }
+
+export const getHomeProductsDirect = unstable_cache(
+  async (limit: number = 30): Promise<Product[]> => {
+    if (!supabase) return getCachedProducts();
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)')
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !data || data.length === 0) {
+        return getCachedProducts();
+      }
+
+      const now = new Date();
+      return data.map((p: any) =>
+        p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+          ? { ...p, status: 'live' }
+          : p
+      ) as Product[];
+    } catch {
+      return getCachedProducts();
+    }
+  },
+  ['home_direct_products'],
+  { revalidate: 60, tags: ['products', 'home_products'] }
+);
+
+export const getHomeThreadsDirect = unstable_cache(
+  async (limit: number = 10): Promise<Thread[]> => {
+    if (!supabase) return getCachedThreads();
+    try {
+      const { data, error } = await supabase
+        .from('threads')
+        .select('id,title,body,user_id,upvotes_count,comments_count,category,tags,created_at,product_id,user:profiles!user_id(id,username,full_name,avatar_url,is_maker,is_verified)')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !data || data.length === 0) {
+        return getCachedThreads();
+      }
+
+      return data.map((t: any) => ({
+        ...t,
+        user: Array.isArray(t.user) ? t.user[0] : t.user,
+      })) as Thread[];
+    } catch {
+      return getCachedThreads();
+    }
+  },
+  ['home_direct_threads'],
+  { revalidate: 60, tags: ['threads', 'home_threads'] }
+);
 
 
 

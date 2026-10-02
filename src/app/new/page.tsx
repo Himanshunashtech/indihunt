@@ -110,8 +110,10 @@ function NewLaunchWizard() {
 
   // Step 2: Media
   const [submitLogo, setSubmitLogo] = useState("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [galleryImages, setGalleryImages] = useState<string[]>([""]);
   const [isUploadingMultiple, setIsUploadingMultiple] = useState(false);
+  const [uploadingScreenshots, setUploadingScreenshots] = useState<{ [key: number]: boolean }>({});
   const [videoUrl, setVideoUrl] = useState("");
   const [demoUrl, setDemoUrl] = useState("");
   const [additionalUrls, setAdditionalUrls] = useState<string[]>([]);
@@ -1087,9 +1089,11 @@ function NewLaunchWizard() {
                     <div className="bg-muted/30 border border-border p-5 rounded-2xl">
                       <span className="text-xs font-semibold text-foreground block mb-2">Thumbnail (Square Logo)</span>
                       <div className="flex items-center gap-4 flex-wrap">
-                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center flex-shrink-0">
-                          {submitLogo ? (
-                            <Image src={submitLogo} alt="Logo preview" className="w-16 h-16 object-cover" width={64} height={64} />
+                        <div className="w-16 h-16 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center flex-shrink-0 relative">
+                          {isUploadingLogo && !submitLogo ? (
+                            <CircularLoader size="sm" />
+                          ) : submitLogo ? (
+                            <img src={submitLogo} alt="Logo preview" className="w-16 h-16 object-cover" />
                           ) : (
                             <Upload className="w-5 h-5 text-muted-foreground" />
                           )}
@@ -1104,22 +1108,45 @@ function NewLaunchWizard() {
                           />
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] text-muted-foreground">Or upload:</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file || !user) return;
-                                const path = `logo_${user.id}_${Date.now()}_${file.name}`;
-                                const url = await uploadImage("products", file, path, { type: 'icon', maxSizeBytes: 5 * 1024, maxDimension: 256 });
-                                if (url) {
-                                  setSubmitLogo(url);
-                                }
-                              }}
-                              className="text-[10px] text-muted-foreground file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-medium file:bg-orange-500/10 file:text-[#ff5733] hover:file:bg-orange-500/20 cursor-pointer"
-                            />
+                            <label className="text-[10px] text-muted-foreground cursor-pointer flex items-center gap-1">
+                              <span className="py-1 px-2 rounded-md font-medium bg-orange-500/10 text-[#ff5733] hover:bg-orange-500/20 transition-colors">
+                                {isUploadingLogo ? "Processing..." : "Choose File"}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingLogo}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  setIsUploadingLogo(true);
+                                  // Instant optimistic local preview
+                                  const reader = new FileReader();
+                                  reader.onload = () => {
+                                    if (reader.result) setSubmitLogo(reader.result as string);
+                                  };
+                                  reader.readAsDataURL(file);
+
+                                  try {
+                                    const userId = user?.id || 'maker';
+                                    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                                    const path = `logo_${userId}_${Date.now()}_${sanitizedName}`;
+                                    const url = await uploadImage("products", file, path, { type: 'icon', maxSizeBytes: 300 * 1024, maxDimension: 512 });
+                                    if (url) {
+                                      setSubmitLogo(url);
+                                    }
+                                  } catch (err) {
+                                    console.error("Logo upload failed:", err);
+                                  } finally {
+                                    setIsUploadingLogo(false);
+                                    e.target.value = "";
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
                           </div>
-                          <span className="text-[10px] text-muted-foreground block mt-1">Recommended: 240x240px square JPG/PNG/GIF</span>
+                          <span className="text-[10px] text-muted-foreground block mt-1">Recommended: 240x240px square JPG/PNG/GIF/WebP</span>
                         </div>
                       </div>
                     </div>
@@ -1129,7 +1156,7 @@ function NewLaunchWizard() {
                       <div className="flex justify-between items-center">
                         <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-widest">Screenshots Gallery</label>
                         <label className="text-[10px] font-semibold text-[#ff5733] hover:underline cursor-pointer flex items-center gap-1 select-none">
-                          {isUploadingMultiple ? "Uploading..." : "+ Upload multiple"}
+                          {isUploadingMultiple ? "Processing..." : "+ Upload multiple"}
                           <input
                             type="file"
                             multiple
@@ -1137,24 +1164,43 @@ function NewLaunchWizard() {
                             disabled={isUploadingMultiple}
                             onChange={async (e) => {
                               const files = e.target.files;
-                              if (!files || files.length === 0 || !user) return;
+                              if (!files || files.length === 0) return;
                               setIsUploadingMultiple(true);
+
+                              // Load instant previews for all chosen files
+                              const localPreviews: string[] = [];
+                              for (let i = 0; i < files.length; i++) {
+                                await new Promise<void>((res) => {
+                                  const r = new FileReader();
+                                  r.onload = () => {
+                                    if (r.result) localPreviews.push(r.result as string);
+                                    res();
+                                  };
+                                  r.readAsDataURL(files[i]);
+                                });
+                              }
+
+                              const currentImages = galleryImages.filter(img => img && img.trim() !== "");
+                              setGalleryImages([...currentImages, ...localPreviews]);
+
                               try {
+                                const userId = user?.id || 'maker';
                                 const uploadPromises = Array.from(files).map(async (file, index) => {
-                                  const path = `screenshot_${user.id}_${Date.now()}_${index}_${file.name}`;
-                                  const url = await uploadImage("products", file, path, { type: 'screenshot', maxSizeBytes: 20 * 1024, maxDimension: 1200 });
-                                  return url;
+                                  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                                  const path = `screenshot_${userId}_${Date.now()}_${index}_${sanitizedName}`;
+                                  const url = await uploadImage("products", file, path, { type: 'screenshot', maxSizeBytes: 800 * 1024, maxDimension: 1600 });
+                                  return url || localPreviews[index];
                                 });
                                 const urls = await Promise.all(uploadPromises);
                                 const validUrls = urls.filter((url): url is string => !!url);
                                 if (validUrls.length > 0) {
-                                  const currentImages = galleryImages.filter(img => img.trim() !== "");
                                   setGalleryImages([...currentImages, ...validUrls]);
                                 }
                               } catch (error) {
                                 console.error("Upload failed", error);
                               } finally {
                                 setIsUploadingMultiple(false);
+                                e.target.value = "";
                               }
                             }}
                             className="hidden"
@@ -1186,24 +1232,56 @@ function NewLaunchWizard() {
                                 )}
                               </div>
                             ) : (
-                              <label className="w-full h-32 rounded-xl border border-dashed border-border flex items-center justify-center text-muted-foreground text-[10px] font-medium select-none bg-background cursor-pointer hover:border-orange-500 hover:text-orange-500 transition-colors">
-                                + Upload
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file || !user) return;
-                                    const path = `screenshot_${user.id}_${Date.now()}_${idx}_${file.name}`;
-                                    const url = await uploadImage("products", file, path, { type: 'screenshot', maxSizeBytes: 20 * 1024, maxDimension: 1200 });
-                                    if (url) {
-                                      const updated = [...galleryImages];
-                                      updated[idx] = url;
-                                      setGalleryImages(updated);
-                                    }
-                                  }}
-                                  className="hidden"
-                                />
+                              <label className="w-full h-32 rounded-xl border border-dashed border-border flex flex-col items-center justify-center text-muted-foreground text-[10px] font-medium select-none bg-background cursor-pointer hover:border-orange-500 hover:text-orange-500 transition-colors">
+                                {uploadingScreenshots[idx] ? (
+                                  <div className="flex flex-col items-center gap-1.5">
+                                    <CircularLoader size="sm" />
+                                    <span>Processing...</span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    + Upload
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={uploadingScreenshots[idx]}
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setUploadingScreenshots(prev => ({ ...prev, [idx]: true }));
+
+                                        // Instant local preview
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                          if (reader.result) {
+                                            const updated = [...galleryImages];
+                                            updated[idx] = reader.result as string;
+                                            setGalleryImages(updated);
+                                          }
+                                        };
+                                        reader.readAsDataURL(file);
+
+                                        try {
+                                          const userId = user?.id || 'maker';
+                                          const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                                          const path = `screenshot_${userId}_${Date.now()}_${idx}_${sanitizedName}`;
+                                          const url = await uploadImage("products", file, path, { type: 'screenshot', maxSizeBytes: 800 * 1024, maxDimension: 1600 });
+                                          if (url) {
+                                            const updated = [...galleryImages];
+                                            updated[idx] = url;
+                                            setGalleryImages(updated);
+                                          }
+                                        } catch (err) {
+                                          console.error("Screenshot upload error:", err);
+                                        } finally {
+                                          setUploadingScreenshots(prev => ({ ...prev, [idx]: false }));
+                                          e.target.value = "";
+                                        }
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </>
+                                )}
                               </label>
                             )}
                           </div>

@@ -1,21 +1,34 @@
-import { getProducts, getThreads, getTopHuntersData, getPromotedProducts, getProductSlug, compareProductsForRanking, getISTStartOfDay, Product } from "@/lib/supabase";
+import { 
+  getHomeProductsDirect, 
+  getHomeThreadsDirect, 
+  getTopHuntersData, 
+  getPromotedProducts, 
+  getProductSlug, 
+  compareProductsForRanking, 
+  getISTStartOfDay, 
+  Product 
+} from "@/lib/supabase";
 import HomePageClient from "./HomePageClient";
 
-export const revalidate = 30; // ISR: Revalidate every 30s (faster L1 cache hit rate)
+export const revalidate = 60; // ISR: Revalidate cached page data every 60s
+export const preferredRegion = ["bom1", "sin1", "iad1", "cle1"]; // Function region next to database
 
 const SITE_URL = "https://indihunt.in";
 
 export default async function Home() {
-  // Fetch initial datasets in parallel on the server.
-  // getPromotedProducts chains off getProducts() so it runs concurrently and reuses the same product list.
-  const productsPromise = getProducts().catch(() => [] as Product[]);
-  const [products, threads, topHunters, promotedProductsResolved] = await Promise.all([
+  // 1. Direct DB service layer calls wrapped in Promise.all (zero HTTP self-fetch)
+  const productsPromise = getHomeProductsDirect(150).catch(() => [] as Product[]);
+  const threadsPromise = getHomeThreadsDirect(15).catch(() => []);
+
+  const [products, threads] = await Promise.all([
     productsPromise,
-    getThreads().catch(() => []),
-    // Chain off productsPromise — reuses the same product dataset with zero additional DB roundtrips
-    productsPromise.then(prods => getTopHuntersData("all_time", prods).catch(() => [])),
-    // Phase 1c: chain off productsPromise — no extra Supabase roundtrip, runs in parallel
-    productsPromise.then(prods => getPromotedProducts(prods).catch(() => [] as Product[])),
+    threadsPromise,
+  ]);
+
+  // Derive secondary datasets without additional DB roundtrips
+  const [topHunters, promotedProductsResolved] = await Promise.all([
+    getTopHuntersData("all_time", products).catch(() => []),
+    getPromotedProducts(products).catch(() => [] as Product[]),
   ]);
 
   const billboardAds: any[] = [];
@@ -71,19 +84,7 @@ export default async function Home() {
   const sortedLastWeek = sortByUpvotes(lastWeekList);
   const sortedLastMonth = sortByUpvotes(lastMonthList);
 
-  // Sliced visible datasets for minimal initial wire payload (20 today + 5 yesterday + 5 last week + 5 last month + 20 upcoming)
-  const visibleToday = sortedToday.slice(0, 20);
-  const visibleYesterday = sortedYesterday.slice(0, 5);
-  const visibleLastWeek = sortedLastWeek.slice(0, 5);
-  const visibleLastMonth = sortedLastMonth.slice(0, 5);
-  const visibleUpcoming = upcomingList.slice(0, 20);
-
-  const initialVisibleMap = new Map<string, Product>();
-  [...visibleUpcoming, ...visibleToday, ...visibleYesterday, ...visibleLastWeek, ...visibleLastMonth].forEach(p => {
-    if (p && p.id) initialVisibleMap.set(p.id, p);
-  });
-  const initialVisibleProducts = Array.from(initialVisibleMap.values());
-  const initialVisibleThreads = threads.slice(0, 5);
+  const initialVisibleThreads = threads.slice(0, 10);
   const initialVisibleTopHunters = topHunters.slice(0, 5);
 
   // Build JSON-LD ItemList structured data — capped to top 20 for fast serialization
@@ -200,7 +201,7 @@ export default async function Home() {
       </div>
 
       <HomePageClient
-        initialProducts={initialVisibleProducts}
+        initialProducts={products}
         initialThreads={initialVisibleThreads}
         initialTopHunters={initialVisibleTopHunters}
         initialBillboardAds={billboardAds}
