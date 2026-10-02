@@ -68,6 +68,22 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.3.7",
+    date: "October 2026",
+    title: "Launch Widget Maker-Only Visibility & Clean Top Hunters Leaderboard",
+    summary: "Strictly restricted the scheduled launch drawer widget to the maker who scheduled the product, and removed demo / mock accounts from the homepage Top Hunters widget and leaderboard API.",
+    icon: ShieldCheck,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Bugfix", "Launches", "Community"],
+    features: [
+      { icon: ShieldCheck, text: "Enforced strict maker ownership checks in LaunchScheduleWidget and getUserProducts so only the creator who scheduled a launch sees their pre-launch management widget." },
+      { icon: Users, text: "Filtered out demo / mock accounts (john_doe, jane_smith, user-1, user-2) from Top Hunters and removed mock profile fallback injection." },
+      { icon: Sparkles, text: "Added graceful empty state to TopHuntersWidget on the home page when no hunters are active." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.3.6",
     date: "October 2026",
     title: "Favicon 3-Stage Fallback & Storage Egress Reduction",
@@ -82,7 +98,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: ShieldCheck, text: "Added website_url to CompanyLogo interface in CategoryPageClient so the Google Favicons fallback can resolve from the product domain." },
       { icon: Rocket, text: "Added /public/default-favicon.png placeholder so the final fallback always renders gracefully without hitting our storage." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.3.5",

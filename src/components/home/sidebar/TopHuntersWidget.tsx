@@ -27,57 +27,63 @@ export default function TopHuntersWidget({ hunters }: TopHuntersWidgetProps) {
       </div>
 
       <div className="space-y-1.5">
-        {hunters.slice(0, 5).map((hunter, idx) => (
-          <Link
-            key={hunter.id}
-            href="/top-hunters"
-            className="flex items-center justify-between p-2 rounded-xl hover:bg-muted/60 transition-all group"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative shrink-0">
-                <Image
-                  src={hunter.avatar_url}
-                  alt={hunter.name}
-                  width={36}
-                  height={36}
-                  className="w-9 h-9 rounded-full object-cover border border-border/60"
-                />
-                <span
-                  className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${
-                    idx === 0
-                      ? "bg-amber-500"
-                      : idx === 1
-                      ? "bg-slate-400"
-                      : idx === 2
-                      ? "bg-amber-700"
-                      : "bg-muted-foreground/40 text-foreground"
-                  }`}
-                >
-                  {idx + 1}
+        {hunters && hunters.length > 0 ? (
+          hunters.slice(0, 5).map((hunter, idx) => (
+            <Link
+              key={hunter.id}
+              href="/top-hunters"
+              className="flex items-center justify-between p-2 rounded-xl hover:bg-muted/60 transition-all group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative shrink-0">
+                  <Image
+                    src={hunter.avatar_url}
+                    alt={hunter.name}
+                    width={36}
+                    height={36}
+                    className="w-9 h-9 rounded-full object-cover border border-border/60"
+                  />
+                  <span
+                    className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${
+                      idx === 0
+                        ? "bg-amber-500"
+                        : idx === 1
+                        ? "bg-slate-400"
+                        : idx === 2
+                        ? "bg-amber-700"
+                        : "bg-muted-foreground/40 text-foreground"
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <h5 className="text-base font-medium text-foreground group-hover:text-[#ff5733] transition-colors truncate">
+                    {hunter.name}
+                  </h5>
+                  <p className="text-base text-muted-foreground truncate">
+                    @{hunter.username}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-base font-semibold text-foreground/90 block">
+                  {hunter.hunts_count} hunts
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {hunter.upvotes_count >= 1000
+                    ? `${(hunter.upvotes_count / 1000).toFixed(1)}k`
+                    : hunter.upvotes_count}{" "}
+                  upvotes
                 </span>
               </div>
-              <div className="min-w-0">
-                <h5 className="text-base font-medium text-foreground group-hover:text-[#ff5733] transition-colors truncate">
-                  {hunter.name}
-                </h5>
-                <p className="text-base text-muted-foreground truncate">
-                  @{hunter.username}
-                </p>
-              </div>
-            </div>
-            <div className="text-right shrink-0">
-              <span className="text-base font-semibold text-foreground/90 block">
-                {hunter.hunts_count} hunts
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                {hunter.upvotes_count >= 1000
-                  ? `${(hunter.upvotes_count / 1000).toFixed(1)}k`
-                  : hunter.upvotes_count}{" "}
-                upvotes
-              </span>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground py-2 text-center">
+            No top hunters yet.
+          </p>
+        )}
       </div>
 
       <Link

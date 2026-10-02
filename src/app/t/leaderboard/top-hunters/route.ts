@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
           const maker = p.maker || (p.maker_id ? { id: p.maker_id } : null);
           if (maker) {
             const key = (maker.username || maker.id || p.maker_id || '').toLowerCase();
-            if (key) {
+            if (key && key !== 'user-1' && key !== 'user-2' && key !== 'john_doe' && key !== 'jane_smith') {
               const existing = hunterMap.get(key) || {
                 id: maker.id || p.maker_id || key,
                 name: maker.full_name || maker.username || 'Indie Maker',
@@ -96,8 +96,9 @@ export async function GET(request: NextRequest) {
       if (!profErr && dbProfiles && dbProfiles.length > 0) {
         dbProfiles.forEach((p: any) => {
           if (!p.username || p.username === 'anon' || p.full_name === 'Anonymous Hunter') return;
+          if (p.id === 'user-1' || p.id === 'user-2' || p.username === 'john_doe' || p.username === 'jane_smith') return;
           const key = (p.username || p.id || '').toLowerCase();
-          if (!key) return;
+          if (!key || key === 'user-1' || key === 'user-2' || key === 'john_doe' || key === 'jane_smith') return;
 
           const existing = hunterMap.get(key);
           if (existing) {
@@ -130,31 +131,6 @@ export async function GET(request: NextRequest) {
       }
     } catch (dbErr: any) {
       console.warn('[GET /t/leaderboard/top-hunters] Supabase query error:', dbErr?.message);
-    }
-
-    // 3. Fallback to mock profiles if hunterMap is empty
-    if (hunterMap.size === 0) {
-      Object.values(MOCK_PROFILES).forEach((p: any) => {
-        const key = (p.username || p.id || '').toLowerCase();
-        if (key && !hunterMap.has(key)) {
-          const karma = p.karma_points || 30;
-          hunterMap.set(key, {
-            id: p.id,
-            name: p.full_name || p.username || 'Indie Maker',
-            username: p.username || 'maker',
-            avatar_url: p.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-            bio: p.bio || p.headline || 'IndiHunt Hunter & Builder',
-            hunts_count: 3,
-            upvotes_count: karma * 10,
-            comments_count: 8,
-            first_places_count: 1,
-            avg_upvotes: Math.round((karma * 10) / 3),
-            avg_comments: 3,
-            is_verified: true,
-            created_at: p.created_at || new Date().toISOString()
-          });
-        }
-      });
     }
 
     const huntersList = Array.from(hunterMap.values());

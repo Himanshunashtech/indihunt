@@ -6049,7 +6049,7 @@ export async function getTopHuntersData(timeframe: string = "all_time", existing
       const maker = p.maker || (p.maker_id ? { id: p.maker_id } : null);
       if (!maker) return;
       const key = (maker.username || maker.id || p.maker_id || '').toLowerCase();
-      if (!key) return;
+      if (!key || key === 'user-1' || key === 'user-2' || key === 'john_doe' || key === 'jane_smith') return;
       const existing = hunterMap.get(key) || {
         id: maker.id || p.maker_id || key,
         name: maker.full_name || maker.username || 'Indie Maker',
@@ -6109,7 +6109,7 @@ export async function getTopHuntersData(timeframe: string = "all_time", existing
   products.forEach(p => {
     if (p.maker) {
       const key = (p.maker.username || p.maker.id || p.maker_id || '').toLowerCase();
-      if (key) {
+      if (key && key !== 'user-1' && key !== 'user-2' && key !== 'john_doe' && key !== 'jane_smith') {
         const existing = hunterMap.get(key) || {
           id: p.maker.id || key,
           name: p.maker.full_name || p.maker.username || 'Indie Builder',
@@ -6134,28 +6134,6 @@ export async function getTopHuntersData(timeframe: string = "all_time", existing
       }
     }
   });
-
-  if (hunterMap.size === 0) {
-    Object.values(MOCK_PROFILES).forEach((p: any) => {
-      const key = (p.username || p.id || '').toLowerCase();
-      if (key && !hunterMap.has(key)) {
-        hunterMap.set(key, {
-          id: p.id,
-          name: p.full_name || p.username || 'Indie Maker',
-          username: p.username || 'maker',
-          avatar_url: p.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-          bio: p.bio || p.headline || 'IndiHunt Hunter & Builder',
-          hunts_count: 3,
-          upvotes_count: (p.karma_points || 20) * 10,
-          comments_count: 6,
-          first_places_count: 1,
-          avg_upvotes: Math.round(((p.karma_points || 20) * 10) / 3),
-          avg_comments: 2,
-          is_verified: !!p.is_verified
-        });
-      }
-    });
-  }
 
   const realHuntersList = Array.from(hunterMap.values());
   realHuntersList.forEach(h => {
@@ -7464,7 +7442,7 @@ export async function getUserProducts(userId: string): Promise<Product[]> {
   try {
     const res = await secureApiFetch<Product[]>(`/t/products?makerId=${encodeURIComponent(userId)}&limit=100`);
     if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-      return res.data.filter(p => !p.is_deleted);
+      return res.data.filter(p => !p.is_deleted && (p.maker_id === userId || p.maker?.id === userId));
     }
   } catch (e) { }
 

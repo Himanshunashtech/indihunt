@@ -21,6 +21,7 @@ import { getProductSlug, Product, getUserProducts } from "@/lib/supabase";
 export default function LaunchScheduleWidget() {
   const pathname = usePathname();
   const user = useAppSelector((state) => state.auth.user);
+  const profile = useAppSelector((state) => state.auth.profile);
   const [scheduledProducts, setScheduledProducts] = useState<Product[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -29,19 +30,27 @@ export default function LaunchScheduleWidget() {
   const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !user.id) {
       setScheduledProducts([]);
       return;
     }
 
+    const currentUserId = user.id;
+    const currentUsername = (profile?.username || user.user_metadata?.user_name || user.user_metadata?.username || "").toLowerCase();
     let productsList: Product[] = [];
 
     const updateScheduledState = () => {
-      // Find all products that are scheduled in the future
+      // Strictly filter for products owned ONLY by the current logged-in user that are scheduled in the future
       const scheduled = productsList.filter((p) => {
+        if (!p) return false;
         const isScheduledStatus = p.status === "scheduled";
         const hasFutureDate = p.scheduled_for && new Date(p.scheduled_for) > new Date();
-        return isScheduledStatus && hasFutureDate;
+        const isOwner =
+          p.maker_id === currentUserId ||
+          p.maker?.id === currentUserId ||
+          (currentUsername && p.maker?.username && p.maker.username.toLowerCase() === currentUsername);
+
+        return isScheduledStatus && hasFutureDate && isOwner;
       });
 
       setScheduledProducts(scheduled);
@@ -49,12 +58,15 @@ export default function LaunchScheduleWidget() {
 
     const fetchScheduledLaunch = async () => {
       try {
-        const prods = await getUserProducts(user.id);
+        const prods = await getUserProducts(currentUserId);
         if (prods && prods.length > 0) {
           productsList = prods;
+        } else {
+          productsList = [];
         }
       } catch (e) {
         console.error(e);
+        productsList = [];
       }
 
       updateScheduledState();
@@ -65,7 +77,7 @@ export default function LaunchScheduleWidget() {
     // Check periodically (every 30 seconds) in case it launches locally
     const interval = setInterval(updateScheduledState, 30000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, profile]);
 
   const scheduledProduct = scheduledProducts[currentIndex] || null;
 
