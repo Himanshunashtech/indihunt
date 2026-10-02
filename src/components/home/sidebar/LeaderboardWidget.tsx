@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { ChevronRight } from "lucide-react";
 import { Product } from "@/lib/supabase";
 
@@ -39,14 +40,11 @@ export default function LeaderboardWidget({
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="relative shrink-0">
-                  <Image
-                    src={
-                      prod.logo_url ||
-                      "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=100&q=80"
-                    }
+                  <Favicon
+                    src={prod.logo_url}
+                    websiteUrl={prod.website_url}
+                    size={36}
                     alt={prod.name}
-                    width={36}
-                    height={36}
                     className="w-9 h-9 rounded-xl object-cover border border-border/60"
                   />
                   <span

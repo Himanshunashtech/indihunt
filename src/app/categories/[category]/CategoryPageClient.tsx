@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -33,6 +33,7 @@ import { HexagonAwardBadge } from "@/components/AwardBadge";
 interface CompanyLogo {
   name: string;
   logo_url: string;
+  website_url?: string;
 }
 
 interface CategoryPageClientProps {
@@ -375,11 +376,13 @@ export default function CategoryPageClient({
                   style={{ zIndex: logosToShow.length - idx }}
                   title={logo.name}
                 >
-                  <Image
+                  <Favicon
                     src={logo.logo_url}
+                    websiteUrl={logo.website_url}
+                    size={48}
                     alt={logo.name}
                     className="w-full h-full object-contain rounded-xl"
-                  width={48} height={48} />
+                  />
                   <span className="text-xs font-semibold truncate max-w-full leading-none">
                     {logo.name.slice(0, 2)}
                   </span>
@@ -398,11 +401,13 @@ export default function CategoryPageClient({
                   className={`flex flex-col items-center justify-center transform ${leftTilt} hover:rotate-0 hover:scale-115 transition-transform cursor-default select-none p-1.5`}
                   title={logo.name}
                 >
-                  <Image
+                  <Favicon
                     src={logo.logo_url}
+                    websiteUrl={logo.website_url}
+                    size={64}
                     alt={logo.name}
                     className="w-16 h-16 sm:w-18 sm:h-18 object-contain rounded-2xl border border-border/40 shadow-sm filter dark:brightness-110 drop-shadow-md"
-                  width={64} height={64} />
+                  />
                   <span className="text-xs font-medium text-muted-foreground/80 truncate w-full text-center mt-2 block leading-none">{logo.name}</span>
                 </div>
               );
@@ -546,11 +551,13 @@ export default function CategoryPageClient({
                         <div className="flex items-start gap-4 min-w-0 flex-1">
                           {/* Logo */}
                           <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-muted border border-border/80 flex-shrink-0 flex items-center justify-center p-0.5 shadow-xs">
-                            <Image
+                            <Favicon
                               src={product.logo_url}
+                              websiteUrl={product.website_url}
+                              size={48}
                               alt={product.name}
                               className="object-cover rounded-xl group-hover:scale-105 transition-transform w-full h-full"
-                            width={48} height={48} />
+                            />
                           </div>
 
                           {/* Product Info */}

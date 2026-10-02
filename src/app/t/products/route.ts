@@ -1,10 +1,16 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { getCachedData, setCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
+
+const LIST_COLS =
+  'id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)';
+const FULL_COLS =
+  '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
+const MAX_LIMIT = 300;
 
 function normalizeUrl(raw: string): string {
   if (!raw) return '';
@@ -18,11 +24,6 @@ function normalizeUrl(raw: string): string {
     .replace(/\/+$/, '');
 }
 
-function extractDomain(raw: string): string {
-  const norm = normalizeUrl(raw);
-  return norm.split('/')[0] || norm;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -31,128 +32,68 @@ export async function GET(request: NextRequest) {
     const queryStr = searchParams.get('q') || searchParams.get('search');
     const checkUrl = searchParams.get('check_url') || searchParams.get('url');
     const cursor = searchParams.get('cursor');
-    const isLightweight = searchParams.get('lightweight') === 'true';
-    const limit = parseInt(searchParams.get('limit') || (cursor ? '20' : '500'), 10);
+    const full = searchParams.get('full') === 'true';
     const makerId = searchParams.get('makerId') || searchParams.get('maker_id');
 
-    const cacheKey = `redis_products_${category || 'all'}_${limit}_${cursor || 'none'}_${isLightweight ? 'lite' : 'full'}`;
+    const requested = parseInt(searchParams.get('limit') || (cursor ? '20' : '100'), 10);
+    let limit = Math.min(Number.isFinite(requested) ? requested : 100, MAX_LIMIT);
+    if (queryStr || checkUrl) limit = Math.min(limit, 30);
+
+    const cacheKey = `redis_products_${category || 'all'}_${limit}_${cursor || 'none'}_${full ? 'full' : 'lite'}`;
     const canUsePublicCache = !queryStr && !checkUrl && !makerId;
 
-    let products: any[] = [];
+    let supabase: Awaited<ReturnType<typeof createServerSupabaseClient>> | null = null;
+    const db = async () => (supabase ??= await createServerSupabaseClient());
 
-    // 1. Check Redis cache first for the base product list (even for logged-in users!)
+    let products: any[] = [];
     if (canUsePublicCache) {
       const cached = await getCachedData<any[]>(cacheKey);
-      if (cached && Array.isArray(cached) && cached.length > 0) {
-        products = cached;
-      }
+      if (Array.isArray(cached) && cached.length > 0) products = cached;
     }
 
-    const supabase = await createServerSupabaseClient();
-
-    // 2. If cache miss, fetch base products from Supabase
     if (products.length === 0) {
-      try {
-        const selectFields = isLightweight
-          ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker)'
-          : '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
+      let query = (await db())
+        .from('products')
+        .select(full ? FULL_COLS : LIST_COLS)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .limit(limit);
 
-        let query = supabase
-          .from('products')
-          .select(selectFields)
-          .order('created_at', { ascending: false })
-          .limit(limit);
-
-        if (cursor) {
-          query = query.lt('created_at', cursor);
-        }
-
-        if (makerId) {
-          query = query.eq('maker_id', makerId);
-        }
-
-        if (category) {
-          query = query.contains('tags', [category]);
-        }
-
-        if (checkUrl) {
-          const normUrl = normalizeUrl(checkUrl);
-          query = query.or(`website_url.ilike.%${normUrl}%`);
-        } else if (queryStr) {
-          query = query.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
-        }
-
-        const { data: productsData, error } = await query;
-        if (!error && productsData) {
-          products = productsData;
-        } else if (error) {
-          console.warn('[GET /t/products] Primary query error, falling back to simple select:', error.message);
-          let fallbackQuery = supabase
-            .from('products')
-            .select(isLightweight ? 'id, name, tagline, logo_url, website_url, category, tags, upvotes_count, status, scheduled_for, created_at, maker_id, worked_on_launch' : '*')
-            .order('created_at', { ascending: false })
-            .limit(limit);
-
-          if (cursor) fallbackQuery = fallbackQuery.lt('created_at', cursor);
-          if (makerId) fallbackQuery = fallbackQuery.eq('maker_id', makerId);
-          if (checkUrl) {
-            const normUrl = normalizeUrl(checkUrl);
-            fallbackQuery = fallbackQuery.or(`website_url.ilike.%${normUrl}%`);
-          } else if (queryStr) {
-            fallbackQuery = fallbackQuery.or(`name.ilike.%${queryStr}%,tagline.ilike.%${queryStr}%,description.ilike.%${queryStr}%`);
-          }
-
-          const { data: fallbackData } = await fallbackQuery;
-          if (fallbackData) products = fallbackData;
-        }
-      } catch (dbErr: any) {
-        console.warn('[GET /t/products] Supabase connection error:', dbErr?.message);
+      if (cursor) query = query.lt('created_at', cursor);
+      if (makerId) query = query.eq('maker_id', makerId);
+      if (category) query = query.contains('tags', [category]);
+      if (checkUrl) {
+        query = query.or(`website_url.ilike.%${normalizeUrl(checkUrl)}%`);
+      } else if (queryStr) {
+        const q = queryStr.replace(/[%,()]/g, ' ').trim();
+        query = query.or(`name.ilike.%${q}%,tagline.ilike.%${q}%,description.ilike.%${q}%`);
       }
 
+      const { data, error } = await query;
+      if (error) {
+        console.error('[GET /t/products]', error.message);
+        return apiFailure(error.message, 500);
+      }
       const now = new Date();
-      products = (products || []).map((p: any) => {
-        if (p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now) {
-          return { ...p, status: 'live' };
-        }
-        return p;
-      });
-
-      if (canUsePublicCache && products.length > 0) {
-        // Cache base un-personalized products for 5 minutes
-        setCachedData(cacheKey, products, 300);
-      }
-    }
-
-    if (queryStr) {
-      const q = queryStr.toLowerCase();
-      products = products.filter((p: any) =>
-        p.name?.toLowerCase().includes(q) ||
-        p.tagline?.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q) ||
-        (Array.isArray(p.tags) && p.tags.some((t: string) => t.toLowerCase().includes(q)))
+      products = (data || []).map((p: any) =>
+        p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+          ? { ...p, status: 'live' }
+          : p
       );
+      if (canUsePublicCache && products.length > 0) await setCachedData(cacheKey, products, 300);
     }
 
     if (userId && products.length > 0) {
-      try {
-        const productIds = products.map((p: any) => p.id);
-        const { data: upvotes } = await supabase
-          .from('upvotes')
-          .select('product_id')
-          .eq('user_id', userId)
-          .in('product_id', productIds);
-
-        const upvotedSet = new Set((upvotes || []).map((u: any) => u.product_id));
-        products = products.map((p: any) => ({
-          ...p,
-          has_upvoted: upvotedSet.has(p.id)
-        }));
-      } catch (upvoteErr) {
-        console.warn('[GET /t/products] Upvotes check error:', upvoteErr);
-      }
+      const { data: upvotes } = await (await db())
+        .from('upvotes')
+        .select('product_id')
+        .eq('user_id', userId)
+        .limit(2000);
+      const set = new Set((upvotes || []).map((u: any) => u.product_id));
+      products = products.map((p: any) => ({ ...p, has_upvoted: set.has(p.id) }));
     }
 
-    return apiSuccessSecure(products);
+    return apiSuccessSecure(products, 200, userId ? undefined : PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch products', 500);
   }
@@ -211,6 +152,11 @@ export async function POST(request: NextRequest) {
       ? Boolean(body.worked_on_launch)
       : (body.workedOnLaunch !== undefined ? Boolean(body.workedOnLaunch) : true);
 
+    const isScheduled = Boolean(
+      status === 'scheduled' || (scheduled_for && new Date(scheduled_for) > new Date())
+    );
+    const initialUpvotes = isScheduled ? 0 : 1;
+
     const { data: newProduct, error } = await supabase
       .from('products')
       .insert({
@@ -237,10 +183,10 @@ export async function POST(request: NextRequest) {
         twitter_url: body.twitter_url || null,
         country: body.country || 'Global',
         tags: tags || ['SaaS'],
-        upvotes_count: 1,
+        upvotes_count: initialUpvotes,
         comments_count: 0,
         scheduled_for: scheduled_for || null,
-        status: status || (scheduled_for ? 'scheduled' : 'live')
+        status: status || (isScheduled ? 'scheduled' : 'live')
       })
       .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
       .single();
@@ -260,16 +206,22 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    await supabase.from('upvotes').insert({
-      product_id: newProduct.id,
-      user_id: maker_id
-    });
+    if (!isScheduled) {
+      await supabase.from('upvotes').insert({
+        product_id: newProduct.id,
+        user_id: maker_id
+      });
+    }
 
-    invalidateCache('redis_products_all_100');
-    invalidateCache('redis_products_all_30');
+    await Promise.all([
+      invalidateCachePattern('redis_products_'),
+      invalidateCache('public_products'),
+      invalidateCache('product_slug_map'),
+    ]);
 
-    return apiSuccessSecure({ ...newProduct, has_upvoted: true }, 201);
+    return apiSuccessSecure({ ...newProduct, has_upvoted: !isScheduled }, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to create product', 500);
   }
 }
+

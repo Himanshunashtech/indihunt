@@ -106,6 +106,7 @@ export default function LaunchInsightsClient({
     timeline: any[],
     checkedMap: Record<string, boolean>,
     maxVal: number,
+    ticks: number[],
     hoverIndex: number | null,
     setHoverIndex: (i: number | null) => void,
     setHoverPos: (pos: { x: number; y: number }) => void,
@@ -155,11 +156,11 @@ export default function LaunchInsightsClient({
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverIndex(null)}
         >
-          {Array.from({ length: gridLines + 1 }).map((_, i) => {
-            const val = Math.round((maxVal / gridLines) * i);
-            const y = height - paddingBottom - (val / maxVal) * chartHeight;
+          {ticks.map((val) => {
+            const y = height - paddingBottom - (val / Math.max(maxVal, 1)) * chartHeight;
+
             return (
-              <g key={i}>
+              <g key={val}>
                 <line
                   x1={paddingLeft}
                   y1={y}
@@ -271,6 +272,40 @@ export default function LaunchInsightsClient({
     );
   };
 
+  // Upvotes ticks with difference of 5: 0, 5, 10, 15, 20, 25...
+  const maxUpvoteInData = Math.max(
+    ...data.products.map((p) => p.upvotes_count || 0),
+    ...(data.pointsTimeline || []).flatMap((t) => data.products.map((p) => t[p.name] || 0)),
+    20
+  );
+  const upvotesMaxVal = Math.max(25, Math.ceil(maxUpvoteInData / 5) * 5);
+  const upvotesTicks: number[] = [];
+  for (let v = 0; v <= upvotesMaxVal; v += 5) {
+    upvotesTicks.push(v);
+  }
+
+  // Comments ticks: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 (step of 1)
+  const maxCommentInData = Math.max(
+    ...data.products.map((p) => p.comments_count || 0),
+    ...(data.commentsTimeline || []).flatMap((t) => data.products.map((p) => t[p.name] || 0)),
+    10
+  );
+  const commentsMaxVal = Math.max(10, Math.ceil(maxCommentInData));
+  const commentsTicks: number[] = [];
+  if (commentsMaxVal <= 10) {
+    for (let v = 0; v <= 10; v++) {
+      commentsTicks.push(v);
+    }
+  } else {
+    const cStep = commentsMaxVal <= 15 ? 1 : Math.ceil(commentsMaxVal / 10);
+    for (let v = 0; v <= commentsMaxVal; v += cStep) {
+      commentsTicks.push(v);
+    }
+    if (!commentsTicks.includes(commentsMaxVal)) {
+      commentsTicks.push(commentsMaxVal);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-orange-500 selection:text-white pt-[60px] sm:pt-[72px]">
       <Navbar searchQuery="" onSearchChange={() => { }} />
@@ -330,7 +365,8 @@ export default function LaunchInsightsClient({
               {renderSVGChart(
                 data.pointsTimeline,
                 pointsChecked,
-                120,
+                upvotesMaxVal,
+                upvotesTicks,
                 pointsHoverIndex,
                 setPointsHoverIndex,
                 setPointsHoverPos,
@@ -433,7 +469,8 @@ export default function LaunchInsightsClient({
               {renderSVGChart(
                 data.commentsTimeline,
                 commentsChecked,
-                90,
+                commentsMaxVal,
+                commentsTicks,
                 commentsHoverIndex,
                 setCommentsHoverIndex,
                 setCommentsHoverPos,

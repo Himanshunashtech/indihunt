@@ -2,7 +2,7 @@
 
 import React, { memo } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { useRouter } from "next/navigation";
 import {
   ExternalLink,
@@ -112,12 +112,11 @@ const ProductItem = memo(function ProductItem({
       className="group relative isolate flex flex-row items-start gap-4 rounded-xl px-0 py-4 transition-all duration-300 ease-out sm:-mx-4 sm:p-4 hover:sm:bg-muted/60 cursor-pointer"
       suppressHydrationWarning
     >
-      <Image
+      <Favicon
         src={product.logo_url}
+        websiteUrl={product.website_url}
+        size={48}
         alt={product.name}
-        width={48}
-        height={48}
-        priority={idx < 6}
         className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
       />
 

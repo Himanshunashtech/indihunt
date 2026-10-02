@@ -1,91 +1,82 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { getCachedData, setCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation, getProductSlug } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DETAIL_COLUMNS =
+  '*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)';
+
+const ALLOWED = [
+  'name', 'tagline', 'description', 'website_url', 'logo_url', 'screenshots',
+  'twitter_url', 'facebook_url', 'instagram_url', 'linkedin_url', 'medium_url',
+  'github_url', 'video_url', 'show_pre_launch', 'worked_on_launch', 'funding_type',
+  'status', 'scheduled_for', 'pricing_type', 'promo_offer', 'promo_code',
+  'promo_expiry', 'country', 'is_open_source', 'is_student_project', 'tags',
+  'shoutout_names', 'shoutout_notes', 'shoutout_logos'
+];
+
+async function resolveProductId(key: string, getDb: () => Promise<any>): Promise<string | null> {
+  if (UUID_RE.test(key)) return key;
+  let map = await getCachedData<Record<string, string>>('product_slug_map');
+  if (map && map[key]) return map[key];
+
+  try {
+    const { data } = await (await getDb()).from('products').select('id, name').limit(3000);
+    const newMap: Record<string, string> = {};
+    (data || []).forEach((p: any) => {
+      if (p.name) {
+        newMap[getProductSlug(p.name).toLowerCase()] = p.id;
+        newMap[p.name.toLowerCase().trim()] = p.id;
+        newMap[p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')] = p.id;
+        newMap[p.name.toLowerCase().replace(/[^a-z0-9]+/g, '')] = p.id;
+      }
+      if (p.id) {
+        newMap[p.id.toLowerCase()] = p.id;
+      }
+    });
+    await setCachedData('product_slug_map', newMap, 3600);
+    return newMap[key] || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const userId = new URL(request.url).searchParams.get('userId');
+    const key = decodeURIComponent(id).toLowerCase().trim();
 
-    const cacheKey = `product_detail_${id.toLowerCase()}`;
+    let supabase: Awaited<ReturnType<typeof createServerSupabaseClient>> | null = null;
+    const db = async () => (supabase ??= await createServerSupabaseClient());
 
-    // Redis/Memory cache check for guest/public request
-    if (!userId) {
-      const cached = await getCachedData<any>(cacheKey);
-      if (cached && cached.id) {
-        return apiSuccessSecure({ ...cached, has_upvoted: false });
-      }
-    }
+    let product = await getCachedData<any>(`product_detail_${key}`);
+    if (!product?.id) {
+      const pid = await resolveProductId(key, db);
+      if (!pid) return apiFailure('Product not found', 404);
 
-    const supabase = await createServerSupabaseClient();
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    let product: any = null;
-
-    const DETAIL_COLUMNS = '*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)';
-
-    if (isUuid) {
-      const { data } = await supabase
-        .from('products')
-        .select(DETAIL_COLUMNS)
-        .eq('id', id)
-        .maybeSingle();
+      const { data } = await (await db())
+        .from('products').select(DETAIL_COLUMNS).eq('id', pid).maybeSingle();
+      if (!data || data.is_deleted) return apiFailure('Product not found', 404);
       product = data;
-    }
-
-    if (!product) {
-      const { data: allProds } = await supabase
-        .from('products')
-        .select('id, name');
-      if (allProds) {
-        const decodedId = decodeURIComponent(id).toLowerCase().trim();
-        const matched = allProds.find(
-          (p: any) =>
-            getProductSlug(p.name).toLowerCase() === decodedId ||
-            (p.slug && p.slug.toLowerCase() === decodedId) ||
-            p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decodedId ||
-            p.id === id
-        );
-        if (matched) {
-          const { data: fullProduct } = await supabase
-            .from('products')
-            .select(DETAIL_COLUMNS)
-            .eq('id', matched.id)
-            .maybeSingle();
-          product = fullProduct;
-        }
-      }
-    }
-
-    if (!product) {
-      return apiFailure('Product not found', 404);
-    }
-
-    // Cache public product data
-    await setCachedData(cacheKey, product, 300);
-    if (product.id !== id) {
-      await setCachedData(`product_detail_${product.id}`, product, 300);
+      await Promise.all([
+        setCachedData(`product_detail_${key}`, product, 300),
+        setCachedData(`product_detail_${product.id}`, product, 300),
+      ]);
     }
 
     let hasUpvoted = false;
     if (userId) {
-      const { data: upvote } = await supabase
-        .from('upvotes')
-        .select('id')
-        .eq('product_id', product.id)
-        .eq('user_id', userId)
-        .maybeSingle();
+      const { data: upvote } = await (await db())
+        .from('upvotes').select('id').eq('product_id', product.id).eq('user_id', userId).maybeSingle();
       hasUpvoted = !!upvote;
     }
 
-    return apiSuccessSecure({ ...product, has_upvoted: hasUpvoted });
+    return apiSuccessSecure({ ...product, has_upvoted: hasUpvoted }, 200, userId ? undefined : PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch product', 500);
   }
@@ -126,21 +117,28 @@ async function handleUpdate(
       if (v.hasViolation) return apiFailure(v.message || 'Content violation in description', 400);
     }
 
+    const patch = Object.fromEntries(Object.entries(body).filter(([k]) => ALLOWED.includes(k)));
+
     const supabase = await createServerSupabaseClient();
     const { data: updated, error } = await supabase
       .from('products')
-      .update(body)
+      .update(patch)
       .eq('id', id)
-      .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
+      .select(DETAIL_COLUMNS)
       .single();
 
     if (error) {
       return apiFailure(error.message, 500);
     }
 
-    await invalidateCache(`product_detail_${id.toLowerCase()}`);
-    if (updated?.id) await invalidateCache(`product_detail_${updated.id}`);
-    if (updated?.name) await invalidateCache(`product_detail_${getProductSlug(updated.name).toLowerCase()}`);
+    await Promise.all([
+      invalidateCachePattern('redis_products_'),
+      invalidateCache('public_products'),
+      invalidateCache('product_slug_map'),
+      invalidateCache(`product_detail_${id.toLowerCase()}`),
+      updated?.id ? invalidateCache(`product_detail_${updated.id.toLowerCase()}`) : Promise.resolve(),
+      updated?.name ? invalidateCache(`product_detail_${getProductSlug(updated.name).toLowerCase()}`) : Promise.resolve(),
+    ]);
 
     return apiSuccessSecure(updated);
   } catch (error: any) {
@@ -154,7 +152,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const isUuid = UUID_RE.test(id);
     if (!isUuid) {
       return apiFailure('Invalid product ID', 400);
     }
@@ -166,10 +164,16 @@ export async function DELETE(
       return apiFailure(error.message, 500);
     }
 
-    await invalidateCache(`product_detail_${id.toLowerCase()}`);
+    await Promise.all([
+      invalidateCachePattern('redis_products_'),
+      invalidateCache('public_products'),
+      invalidateCache('product_slug_map'),
+      invalidateCache(`product_detail_${id.toLowerCase()}`),
+    ]);
 
     return apiSuccessSecure({ deleted: true }, 200);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to delete product', 500);
   }
 }
+

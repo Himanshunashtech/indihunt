@@ -47,16 +47,14 @@ import {
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import ThemeToggle from "@/components/ThemeToggle";
 import {
-  supabase,
   signInWithGoogle,
   signOut,
   clearCache,
-  getNotifications,
   markAllNotificationsAsRead,
   getCategorySlug,
-  type NotificationItem,
-  MOCK_NOTIFICATIONS
+  type NotificationItem
 } from "@/lib/supabase";
+import { useUnreadNotificationsCount, useNotifications } from "@/hooks/useDb";
 import { queryClient } from "@/lib/queryClient";
 import { useAppDispatch, useAppSelector, setAuthModalOpen, logout } from "@/lib/store";
 import { usePathname, useRouter } from "next/navigation";
@@ -100,6 +98,14 @@ export default function Navbar({
     if (activeUser?.user_metadata?.avatar_url) return activeUser.user_metadata.avatar_url;
     return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=80&h=80&q=80";
   }, [currentProfile, activeUser]);
+
+  const profileHref = useMemo(() => {
+    if (currentProfile?.username) return `/@${currentProfile.username}`;
+    const metaUsername = activeUser?.user_metadata?.user_name || activeUser?.user_metadata?.preferred_username;
+    if (metaUsername) return `/@${metaUsername}`;
+    return "/profile";
+  }, [currentProfile?.username, activeUser?.user_metadata]);
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +117,15 @@ export default function Navbar({
   const [visibleNotificationsCount, setVisibleNotificationsCount] = useState(10);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  const { data: unreadNotificationsCount = 0 } = useUnreadNotificationsCount(activeUser?.id);
+  const { data: fetchedNotifications } = useNotifications(activeUser?.id, notificationsOpen);
+
+  useEffect(() => {
+    if (fetchedNotifications) {
+      setNotificationsList(fetchedNotifications);
+    }
+  }, [fetchedNotifications]);
 
   const handleNotificationsScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const bottom = e.currentTarget.scrollHeight - e.currentTarget.scrollTop <= e.currentTarget.clientHeight + 50;
@@ -132,11 +147,8 @@ export default function Navbar({
   useEffect(() => {
     if (notificationsOpen) {
       setVisibleNotificationsCount(10);
-      getNotifications(activeUser?.id).then((items) => {
-        setNotificationsList(items || []);
-      });
     }
-  }, [activeUser?.id, notificationsOpen]);
+  }, [notificationsOpen]);
 
   const [launchesOpen, setLaunchesOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
@@ -729,7 +741,7 @@ export default function Navbar({
                 {/* Notification Bell */}
                 <div className="relative">
                   {(() => {
-                    const hasUnread = notificationsList.some((n) => !n.read);
+                    const hasUnread = (unreadNotificationsCount > 0) || notificationsList.some((n) => !n.read);
                     return (
                       <button
                         id="bell-btn"
@@ -767,7 +779,7 @@ export default function Navbar({
               <>
                 {/* Mobile Only (< 640px): Direct link to user profile without dropdown */}
                 <Link
-                  href="/profile"
+                  href={profileHref}
                   className="flex sm:hidden items-center transition-all cursor-pointer outline-none"
                   title="My Profile"
                 >
@@ -827,7 +839,7 @@ export default function Navbar({
                           onMouseLeave={handleProfileLeave}
                         >
                           {[
-                            { href: `/profile`, label: "My Profile" },
+                            { href: profileHref, label: "My Profile" },
                             { href: `/my-products`, label: "My Products" },
                             { href: `/profile/settings`, label: "Settings" },
                             ...((isAdmin || currentProfile?.role === 'admin') ? [{ href: `/admin`, label: "Admin Panel", isAdmin: true }] : [])
@@ -894,6 +906,10 @@ export default function Navbar({
           <button
             onClick={async () => {
               await markAllNotificationsAsRead(activeUser?.id);
+              queryClient.setQueryData(["unread_notifications_count", activeUser?.id || "guest"], 0);
+              queryClient.setQueryData(["notifications", activeUser?.id || "guest"], (old: NotificationItem[] | undefined) =>
+                (old || []).map(n => ({ ...n, read: true }))
+              );
               setNotificationsList(prev => prev.map(n => ({ ...n, read: true })));
             }}
             className="text-[10px] text-orange-500 font-semibold hover:underline cursor-pointer focus:outline-none"
@@ -926,7 +942,7 @@ export default function Navbar({
                   <div key={item.id} className="p-3.5 bg-muted/30 hover:bg-muted/60 rounded-2xl border border-border/60 transition-colors space-y-3">
                     <div className="flex items-start gap-3">
                       <div className="relative w-10 h-10 flex-shrink-0">
-                        <Image src={item.actor_avatar || ""} alt="" width={40} height={40} className="w-10 h-10 rounded-2xl object-cover border border-border" />
+                        <Image src={item.actor_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80"} alt="" width={40} height={40} className="w-10 h-10 rounded-2xl object-cover border border-border" />
                         {item.secondary_avatar && (
                           <Image src={item.secondary_avatar} alt="" width={20} height={20} className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
                         )}
@@ -994,7 +1010,7 @@ export default function Navbar({
                   <div key={item.id} className="p-3.5 bg-muted/30 hover:bg-muted/60 rounded-2xl border border-border/60 transition-colors space-y-2.5">
                     <div className="flex items-start gap-3">
                       <div className="relative w-10 h-10 flex-shrink-0">
-                        <Image src={item.product_logo || item.actor_avatar || ""} alt="" width={40} height={40} className="w-10 h-10 rounded-2xl object-cover border border-border" />
+                        <Image src={item.product_logo || item.actor_avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&q=80"} alt="" width={40} height={40} className="w-10 h-10 rounded-2xl object-cover border border-border" />
                         {item.actor_avatar && (
                           <Image src={item.actor_avatar} alt="" width={20} height={20} className="w-5 h-5 rounded-full object-cover border-2 border-card absolute -bottom-1 -right-1" />
                         )}
@@ -1329,7 +1345,7 @@ export default function Navbar({
                 {activeUser ? (
                   <>
                     {[
-                      { href: "/profile", icon: User, label: "Profile", sub: "View your public maker profile", bg: "bg-orange-500/10", color: "text-orange-500" },
+                      { href: profileHref, icon: User, label: "Profile", sub: "View your public maker profile", bg: "bg-orange-500/10", color: "text-orange-500" },
                       { href: "/my-products", icon: Package, label: "My Products", sub: "Manage your launched products", bg: "bg-indigo-500/10", color: "text-indigo-500" },
                       { href: "/profile/settings", icon: Settings, label: "Settings", sub: "Update account preferences", bg: "bg-purple-500/10", color: "text-purple-500" },
                     ].map((subItem) => (

@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import {
   ChevronLeft,
   ChevronRight,
@@ -100,6 +101,13 @@ export default function SidebarPanel({
   const isInCollection = userCollections.some((col: any) =>
     col.products && col.products.some((p: any) => p.id === product.id)
   );
+
+  const launchDateStr = product?.scheduled_for || product?.created_at;
+  const launchDate = launchDateStr ? new Date(launchDateStr) : new Date();
+  const launchYear = !isNaN(launchDate.getTime()) ? launchDate.getFullYear() : new Date().getFullYear();
+  const launchMonth = !isNaN(launchDate.getTime()) ? launchDate.getMonth() + 1 : new Date().getMonth() + 1;
+  const launchDay = !isNaN(launchDate.getTime()) ? launchDate.getDate() : new Date().getDate();
+  const launchInsightsUrl = `/launch-insights/${launchYear}/${launchMonth}/${launchDay}`;
 
   return (
     <div className="lg:col-span-3 space-y-6">
@@ -246,15 +254,15 @@ export default function SidebarPanel({
             <span>Share</span>
           </button>
 
-          <button
-            onClick={() => setActiveSubTab("Analytics")}
+          <Link
+            href={launchInsightsUrl}
             className="w-full flex items-center gap-3 text-sm font-medium text-foreground/90 hover:text-orange-500 transition-colors text-left focus:outline-none cursor-pointer"
           >
             <div className="w-6 h-6 rounded-md border border-border flex items-center justify-center bg-muted/35">
               <BarChart2 className="w-4 h-4" />
             </div>
             <span>Analytics</span>
-          </button>
+          </Link>
 
           <button
             onClick={() => setShowEmbedModal(true)}
@@ -436,13 +444,9 @@ export default function SidebarPanel({
               <span className="text-xs text-muted-foreground italic">No similar products found.</span>
             ) : (
               similarProducts.map((item, idx) => (
-                <div key={idx} className="flex gap-3.5 items-start  pb-3.5 last:border-0 last:pb-0">
+                <div key={item.id || idx} className="flex gap-3.5 items-start  pb-3.5 last:border-0 last:pb-0">
                   <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center font-semibold text-sm text-orange-500 border border-orange-500/15 flex-shrink-0 overflow-hidden">
-                    {item.logo_url ? (
-                      <Image src={item.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
-                    ) : (
-                      item.name.charAt(0)
-                    )}
+                    <Favicon src={item.logo_url} websiteUrl={item.website_url} size={48} alt={item.name} className="w-full h-full object-cover" />
                   </div>
                   <div className="space-y-0.5 min-w-0 flex-1">
                     <Link href={`/products/${getProductSlug(item.name)}`} className="text-base font-semibold text-foreground block hover:text-orange-500 transition-colors cursor-pointer truncate">

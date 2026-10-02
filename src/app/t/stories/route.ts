@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
-import { checkContentViolation } from '@/lib/supabase';
+import { checkContentViolation, DEFAULT_STORIES } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,12 +37,30 @@ export async function GET(request: NextRequest) {
       query = query.ilike('title', `%${search}%`);
     }
 
-    const { data: stories, error } = await query;
-    if (error) {
-      return apiFailure(error.message, 500);
+    const { data: stories } = await query;
+    const dbStories = (stories && stories.length > 0) ? stories : [];
+
+    // Merge: Real DB user stories first + Mock DEFAULT_STORIES
+    const mergedMap = new Map<string, any>();
+    dbStories.forEach(s => {
+      if (s?.id) mergedMap.set(s.id, s);
+    });
+    DEFAULT_STORIES.forEach(s => {
+      if (s?.id && !mergedMap.has(s.id)) {
+        mergedMap.set(s.id, s);
+      }
+    });
+
+    let list = Array.from(mergedMap.values());
+
+    if (category && category !== 'All') {
+      list = list.filter(s => s.category?.toLowerCase() === category.toLowerCase());
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(s => s.title?.toLowerCase().includes(q) || (s.excerpt ? s.excerpt.toLowerCase().includes(q) : false));
     }
 
-    const list = stories || [];
     if (!search && list.length > 0) {
       await setCachedData(cacheKey, list, 300);
     }

@@ -2,7 +2,16 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase, getProductById, getProductSlug } from "@/lib/supabase";
+import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
+import { 
+  supabase, 
+  getProductById, 
+  getProductSlug, 
+  getUserProducts, 
+  getCachedProducts, 
+  getProducts,
+  Product 
+} from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
 import { 
   ArrowLeft, 
@@ -25,6 +34,8 @@ import { CircularLoader } from "@/components/CircularLoader";
 
 function AdsContent() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const reduxUser = useAppSelector((state) => state.auth.user);
   const searchParams = useSearchParams();
   const initialProductId = searchParams?.get("product_id") || searchParams?.get("productId") || searchParams?.get("id") || searchParams?.get("product") || "";
 
@@ -47,20 +58,58 @@ function AdsContent() {
   useEffect(() => {
     async function init() {
       try {
-        const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
-        if (!session?.user) {
-          router.push("/login");
+        let currentUser: any = reduxUser;
+
+        if (!currentUser && supabase) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+              currentUser = session.user;
+            }
+          } catch (e) {}
+        }
+
+        if (!currentUser && typeof window !== "undefined") {
+          try {
+            const stored = localStorage.getItem("indihunt_user");
+            if (stored) currentUser = JSON.parse(stored);
+          } catch (e) {}
+        }
+
+        if (!currentUser) {
+          setIsLoading(false);
           return;
         }
-        setUserId(session.user.id);
-        setUserEmail(session.user.email || null);
 
-        // Fetch user's products
-        const res = await fetch(`/t/products?userId=${session.user.id}`);
+        setUserId(currentUser.id);
+        setUserEmail(currentUser.email || null);
+
+        // Fetch user's products with multiple layers of fallback
         let userProds: any[] = [];
-        if (res.ok) {
-          const data = await res.json();
-          userProds = data.data || data.products || [];
+        try {
+          userProds = await getUserProducts(currentUser.id);
+        } catch (e) {
+          console.warn("Error calling getUserProducts:", e);
+        }
+
+        // Fallback 1: Filter from all products
+        if (!userProds || userProds.length === 0) {
+          try {
+            const all = await getProducts();
+            userProds = all.filter((p: any) => 
+              (p.maker_id === currentUser.id || p.maker?.id === currentUser.id || p.created_by === currentUser.id) && !p.is_deleted
+            );
+          } catch (e) {}
+        }
+
+        // Fallback 2: Check localStorage cached products
+        if ((!userProds || userProds.length === 0) && typeof window !== "undefined") {
+          try {
+            const cached = getCachedProducts();
+            userProds = cached.filter((p: any) => 
+              (p.maker_id === currentUser.id || p.maker?.id === currentUser.id || p.created_by === currentUser.id) && !p.is_deleted
+            );
+          } catch (e) {}
         }
 
         if (initialProductId) {
@@ -114,7 +163,7 @@ function AdsContent() {
       }
     }
     init();
-  }, [router, initialProductId]);
+  }, [router, initialProductId, reduxUser]);
 
   const handleProductSelect = (selectedId: string) => {
     setCampProductId(selectedId || null);
@@ -218,17 +267,17 @@ function AdsContent() {
         body: JSON.stringify(payload),
       });
 
-      const resJson = await res.json();
-      const redirectUrl = resJson.data?.url || resJson.url;
+      const resJson = await res.json().catch(() => ({}));
+      const redirectUrl = resJson.data?.url || resJson.url || resJson.checkout_url || resJson.payment_link;
       if (redirectUrl) {
         window.location.href = redirectUrl;
       } else {
         alert(resJson.error || "Failed to initialize checkout. Please try again.");
         setIsSubmitting(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("An error occurred during checkout initialization.");
+      alert(err?.message || "An error occurred during checkout initialization.");
       setIsSubmitting(false);
     }
   };
@@ -251,6 +300,34 @@ function AdsContent() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center pt-20">
         <CircularLoader label="Loading Self-Serve Ads Engine..." size="lg" center={false} />
+      </div>
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div className="min-h-screen bg-background text-foreground font-sans pt-24 pb-20">
+        <Navbar />
+        <main className="max-w-2xl mx-auto px-4 py-16 text-center space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center mx-auto text-2xl shadow-sm">
+            <Megaphone className="w-8 h-8 text-orange-500" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
+            Launch Sponsored Ad Campaign
+          </h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Sign in to your IndiHunt account to choose from your products and launch high-visibility ad campaigns across IndiHunt.
+          </p>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => dispatch(setAuthModalOpen(true))}
+              className="px-6 py-3 bg-[#ff5733] hover:bg-[#e64a19] text-white font-bold text-sm rounded-xl transition-all shadow-md hover:shadow-orange-500/20 active:scale-95 cursor-pointer"
+            >
+              Sign In to Promote Your Products
+            </button>
+          </div>
+        </main>
       </div>
     );
   }
@@ -348,6 +425,23 @@ function AdsContent() {
                           </option>
                         ))}
                       </select>
+
+                      {selectedProduct && (
+                        <div className="mt-3 p-3 bg-muted/40 border border-border/80 rounded-2xl flex items-center gap-3">
+                          <img
+                            src={selectedProduct.logo_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=128&h=128&q=80"}
+                            alt={selectedProduct.name}
+                            className="w-10 h-10 rounded-xl object-cover border border-border flex-shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-foreground truncate">{selectedProduct.name}</div>
+                            <div className="text-[11px] text-muted-foreground truncate">{selectedProduct.tagline || "Indie Product"}</div>
+                          </div>
+                          <span className="text-[10px] font-semibold bg-orange-500/10 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full flex-shrink-0">
+                            Selected
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

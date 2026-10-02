@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useRef } from "react";
+import React, { createContext, useContext, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 
 interface WebSocketContextType {
@@ -26,7 +26,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   // Map of "room:event" -> Set of callbacks
   const listenersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
 
-  const subscribe = (room: string, eventName: string, callback: (data: any) => void) => {
+  const subscribe = useCallback((room: string, eventName: string, callback: (data: any) => void) => {
     const listenerKey = `${room}:${eventName}`;
 
     // Register the callback listener
@@ -109,19 +109,34 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       }
     };
-  };
+  }, []);
 
-  const publish = (room: string, eventName: string, data: any) => {
+  const publish = useCallback((room: string, eventName: string, data: any) => {
     const roomEntry = channelsRef.current.get(room);
 
     if (supabase) {
-      // Publish event to Supabase channel
-      const channel = roomEntry?.supabaseChannel || supabase.channel(room);
-      channel.send({
-        type: "broadcast",
-        event: eventName,
-        payload: data,
-      });
+      if (roomEntry?.supabaseChannel) {
+        // Use existing active subscription channel
+        roomEntry.supabaseChannel.send({
+          type: "broadcast",
+          event: eventName,
+          payload: data,
+        });
+      } else {
+        // Transient channel for publishing only: subscribe, send, and cleanly remove
+        const tempChannel = supabase.channel(room);
+        tempChannel.subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            tempChannel.send({
+              type: "broadcast",
+              event: eventName,
+              payload: data,
+            }).finally(() => {
+              supabase?.removeChannel(tempChannel);
+            });
+          }
+        });
+      }
     } else {
       // Publish event to local browser BroadcastChannel
       if (typeof window !== "undefined") {
@@ -137,7 +152,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  };
+  }, []);
 
   // Clean up all connections on unmount
   useEffect(() => {
@@ -155,8 +170,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const value = useMemo(() => ({ subscribe, publish }), [subscribe, publish]);
+
   return (
-    <WebSocketContext.Provider value={{ subscribe, publish }}>
+    <WebSocketContext.Provider value={value}>
       {children}
     </WebSocketContext.Provider>
   );
@@ -169,3 +186,4 @@ export function useWebSocket() {
   }
   return context;
 }
+

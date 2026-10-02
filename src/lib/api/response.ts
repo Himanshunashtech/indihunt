@@ -17,6 +17,10 @@ export type ApiResponsePayload<T = unknown> = ApiSuccessPayload<T> | ApiFailureP
 
 import { encodePayload } from './obfuscate';
 
+export const PUBLIC_CACHE_HEADERS = {
+  'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+};
+
 /**
  * Universal Response Wrapper for successful API outcomes.
  * If secure: true is enabled or data masking is applied, encodes payload so it's not readable in Network tab.

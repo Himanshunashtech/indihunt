@@ -18,72 +18,39 @@ import { Toaster } from "sonner";
 function AuthInitializer({ children, initialUser }: { children: React.ReactNode; initialUser?: any }) {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<any>(initialUser);
+  const [currentUser, setCurrentUser] = useState<any>(() => initialUser || null);
   const streakUpdated = useRef(false);
   const currentUserRef = useRef<any>(initialUser);
-  const seededRef = useRef(false);
 
-  // Immediately purge any localStorage session on render
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.removeItem('indihunt_user_session');
-    } catch (e) { }
-  }
-
-  // Seed TanStack Query cache from localStorage BEFORE any render — guarantees instant data
-  // on every page without waiting for network. Background fetch updates this silently.
-  if (!seededRef.current) {
-    seededRef.current = true;
-    if (initialUser) {
-      dispatch(setUser(initialUser));
-      setCurrentUser(initialUser);
-      try {
-        const cachedProf = localStorage.getItem(`ih_profile_${initialUser.id}`);
-        if (cachedProf) {
-          dispatch(setProfile(JSON.parse(cachedProf)));
-        }
-      } catch (e) { }
-    }
-    // Hydrate product cache from localStorage so TanStack serves data immediately
-    try {
-      const cachedProducts = getCachedProducts();
-      if (cachedProducts && cachedProducts.length > 0) {
-        queryClient.setQueryData(['products', 'guest'], cachedProducts);
-        queryClient.setQueryData(['products', undefined], cachedProducts);
-      }
-    } catch (e) { }
-  }
-
+  // Initial client hydration for profile and cached products on mount
   useEffect(() => {
-    // Check sessionStorage for instant session restoration in the active browser tab
-    // and strictly purge any legacy session data from localStorage
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem('indihunt_user_session');
       } catch (e) { }
 
-      if (!currentUserRef.current) {
+      if (initialUser) {
+        dispatch(setUser(initialUser));
         try {
-          const sessionItem = sessionStorage.getItem('indihunt_user_session');
-          if (sessionItem) {
-            const localUser = JSON.parse(sessionItem);
-            if (localUser) {
-              dispatch(setUser(localUser));
-              setCurrentUser(localUser);
-            }
+          const cachedProf = localStorage.getItem(`ih_profile_${initialUser.id}`);
+          if (cachedProf) {
+            dispatch(setProfile(JSON.parse(cachedProf)));
           }
         } catch (e) { }
       }
+
+      try {
+        const cachedProducts = getCachedProducts();
+        if (cachedProducts && cachedProducts.length > 0) {
+          queryClient.setQueryData(['products', 'guest'], cachedProducts);
+          queryClient.setQueryData(['products', undefined], cachedProducts);
+        }
+      } catch (e) { }
     }
-  }, [dispatch]);
+  }, [dispatch, initialUser]);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.removeItem('indihunt_user_session');
-      } catch (e) { }
-    }
   }, [currentUser]);
 
   useEffect(() => {
@@ -91,7 +58,6 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
     if (!client) {
       dispatch(setUser(null));
       setCurrentUser(null);
-      dataOrchestrator.startMigration("guest");
       return;
     }
 
@@ -101,56 +67,17 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
       if (!session || lastFetchedUserId === session.user.id) return;
       lastFetchedUserId = session.user.id;
 
-      // Store exclusively in sessionStorage (active tab only) & ensure removed from localStorage
       try {
         sessionStorage.setItem('indihunt_user_session', JSON.stringify(session.user));
         localStorage.removeItem('indihunt_user_session');
       } catch (e) { }
 
-      clearCache();
-
-      // Instant 0ms synchronous upvote highlight application from local cache
-      try {
-        const rawVotes = localStorage.getItem(`indihunt_upvotes_${session.user.id}`) || localStorage.getItem('indihunt_upvotes');
-        const votedSet = rawVotes ? new Set<string>(JSON.parse(rawVotes)) : new Set<string>();
-        const existingQueries = queryClient.getQueriesData<any[]>({ queryKey: ["products"] });
-        const currentProducts = existingQueries.find(([_, d]) => Array.isArray(d) && d.length > 0)?.[1];
-        if (currentProducts && Array.isArray(currentProducts)) {
-          const seeded = currentProducts.map((p: any) => ({
-            ...p,
-            has_upvoted: votedSet.has(p.id),
-          }));
-          queryClient.setQueryData(["products", session.user.id], seeded);
-        }
-      } catch (e) { }
-
       dispatch(setUser(session.user));
       setCurrentUser(session.user);
 
-      // Fast upvotes fetch directly on session setup via internal API (< 50ms) to ensure live DB accuracy
-      getUserUpvotedProductIds(session.user.id).then((votedIdsArr) => {
-        if (votedIdsArr && Array.isArray(votedIdsArr)) {
-          const votedIds = new Set(votedIdsArr);
-          try {
-            localStorage.setItem(`indihunt_upvotes_${session.user.id}`, JSON.stringify(votedIdsArr));
-            localStorage.setItem('indihunt_upvotes', JSON.stringify(votedIdsArr));
-          } catch (e) {}
-          queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) => {
-            if (!Array.isArray(old)) return old;
-            return old.map((p: any) => ({
-              ...p,
-              has_upvoted: votedIds.has(p.id),
-            }));
-          });
-        }
-      }).catch(() => {});
-
-      queryClient.invalidateQueries({ queryKey: ["products", session.user.id] });
-      queryClient.invalidateQueries({ queryKey: ["threads", session.user.id] });
-
       // Instant profile hydration: from local cache or session user metadata in 0ms
       try {
-        const cached = localStorage.getItem(`ih_profile_${session.user.id}`);
+        const cached = localStorage.getItem(`ih_profile_${session.user.id}`) || localStorage.getItem('indihunt_profile');
         if (cached) {
           dispatch(setProfile(JSON.parse(cached)));
         } else if (session.user?.user_metadata) {
@@ -167,72 +94,62 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
         }
       } catch (e) { }
 
+      // Fetch latest profile from DB asynchronously to keep state and cache accurate
+      getUserProfile(session.user.id)
+        .then((realProfile) => {
+          if (realProfile) {
+            dispatch(setProfile(realProfile));
+            try {
+              localStorage.setItem(`ih_profile_${session.user.id}`, JSON.stringify(realProfile));
+              localStorage.setItem('indihunt_profile', JSON.stringify(realProfile));
+            } catch (e) { }
+          }
+        })
+        .catch(() => { });
+
+      // Notify orchestrator listeners of completed setup
       dataOrchestrator.startMigration(session.user.id);
-      
-      // Fetch live fresh profile via internal /t/profiles API in parallel
-      getUserProfile(session.user.id).then((dbProfile) => {
-        if (dbProfile) {
-          dispatch(setProfile(dbProfile));
+
+      // Upvotes fetch on login
+      getUserUpvotedProductIds(session.user.id)
+        .then((ids) => {
+          if (!Array.isArray(ids)) return;
+          const voted = new Set(ids);
           try {
-            localStorage.setItem(`ih_profile_${session.user.id}`, JSON.stringify(dbProfile));
+            localStorage.setItem(`indihunt_upvotes_${session.user.id}`, JSON.stringify(ids));
           } catch (e) { }
-        }
-      }).catch(() => {});
+          queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) =>
+            Array.isArray(old) ? old.map((p: any) => ({ ...p, has_upvoted: voted.has(p.id) })) : old
+          );
+        })
+        .catch(() => { });
     };
 
-    client.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        handleSessionSetup(session);
-      } else {
-        dispatch(setUser(null));
-        setCurrentUser(null);
-        dataOrchestrator.startMigration("guest");
-      }
-    });
-
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        // If event is SIGNED_OUT, it would be caught below, but if it's a new session or SIGNED_IN:
-        if (_event === 'SIGNED_IN') {
-            lastFetchedUserId = ""; // Force re-fetch on explicit sign in
-        }
-        handleSessionSetup(session);
-      } else {
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
         lastFetchedUserId = "";
+        dataOrchestrator.destroy();
         try {
           sessionStorage.removeItem('indihunt_user_session');
-          localStorage.removeItem('indihunt_user_session');
-        } catch(e) {}
+          localStorage.removeItem('indihunt_upvotes');
+          localStorage.removeItem('indihunt_thread_upvotes');
+        } catch (e) { }
         clearCache();
         queryClient.clear();
-
-        // Explicitly purge upvote localStorage keys so no stale colors survive
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.removeItem('indihunt_upvotes');
-            localStorage.removeItem('indihunt_thread_upvotes');
-          } catch (e) {}
-        }
-
         dispatch(setUser(null));
         dispatch(setProfile(null));
         setCurrentUser(null);
-        dataOrchestrator.startMigration("guest");
+        return;
+      }
+      if (session && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) {
+        handleSessionSetup(session); // guard now dedupes by user id
+      } else if (!session && event === 'INITIAL_SESSION') {
+        dispatch(setUser(null));
+        setCurrentUser(null);
       }
     });
 
-    // Web focus tab detection to handle App Resume equivalent quick sync
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && currentUserRef.current?.id) {
-        dataOrchestrator.handleAppResume(currentUserRef.current.id);
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      subscription.unsubscribe();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    return () => subscription.unsubscribe();
   }, [dispatch]);
 
   // 1-minute global session timer -> trigger streak update

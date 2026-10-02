@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import Navbar from "@/components/Navbar";
 import { SponsoredAd } from "@/components/SponsoredAd";
 import { getTopHuntersData, getProducts, getCachedProducts, Hunter, Product } from "@/lib/supabase";
@@ -542,20 +543,7 @@ export default function TopHuntersPage() {
                 className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl shrink-0 overflow-hidden flex items-center justify-center transition-all group bg-card border border-border shadow-xs hover:border-orange-500 hover:shadow-md hover:scale-105"
                 title={product.name}
               >
-                {product.logo_url ? (
-                  <Image
-                    src={product.logo_url}
-                    alt={product.name}
-                    loading="eager"
-                    decoding="async"
-                    fetchPriority="high"
-                    className="w-full h-full object-cover"
-                  width={48} height={48} />
-                ) : (
-                  <div className="w-full h-full bg-orange-500/10 text-orange-500 flex items-center justify-center font-extrabold text-base">
-                    {product.name[0]}
-                  </div>
-                )}
+                <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt={product.name} className="w-full h-full object-cover" />
               </Link>
             ))}
           </div>
@@ -623,20 +611,7 @@ export default function TopHuntersPage() {
                 className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl shrink-0 overflow-hidden flex items-center justify-center transition-all group bg-card border border-border shadow-xs hover:border-orange-500 hover:shadow-md hover:scale-105"
                 title={product.name}
               >
-                {product.logo_url ? (
-                  <Image
-                    src={product.logo_url}
-                    alt={product.name}
-                    loading="eager"
-                    decoding="async"
-                    fetchPriority="high"
-                    className="w-full h-full object-cover"
-                  width={48} height={48} />
-                ) : (
-                  <div className="w-full h-full bg-orange-500/10 text-orange-500 flex items-center justify-center font-extrabold text-base">
-                    {product.name[0]}
-                  </div>
-                )}
+                <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt={product.name} className="w-full h-full object-cover" />
               </Link>
             ))}
           </div>

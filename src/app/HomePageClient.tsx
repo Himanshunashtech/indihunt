@@ -692,7 +692,7 @@ export default function HomePageClient({
   const currentThreads = mounted ? threads : initialThreads;
 
   const { data: promotedProducts = initialPromotedProducts } =
-    usePromotedProducts(products, initialPromotedProducts);
+    usePromotedProducts(products, initialPromotedProducts, effectiveUserId || undefined);
   const currentPromotedProducts = mounted ? promotedProducts : initialPromotedProducts;
 
   const searchedProducts = useMemo(() => {

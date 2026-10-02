@@ -7,16 +7,21 @@ import {
   getThreads,
   getThreadById,
   getComments,
+  getReviews,
   toggleUpvote,
   toggleThreadUpvote,
   addComment,
   Product,
   Thread,
   Comment,
+  Review,
   getCachedProducts,
   getCachedThreads,
   getPromotedProducts,
-  getCachedPromotedProducts
+  getCachedPromotedProducts,
+  getNotifications,
+  getUnreadNotificationsCount,
+  NotificationItem
 } from "@/lib/supabase";
 
 function syncProductUpvoteWithLocalStorage(p: Product, currentUserId?: string): Product {
@@ -75,21 +80,57 @@ export function useProducts(currentUserId?: string, initialData?: Product[], ena
         }
         return previousData;
       }
+      // Last-resort fallback: use localStorage cached products to avoid blank state
+      if (typeof window !== 'undefined') {
+        const cached = getCachedProducts();
+        if (cached && cached.length > 0) {
+          return cached.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
+        }
+      }
       return previousData;
     },
   });
 }
 
-// 1b. Fetch promoted products (instant placeholder cache lookup)
-export function usePromotedProducts(existingProducts?: Product[], initialData?: Product[]) {
+// 1b. Fetch promoted products (instant placeholder cache lookup + localStorage upvote sync)
+export function usePromotedProducts(existingProducts?: Product[], initialData?: Product[], currentUserId?: string) {
   return useQuery({
     queryKey: ["promoted_products"],
     queryFn: () => getPromotedProducts(existingProducts),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    initialData: initialData && initialData.length > 0 ? initialData : undefined,
+    initialData: initialData && initialData.length > 0
+      ? () => {
+          if (typeof window !== 'undefined') {
+            return initialData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
+          }
+          return initialData;
+        }
+      : undefined,
     initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
-    placeholderData: (previousData) => previousData || (initialData && initialData.length > 0 ? initialData : undefined),
+    placeholderData: (previousData) => {
+      if (previousData && previousData.length > 0) {
+        if (typeof window !== 'undefined') {
+          return previousData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
+        }
+        return previousData;
+      }
+      // Fallback: localStorage cached promoted products
+      if (typeof window !== 'undefined') {
+        const cached = getCachedPromotedProducts();
+        if (cached && cached.length > 0) {
+          return cached.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
+        }
+      }
+      return previousData || (initialData && initialData.length > 0 ? initialData : undefined);
+    },
+    select: (data) => {
+      // Always sync has_upvoted from localStorage when data arrives
+      if (typeof window !== 'undefined' && Array.isArray(data)) {
+        return data.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
+      }
+      return data;
+    },
   });
 }
 
@@ -302,10 +343,6 @@ export function useToggleThreadUpvoteMutation() {
         });
       }
     },
-    onSettled: (_data, _error, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["threads"] });
-      queryClient.invalidateQueries({ queryKey: ["thread", variables.threadId] });
-    },
   });
 }
 
@@ -313,7 +350,7 @@ export function useToggleThreadUpvoteMutation() {
 export function prefetchProduct(queryClient: ReturnType<typeof useQueryClient>, productId: string) {
   if (!productId) return;
   queryClient.prefetchQuery({
-    queryKey: ["product", productId],
+    queryKey: ["product", productId, "guest"],
     queryFn: () => getProductById(productId),
     staleTime: 5 * 60 * 1000,
   });
@@ -322,7 +359,7 @@ export function prefetchProduct(queryClient: ReturnType<typeof useQueryClient>, 
 export function prefetchThread(queryClient: ReturnType<typeof useQueryClient>, threadId: string) {
   if (!threadId) return;
   queryClient.prefetchQuery({
-    queryKey: ["thread", threadId],
+    queryKey: ["thread", threadId, "guest"],
     queryFn: () => getThreadById(threadId),
     staleTime: 5 * 60 * 1000,
   });
@@ -340,6 +377,23 @@ export function useComments(productId?: string, threadId?: string, enabled = tru
     refetchOnWindowFocus: false,
   });
 }
+
+// 4b. Fetch reviews for a product (30-min cache, no mount refetch)
+export function useReviews(productId?: string, initialData?: Review[]) {
+  return useQuery({
+    queryKey: ["reviews", productId || ""],
+    queryFn: () => getReviews(productId || ""),
+    enabled: !!productId,
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    initialData: initialData && initialData.length > 0 ? initialData : undefined,
+    initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
+  });
+}
+
 
 // 5. Toggle upvote mutation with optimistic updates for instant UI
 export function useToggleUpvoteMutation() {
@@ -532,9 +586,10 @@ export function useAddCommentMutation() {
           });
         };
 
-        queryClient.setQueriesData({ queryKey: ["comments"] }, (old: unknown) => {
-          return addToTree(Array.isArray(old) ? (old as Comment[]) : []);
-        });
+        queryClient.setQueriesData(
+          { queryKey: ["comments", variables.productId || "", variables.threadId || ""] },
+          (old: unknown) => addToTree(Array.isArray(old) ? (old as Comment[]) : [])
+        );
 
         if (variables.productId) {
           queryClient.setQueriesData({ queryKey: ["product", variables.productId] }, (old: unknown) => {
@@ -552,3 +607,34 @@ export function useAddCommentMutation() {
     },
   });
 }
+
+// 7. Unread notifications count query (lightweight head count)
+export function useUnreadNotificationsCount(userId?: string) {
+  return useQuery({
+    queryKey: ["unread_notifications_count", userId || "guest"],
+    queryFn: () => getUnreadNotificationsCount(userId),
+    enabled: !!userId,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchInterval: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
+// 8. Notifications list query with caching
+export function useNotifications(userId?: string, enabled = false) {
+  return useQuery({
+    queryKey: ["notifications", userId || "guest"],
+    queryFn: () => getNotifications(userId),
+    enabled: enabled && !!userId,
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchInterval: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+

@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { MessageSquarePlus } from "lucide-react";
 import { Product, getProductSlug } from "@/lib/supabase";
 
@@ -134,11 +135,13 @@ export default function UserStreakWidget({
                     href={`/products/${getProductSlug(p.name)}`}
                     className="w-11 h-11 rounded-2xl overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center border border-border/80"
                   >
-                    <Image
+                    <Favicon
                       src={p.logo_url}
+                      websiteUrl={p.website_url}
+                      size={48}
                       alt={p.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    width={48} height={48} />
+                    />
                   </Link>
                   <div className="min-w-0 flex-1">
                     <Link

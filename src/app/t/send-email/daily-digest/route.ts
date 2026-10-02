@@ -70,77 +70,158 @@ async function handleDailyDigest(req: Request) {
       .sort((a: any, b: any) => (b.upvotes_count || b.upvotes || 0) - (a.upvotes_count || a.upvotes || 0));
 
     const topToday = todaysLaunches.slice(0, 10);
+    const queryLogs: string[] = [];
+
+    // Helper functions for absolute URL formatting in emails
+    const ensureAbsoluteUrl = (url?: string, defaultUrl: string = 'https://indihunt.in'): string => {
+      if (!url || typeof url !== 'string' || !url.trim()) return defaultUrl;
+      const clean = url.trim();
+      if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+      return `https://indihunt.in${clean.startsWith('/') ? '' : '/'}${clean}`;
+    };
+
+    const getAdClickUrl = (ad: any): string => {
+      const dest = ensureAbsoluteUrl(ad.destination_url, 'https://indihunt.in/advertise');
+      try {
+        const urlObj = new URL(dest);
+        if (!urlObj.searchParams.has('utm_source')) {
+          urlObj.searchParams.set('utm_source', 'indihunt_digest');
+          urlObj.searchParams.set('utm_medium', 'email');
+        }
+        return urlObj.toString();
+      } catch {
+        return dest;
+      }
+    };
+
+    // 1. Fetch active billboard ads from database
+    let billboardAds: any[] = [];
+    if (dbClient) {
+      try {
+        const { data: bData, error: bErr } = await dbClient
+          .from('billboard_ads')
+          .select('id, title, image_url, destination_url, is_active')
+          .eq('is_active', true);
+        if (!bErr && bData && bData.length > 0) {
+          billboardAds = bData;
+          queryLogs.push(`Fetched ${bData.length} active billboard ads from database`);
+        } else if (bErr) {
+          queryLogs.push(`billboard_ads query error: ${bErr.message}`);
+        }
+      } catch (e: any) {
+        queryLogs.push(`billboard_ads query exception: ${e.message}`);
+      }
+    }
+
+    if (billboardAds.length === 0) {
+      billboardAds = [
+        {
+          id: "bb_supabase_default",
+          title: "Supabase — Build in a weekend, scale to millions",
+          image_url: "https://indihunt.in/supabase_ad_banner.webp",
+          destination_url: "https://supabase.com",
+          is_active: true,
+        },
+        {
+          id: "bb_indihunt_default",
+          title: "Launch & Advertise Your Product on IndiHunt",
+          image_url: "https://indihunt.in/indihunt_horizontal_banner.webp",
+          destination_url: "https://indihunt.in/advertise",
+          is_active: true,
+        }
+      ];
+      queryLogs.push(`Using fallback billboard ads pool (${billboardAds.length} ads available)`);
+    }
+
+    // Billboard Ad HTML component for email
+    const renderBillboardAdHtml = (ad: any) => {
+      const destUrl = getAdClickUrl(ad);
+      const imgUrl = ensureAbsoluteUrl(ad.image_url, 'https://indihunt.in/supabase_ad_banner.webp');
+      const adTitle = ad.title || 'Featured Partner';
+
+      return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 24px; margin-top: 10px;">
+        <tr>
+          <td>
+            <a href="${destUrl}" target="_blank" style="text-decoration: none; display: block;">
+              <img src="${imgUrl}" alt="${adTitle}" width="100%" style="width: 100%; max-width: 600px; height: auto; border-radius: 8px; border: 1px solid #10b981; display: block; object-fit: cover;" />
+            </a>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 6px;">
+              <tr>
+                <td align="left" style="font-size: 11px; font-weight: 600; color: #475569;">
+                  <a href="${destUrl}" target="_blank" style="color: #475569; text-decoration: none;">${adTitle}</a>
+                </td>
+                <td align="right" style="font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <span style="background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px;">Promoted Ad</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>`;
+    };
+
+    const renderBillboardAdText = (ad: any) => {
+      const destUrl = getAdClickUrl(ad);
+      const adTitle = ad.title || 'Featured Partner';
+      return `\n--- PROMOTED BILLBOARD ---\n${adTitle}\n${destUrl}\n\n`;
+    };
 
     // Table-based row layout for top products
-    const formatProductList = (items: any[]) => {
-      if (!items || items.length === 0) {
-        return `
-        <div style="padding: 24px; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; text-align: center; margin-bottom: 20px;">
-          <div style="font-size: 14px; font-weight: 600; color: #475569;">No live product launches recorded for today yet.</div>
-          <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Check back soon or launch your product today on IndiHunt!</div>
-        </div>
-        `;
-      }
-      return items.map((p, idx) => {
-        const logo = p.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80";
-        const category = p.tags && p.tags[0] ? p.tags[0] : (p.category || "Productivity");
-        const commentsCount = p.comments_count || p.commentsCount || 0;
-        const slug = encodeURIComponent(p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
-        const productUrl = `https://indihunt.in/products/${slug}`;
-        const promotedBadge = (p.is_promoted || p.promoted)
-          ? `<span style="background: #f1f5f9; color: #475569; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">&nbsp;•&nbsp;Promoted</span>`
-          : '';
+    const formatProductItem = (p: any, idx: number) => {
+      const logo = p.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80";
+      const category = p.tags && p.tags[0] ? p.tags[0] : (p.category || "Productivity");
+      const commentsCount = p.comments_count || p.commentsCount || 0;
+      const slug = encodeURIComponent(p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+      const productUrl = `https://indihunt.in/products/${slug}`;
+      const promotedBadge = (p.is_promoted || p.promoted)
+        ? `<span style="background: #f1f5f9; color: #475569; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">&nbsp;•&nbsp;Promoted</span>`
+        : '';
 
-        const adBanner = idx === 4 ? `
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
-          <tr>
-            <td>
-              <a href="https://supabase.com" target="_blank" style="text-decoration: none; display: block;">
-                <img src="https://indihunt.in/supabase_ad_banner.webp" alt="Supabase — Build in a weekend, scale to millions" width="100%" style="width: 100%; max-width: 600px; border-radius: 8px; border: 1px solid #10b981; display: block;" />
-              </a>
-              <div style="text-align: right; font-size: 9px; color: #94a3b8; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Promoted Ad</div>
-            </td>
-          </tr>
-        </table>
-        ` : '';
-
-        return `
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
-          <tr>
-            <td width="52" valign="top" style="padding-right: 14px;">
-              <a href="${productUrl}" target="_blank" style="text-decoration: none;">
-                <img src="${logo}" alt="${p.name}" width="52" height="52" style="width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 1px solid #e2e8f0; display: block;" />
-              </a>
-            </td>
-            <td valign="top" style="padding-right: 12px;">
-              <div style="font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3;">
-                <a href="${productUrl}" target="_blank" style="color: #0f172a; text-decoration: none;">${idx + 1}. ${p.name}</a>
-                <span style="font-weight: 400; color: #475569;"> — ${p.tagline || ''}</span>
-              </div>
-              <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
-                <span>💬 ${commentsCount}</span>
-                <span style="margin: 0 4px;">•</span>
-                <span>🏷️ ${category}</span>
-                ${promotedBadge}
-              </div>
-            </td>
-            <td width="64" valign="middle" align="right">
-              <a href="${productUrl}" target="_blank" style="text-decoration: none;">
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
-                  <tr>
-                    <td align="center" style="padding: 8px 10px; min-width: 48px;">
-                      <div style="font-size: 10px; color: #64748b; line-height: 1;">▲</div>
-                      <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1;">${p.upvotes_count || p.upvotes || 0}</div>
-                    </td>
-                  </tr>
-                </table>
-              </a>
-            </td>
-          </tr>
-        </table>
-        ${adBanner}`;
-      }).join('');
+      return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
+        <tr>
+          <td width="52" valign="top" style="padding-right: 14px;">
+            <a href="${productUrl}" target="_blank" style="text-decoration: none;">
+              <img src="${logo}" alt="${p.name}" width="52" height="52" style="width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 1px solid #e2e8f0; display: block;" />
+            </a>
+          </td>
+          <td valign="top" style="padding-right: 12px;">
+            <div style="font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+              <a href="${productUrl}" target="_blank" style="color: #0f172a; text-decoration: none;">${idx + 1}. ${p.name}</a>
+              <span style="font-weight: 400; color: #475569;"> — ${p.tagline || ''}</span>
+            </div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
+              <span>💬 ${commentsCount}</span>
+              <span style="margin: 0 4px;">•</span>
+              <span>🏷️ ${category}</span>
+              ${promotedBadge}
+            </div>
+          </td>
+          <td width="64" valign="middle" align="right">
+            <a href="${productUrl}" target="_blank" style="text-decoration: none;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
+                <tr>
+                  <td align="center" style="padding: 8px 10px; min-width: 48px;">
+                    <div style="font-size: 10px; color: #64748b; line-height: 1;">▲</div>
+                    <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1;">${p.upvotes_count || p.upvotes || 0}</div>
+                  </td>
+                </tr>
+              </table>
+            </a>
+          </td>
+        </tr>
+      </table>`;
     };
+
+    const firstFiveProductsHtml = topToday.slice(0, 5).map((p, idx) => formatProductItem(p, idx)).join('');
+    const remainingProductsHtml = topToday.slice(5).map((p, idx) => formatProductItem(p, idx + 5)).join('');
+    const emptyNoticeHtml = topToday.length === 0 ? `
+      <div style="padding: 24px; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 14px; font-weight: 600; color: #475569;">No live product launches recorded for today yet.</div>
+        <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Check back soon or launch your product today on IndiHunt!</div>
+      </div>
+    ` : '';
 
     const formatProductListText = (items: any[]) => {
       if (!items || items.length === 0) return 'No live product launches recorded for today yet.';
@@ -149,57 +230,95 @@ async function handleDailyDigest(req: Request) {
 
     const dateFormatted = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
 
-    const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #ffffff; color: #1e293b; margin: 0; padding: 16px;">
-        <div style="width: 100%; max-width: 100%; margin: 0; padding: 0;">
+    // Function to generate full HTML content for a specific billboard ad
+    const generateHtmlForAd = (ad: any) => {
+      const adHtml = renderBillboardAdHtml(ad);
+      const productSectionHtml = topToday.length === 0
+        ? `${emptyNoticeHtml}${adHtml}`
+        : `${firstFiveProductsHtml}${adHtml}${remainingProductsHtml}`;
 
-          <div style="font-size: 22px; font-weight: 800; color: #ea580c; margin-bottom: 4px;">
-            The Leaderboard
-          </div>
-          <div style="font-size: 13px; color: #64748b; margin-bottom: 24px;">
-            ${dateFormatted}
-          </div>
+      return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #ffffff; color: #1e293b; margin: 0; padding: 16px;">
+    <div style="width: 100%; max-width: 100%; margin: 0; padding: 0;">
 
-          <!-- Single Focused Section: Today's Top 10 Products -->
-          <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 24px 0 16px 0; border-left: 4px solid #ea580c; padding-left: 10px;">
-            🔥 Today's Top 10 Products
-          </h3>
-          ${formatProductList(topToday)}
+      <div style="font-size: 22px; font-weight: 800; color: #ea580c; margin-bottom: 4px;">
+        The Leaderboard
+      </div>
+      <div style="font-size: 13px; color: #64748b; margin-bottom: 24px;">
+        ${dateFormatted}
+      </div>
 
-          <!-- Useful Links Section -->
-          <div style="margin-top: 32px; padding: 16px 0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
-            <div style="font-weight: 700; font-size: 14px; color: #0f172a; margin-bottom: 8px;">Quick Links</div>
-            <div style="font-size: 13px; color: #2563eb;">
-              👉 <a href="https://indihunt.in/advertise" style="color: #eb6725ff; text-decoration: underline;">Advertise on IndiHunt</a> &nbsp;|&nbsp;
-              👉 <a href="https://indihunt.in/stories" style="color: #eb6725ff; text-decoration: underline;">Maker Stories</a> &nbsp;|&nbsp;
-              👉 <a href="https://x.com/SonuHs9557" style="color: #eb6725ff; text-decoration: underline;">Follow on X</a>
-            </div>
-          </div>
+      <!-- Single Focused Section: Today's Top 10 Products -->
+      <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 24px 0 16px 0; border-left: 4px solid #ea580c; padding-left: 10px;">
+        🔥 Today's Top 10 Products
+      </h3>
+      ${productSectionHtml}
 
-          <div style="margin-top: 24px; font-size: 12px; color: #94a3b8; text-align: left;">
-            Sent with ❤️ by <strong>IndiHunt</strong> — Empowering Indian Indie Makers.<br/>
-            You are receiving this because you subscribed to IndiHunt Daily Digest.<br/>
-            <a href="https://indihunt.in/profile/settings" style="color: #64748b; text-decoration: underline;">Unsubscribe / Update Preferences</a>
-          </div>
+      <!-- View All Button Below Top Ten -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 12px 0 28px 0;">
+        <tr>
+          <td align="center">
+            <a href="https://indihunt.in" target="_blank" style="display: inline-block; background-color: #ea580c; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 12px 30px; border-radius: 9999px; text-align: center; box-shadow: 0 2px 4px rgba(234, 88, 12, 0.25);">
+              View All Products on IndiHunt
+            </a>
+          </td>
+        </tr>
+      </table>
 
+      <!-- Useful Links Section -->
+      <div style="margin-top: 32px; padding: 16px 0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+        <div style="font-weight: 700; font-size: 14px; color: #0f172a; margin-bottom: 8px;">Quick Links</div>
+        <div style="font-size: 13px; color: #2563eb;">
+           <a href="https://indihunt.in/advertise" style="color: #eb6725ff; text-decoration: underline;">Advertise</a> &nbsp;|&nbsp;
+          <a href="https://indihunt.in/stories" style="color: #eb6725ff; text-decoration: underline;">Stories</a> &nbsp;|&nbsp;
+          <a href="https://x.com/SonuHs9557" style="color: #eb6725ff; text-decoration: underline;">X</a>
         </div>
-      </body>
-    </html>
-    `;
+      </div>
 
-    const plainTextContent = `IndiHunt Digest - ${dateFormatted}\n\n` +
-      `--- TODAY'S TOP 10 PRODUCTS ---\n\n${formatProductListText(topToday)}\n\n` +
-      `--- QUICK LINKS ---\n` +
-      `Advertise: https://indihunt.in/advertise\n` +
-      `Stories: https://indihunt.in/stories\n` +
-      `Follow on X: https://x.com/SonuHs9557\n\n` +
-      `Best,\nIndiHunt Team`;
+      <div style="margin-top: 24px; font-size: 12px; color: #94a3b8; text-align: left;">
+        Sent with ❤️ by <strong>IndiHunt</strong> — Empowering Indian Indie Makers.<br/>
+        You are receiving this because you subscribed to IndiHunt Daily Digest.<br/>
+        <a href="https://indihunt.in/profile/settings" style="color: #64748b; text-decoration: underline;">Unsubscribe / Update Preferences</a>
+      </div>
+
+    </div>
+  </body>
+</html>`;
+    };
+
+    const generateTextForAd = (ad: any) => {
+      const adText = renderBillboardAdText(ad);
+      return `IndiHunt Digest - ${dateFormatted}\n\n` +
+        `--- TODAY'S TOP 10 PRODUCTS ---\n\n${formatProductListText(topToday)}\n\n` +
+        `View All Products on IndiHunt: https://indihunt.in\n\n` +
+        `${adText}` +
+        `--- QUICK LINKS ---\n` +
+        `Advertise: https://indihunt.in/advertise\n` +
+        `Stories: https://indihunt.in/stories\n` +
+        `Follow on X: https://x.com/SonuHs9557\n\n` +
+        `Best,\nIndiHunt Team`;
+    };
+
+    // Precompute email template for each distinct billboard ad (O(number_of_ads) generation)
+    const adEmailCache = new Map<string, { html: string; text: string; ad: any }>();
+    for (const ad of billboardAds) {
+      adEmailCache.set(ad.id, {
+        html: generateHtmlForAd(ad),
+        text: generateTextForAd(ad),
+        ad,
+      });
+    }
+
+    const defaultContent = adEmailCache.get(billboardAds[0].id) || {
+      html: generateHtmlForAd(billboardAds[0]),
+      text: generateTextForAd(billboardAds[0]),
+      ad: billboardAds[0]
+    };
 
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
@@ -212,7 +331,6 @@ async function handleDailyDigest(req: Request) {
     const isExplicitTest = !!testEmailParam;
 
     const emailsSet = new Set<string>();
-    const queryLogs: string[] = [];
 
     if (isExplicitTest && testEmailParam.includes('@')) {
       emailsSet.add(testEmailParam.toLowerCase().trim());
@@ -297,16 +415,27 @@ async function handleDailyDigest(req: Request) {
 
     const results = [];
     const BATCH_SIZE = 100;
+    const servedAdImpressions: Record<string, number> = {};
 
     for (let i = 0; i < recipientList.length; i += BATCH_SIZE) {
       const batch = recipientList.slice(i, i + BATCH_SIZE);
-      const batchPayload = batch.map((toEmail) => ({
-        from: 'IndiHunt Daily Digest <hello@indihunt.in>',
-        to: [toEmail],
-        subject: `IndiHunt Daily: Today's Top 10 Products 🚀`,
-        text: plainTextContent,
-        html: htmlContent,
-      }));
+      const batchPayload = batch.map((toEmail) => {
+        // Pick a random billboard ad from the active pool for each user
+        const randomIndex = Math.floor(Math.random() * billboardAds.length);
+        const selectedAd = billboardAds[randomIndex];
+        const content = adEmailCache.get(selectedAd.id) || defaultContent;
+
+        // Track impression counts for this ad
+        servedAdImpressions[selectedAd.id] = (servedAdImpressions[selectedAd.id] || 0) + 1;
+
+        return {
+          from: 'IndiHunt Daily Digest <hello@indihunt.in>',
+          to: [toEmail],
+          subject: `IndiHunt Daily: Today's Top 10 Products 🚀`,
+          text: content.text,
+          html: content.html,
+        };
+      });
 
       const resendRes = await fetch('https://api.resend.com/emails/batch', {
         method: 'POST',
@@ -326,11 +455,37 @@ async function handleDailyDigest(req: Request) {
       }
     }
 
+    // Safely update views_count in database for all served billboard ads
+    if (dbClient && Object.keys(servedAdImpressions).length > 0) {
+      try {
+        await Promise.allSettled(
+          Object.entries(servedAdImpressions).map(async ([adId, impressions]) => {
+            if (adId && !adId.startsWith('bb_')) {
+              try {
+                const { data: currentAd } = await dbClient
+                  .from('billboard_ads')
+                  .select('views_count')
+                  .eq('id', adId)
+                  .single();
+                const newCount = (currentAd?.views_count || 0) + impressions;
+                await dbClient
+                  .from('billboard_ads')
+                  .update({ views_count: newCount })
+                  .eq('id', adId);
+              } catch (e) { }
+            }
+          })
+        );
+      } catch (e) { }
+    }
+
     const anySuccess = results.some(r => r.success);
     return apiSuccessSecure({
       success: anySuccess,
       totalRecipients: recipientList.length,
       recipientsCount: recipientList.length,
+      activeBillboardAdsCount: billboardAds.length,
+      billboardAdsDistribution: servedAdImpressions,
       batchesSent: results.length,
       results
     });

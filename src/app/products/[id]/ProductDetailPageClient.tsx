@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ExternalLink, Star, LayoutGrid, X, ChevronLeft, ChevronRight } from "lucide-react";
@@ -68,9 +69,6 @@ const AlternativesTab = dynamic(() => import("./components/AlternativesTab"), {
 const ForumsTab = dynamic(() => import("./components/ForumsTab"), {
   loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading discussions...</div>,
 });
-const AnalyticsTab = dynamic(() => import("./components/AnalyticsTab"), {
-  loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading analytics...</div>,
-});
 const AIInsightsTab = dynamic(() => import("./components/AIInsightsTab"), {
   loading: () => <div className="p-8 text-center text-sm text-muted-foreground">Loading AI insights...</div>,
 });
@@ -116,64 +114,8 @@ function formatFollowerCount(count: number): string {
 // MAIN PRODUCT DETAIL PAGE
 // ============================================================================
 
-export default function ProductDetailPage({
-  id,
-  initialTab,
-  initialProduct,
-  initialSimilarProducts = [],
-  initialComments = [],
-  initialAllProducts = [],
-  initialReviews = [],
-  initialAlternatives = [],
-  initialRank = null,
-  initialRankLabel = "Day Rank",
-  initialIsTopHunt = false,
-  initialPrevProd = null,
-  initialNextProd = null,
-  initialCohortProducts = []
-}: {
-  id: string;
-  initialTab?: string;
-  initialProduct: any;
-  initialSimilarProducts?: Product[];
-  initialComments?: Comment[];
-  initialAllProducts?: Product[];
-  initialReviews?: Review[];
-  initialAlternatives?: AlternativeProduct[];
-  initialRank?: number | null;
-  initialRankLabel?: string;
-  initialIsTopHunt?: boolean;
-  initialPrevProd?: Product | null;
-  initialNextProd?: Product | null;
-  initialCohortProducts?: Product[];
-}) {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-background text-foreground flex flex-col pt-[72px] sm:pt-[78px]">
-        <Navbar />
-        <main className="flex-1 w-full min-h-[calc(100vh-84px)] flex items-center justify-center">
-          <CircularLoader label="Loading product details..." size="lg" center={false} />
-        </main>
-      </div>
-    }>
-      <ProductDetailsContent
-        id={id}
-        initialTab={initialTab}
-        initialProduct={initialProduct}
-        initialSimilarProducts={initialSimilarProducts}
-        initialComments={initialComments}
-        initialAllProducts={initialAllProducts}
-        initialReviews={initialReviews}
-        initialAlternatives={initialAlternatives}
-        initialRank={initialRank}
-        initialRankLabel={initialRankLabel}
-        initialIsTopHunt={initialIsTopHunt}
-        initialPrevProd={initialPrevProd}
-        initialNextProd={initialNextProd}
-        initialCohortProducts={initialCohortProducts}
-      />
-    </Suspense>
-  );
+export default function ProductDetailPage(props: React.ComponentProps<typeof ProductDetailsContent>) {
+  return <ProductDetailsContent {...props} />;
 }
 
 
@@ -217,34 +159,35 @@ function ProductDetailsContent({
   const reduxProfile = useAppSelector((state) => state.auth.profile);
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { subscribe, publish } = useWebSocket();
 
   const productId = id || (params.id as string);
-  const isNewlyLaunched = searchParams?.get("launched") === "true";
-  const highlightedCommentId = searchParams?.get("comment");
+  const [qs, setQs] = useState<{ launched: boolean; comment: string | null }>({
+    launched: false,
+    comment: null,
+  });
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setQs({ launched: p.get("launched") === "true", comment: p.get("comment") });
+    const tab = p.get("tab");
+    const valid = ["Overview","Launches","Reviews","AI Insights","Demo Video","Alternatives","Forum","Team","Awards"]
+      .find((t) => t.toLowerCase() === tab?.toLowerCase());
+    if (valid) setActiveSubTab(valid);
+  }, []);
+  const isNewlyLaunched = qs.launched;
+  const highlightedCommentId = qs.comment;
 
   const [user, setUser] = useState<any>(reduxUser || null);
   const effectiveUserId = reduxUser?.id || reduxProfile?.id || user?.id || null;
 
-  const initialResolvedTab = useMemo(() => {
-    if (initialTab) return initialTab;
-    const tabParam = searchParams?.get("tab");
-    if (tabParam) {
-      const found = ["Overview", "Launches", "Reviews", "AI Insights", "Demo Video", "Alternatives", "Forum", "Team", "Awards", "Analytics"].find(
-        t => t.toLowerCase() === tabParam.toLowerCase()
-      );
-      if (found) return found;
-    }
-    return "Overview";
-  }, [initialTab, searchParams]);
+  const initialResolvedTab = initialTab || "Overview";
 
   const [activeSubTab, setActiveSubTab] = useState<string>(initialResolvedTab);
 
   // TanStack Query Hooks
   const { data: queryProduct, isLoading: isQueryLoading, isPending } = useProduct(productId, effectiveUserId || undefined, initialProduct);
-  const isAllProductsNeeded = activeSubTab === "Alternatives" || activeSubTab === "Launches" || initialAllProducts.length === 0;
+  const isAllProductsNeeded = activeSubTab === "Alternatives" || activeSubTab === "Launches";
   const { data: dbAllProducts = [] } = useProducts(effectiveUserId || undefined, initialAllProducts, isAllProductsNeeded);
   const toggleUpvoteMutation = useToggleUpvoteMutation();
 
@@ -392,9 +335,17 @@ function ProductDetailsContent({
 
   // ==========================================================================
   // DATA STATE
-  // ==========================================================================
-
   const [reviews, setReviews] = useState<Review[]>(initialReviews || []);
+
+  useEffect(() => {
+    const pid = (localProduct || initialProduct)?.id;
+    if (!pid || (initialReviews && initialReviews.length > 0)) return;
+    if (reviews.length === 0) {
+      getReviews(pid).then((revs) => {
+        if (Array.isArray(revs)) setReviews(revs);
+      }).catch(() => {});
+    }
+  }, [localProduct?.id, initialProduct?.id]);
   const [alternatives, setAlternatives] = useState<AlternativeProduct[]>(initialAlternatives || []);
   const [forumThreads, setForumThreads] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
@@ -406,18 +357,6 @@ function ProductDetailsContent({
     }
     return [];
   });
-
-  // Hydrate client-cached products in useEffect after initial paint
-  useEffect(() => {
-    if (allProductsList.length === 0 && typeof window !== "undefined") {
-      try {
-        const cached = getCachedProducts();
-        if (cached && cached.length > 0) {
-          setAllProductsList(cached.filter((p: Product) => p.id !== productId));
-        }
-      } catch {}
-    }
-  }, [productId, allProductsList.length]);
 
   const effectiveAllProducts = useMemo(() => {
     if (allProductsList && allProductsList.length > 0) return allProductsList;
@@ -432,15 +371,18 @@ function ProductDetailsContent({
     return getCompanyLaunches(target, effectiveAllProducts);
   }, [product, initialProduct, effectiveAllProducts]);
 
-  const similarProducts = useMemo(() => {
+  const [similarProducts, setSimilarProducts] = useState<Product[]>(initialSimilarProducts || []);
+
+  useEffect(() => {
     if (initialSimilarProducts && initialSimilarProducts.length > 0) {
-      return initialSimilarProducts;
+      setSimilarProducts(initialSimilarProducts);
+      return;
     }
     const target = product || initialProduct;
-    if (!target) return [];
-    if (effectiveAllProducts.length === 0) return [];
-    return getSimilarProducts(target, effectiveAllProducts, 3);
-  }, [product, initialProduct, effectiveAllProducts, initialSimilarProducts]);
+    if (target && effectiveAllProducts.length > 0) {
+      setSimilarProducts(getSimilarProducts(target, effectiveAllProducts, 3));
+    }
+  }, [initialSimilarProducts, product, initialProduct, effectiveAllProducts]);
   const [recordedReviewViews, setRecordedReviewViews] = useState<Record<string, boolean>>({});
 
   // ==========================================================================
@@ -529,9 +471,6 @@ function ProductDetailsContent({
 
     if (activeSubTab === "Reviews" && reviews.length === 0) {
       getReviews(targetProd.id).then(setReviews).catch(() => {});
-    } else if (activeSubTab === "Analytics") {
-      if (!shouldLoadComments) setShouldLoadComments(true);
-      if (reviews.length === 0) getReviews(targetProd.id).then(setReviews).catch(() => {});
     } else if (activeSubTab === "Alternatives" && alternatives.length === 0) {
       getAlternatives(targetProd.id, user?.id).then(setAlternatives).catch(() => {});
     } else if (activeSubTab === "Forum" && forumThreads.length === 0) {
@@ -1045,15 +984,6 @@ function ProductDetailsContent({
             {activeSubTab === "Awards" && (
               <AwardsTab product={product} productAwards={productAwards} />
             )}
-
-            {activeSubTab === "Analytics" && (
-              <AnalyticsTab
-                product={product}
-                reviews={reviews}
-                comments={comments}
-                linkClicksCount={linkClicksCount}
-              />
-            )}
           </div>
 
           {/* Sidebar */}
@@ -1255,11 +1185,16 @@ function ProductHeader({
   linkClicksCount: number;
   onVisitWebsite: () => void;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const averageRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
     : "0.0";
 
-  const launchBadge = getLaunchBadgeInfo(product, isScheduled);
+  const launchBadge = mounted ? getLaunchBadgeInfo(product, isScheduled) : null;
 
   return (
     <div className={` py-1.5 transition-colors duration-300 ${isTodaysTopHunt
@@ -1271,7 +1206,7 @@ function ProductHeader({
           <div className="flex items-start gap-4">
             {/* Logo */}
             <div className="w-14 h-14 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center">
-              <Image src={product.logo_url} alt={product.name} width={56} height={56} className="w-14 h-14 object-cover" />
+              <Favicon src={product.logo_url} websiteUrl={product.website_url} size={56} alt={product.name} className="w-14 h-14 object-cover" />
             </div>
 
             <div>
@@ -1378,7 +1313,6 @@ function TabNavigation({
     { name: "Forum", count: null },
     { name: "Team", count: null },
     { name: "Awards", count: null },
-    { name: "Analytics", count: null },
   ];
 
   return (
@@ -1559,7 +1493,7 @@ function ShareModal({
         <div className="text-center space-y-6">
           {/* Logo */}
           <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden bg-muted border border-border/80 shadow-md flex items-center justify-center">
-            <Image src={product.logo_url} alt={product.name} width={64} height={64} className="w-full h-full object-cover" />
+            <Favicon src={product.logo_url} websiteUrl={product.website_url} size={64} alt={product.name} className="w-full h-full object-cover" />
           </div>
 
           {/* Title */}

@@ -455,7 +455,7 @@ export default function EmbedBadgePage() {
 
                     {/* Badge Live Preview Box */}
                     <div className="flex-1 flex flex-col items-center justify-center p-4 bg-slate-50/90 dark:bg-slate-900/70 rounded-2xl border border-border/60 min-h-[130px]">
-                      <Image
+                      <img
                         src={previewUrl}
                         alt={style.name}
                         width={style.width}
@@ -770,7 +770,7 @@ export default function EmbedBadgePage() {
                           </button>
                         </div>
                         <div className="flex justify-center p-2">
-                          <Image
+                          <img
                             src={reviewCardUrl}
                             alt="Testimonial Card Preview"
                             width={500}

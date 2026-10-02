@@ -239,7 +239,7 @@ export default function ProductSettingsPage() {
         try {
           const profile = await getUserProfile(userId);
           isAdmin = (profile as any)?.role === 'admin';
-        } catch (e) {}
+        } catch (e) { }
 
         // Only allow owner/maker, member, or admin to view settings
         if (prod.maker_id !== userId && !isAdmin) {
@@ -684,7 +684,7 @@ export default function ProductSettingsPage() {
             src={product.logo_url || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=120&h=120&q=80"}
             alt=""
             className="w-16 h-16 rounded-2xl object-cover border border-border bg-muted flex-shrink-0"
-          width={64} height={64} />
+            width={64} height={64} />
           <div>
             <h1 className="text-3xl md:text-4xl font-medium tracking-tight text-foreground/90 leading-tight">Settings & members</h1>
             <p className="text-base text-foreground/80 leading-relaxed mt-0.5">Manage {product.name} Product Page</p>
@@ -698,7 +698,6 @@ export default function ProductSettingsPage() {
             { id: "members", label: "Members", icon: Users, bg: "bg-purple-500/10", color: "text-purple-500" },
             { id: "shoutouts", label: "Shoutouts", icon: MessageSquare, bg: "bg-emerald-500/10", color: "text-emerald-500" },
             { id: "promote", label: "Promote", icon: Megaphone, bg: "bg-sky-500/10", color: "text-sky-500" },
-            { id: "advertising", label: "Self Advertising", icon: Megaphone, bg: "bg-amber-500/10", color: "text-amber-500" },
             { id: "reviews", label: "Reviews", icon: MessageSquare, bg: "bg-rose-500/10", color: "text-rose-500" },
             { id: "notifications", label: "Notifications", icon: Bell, bg: "bg-indigo-500/10", color: "text-indigo-500" }
           ].map((tab) => {
@@ -885,8 +884,8 @@ export default function ProductSettingsPage() {
                                     }
                                   }}
                                   className={`px-2.5 py-1 text-xs font-medium rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${isAdded
-                                      ? "bg-orange-500/15 border-orange-500/30 text-orange-600 dark:text-orange-400 font-semibold"
-                                      : "bg-muted/40 hover:bg-muted border-border text-foreground hover:border-orange-500/40"
+                                    ? "bg-orange-500/15 border-orange-500/30 text-orange-600 dark:text-orange-400 font-semibold"
+                                    : "bg-muted/40 hover:bg-muted border-border text-foreground hover:border-orange-500/40"
                                     }`}
                                 >
                                   <Hash className="w-3 h-3 text-orange-500 opacity-80" />
@@ -946,8 +945,8 @@ export default function ProductSettingsPage() {
                               }
                             }}
                             className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${isSelected
-                                ? "bg-orange-500/15 border-orange-500/30 text-orange-600 dark:text-orange-400"
-                                : "bg-card hover:bg-muted border-border text-muted-foreground hover:text-foreground"
+                              ? "bg-orange-500/15 border-orange-500/30 text-orange-600 dark:text-orange-400"
+                              : "bg-card hover:bg-muted border-border text-muted-foreground hover:text-foreground"
                               }`}
                           >
                             <span>#{sugTag}</span>
@@ -970,7 +969,7 @@ export default function ProductSettingsPage() {
                           src={logoUrl}
                           alt="Product Logo Preview"
                           className="w-full h-full object-cover rounded-xl"
-                        width={48} height={48} />
+                          width={48} height={48} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-orange-500/10 to-amber-500/10 text-orange-500 font-bold text-base rounded-xl">
                           {name ? name.charAt(0).toUpperCase() : "P"}
@@ -1347,8 +1346,8 @@ export default function ProductSettingsPage() {
                           type="button"
                           onClick={() => setFundingType(item.id as any)}
                           className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${fundingType === item.id
-                              ? "bg-[#ff5733]/15 border-[#ff5733] text-foreground ring-1 ring-[#ff5733]"
-                              : "bg-card border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
+                            ? "bg-[#ff5733]/15 border-[#ff5733] text-foreground ring-1 ring-[#ff5733]"
+                            : "bg-card border-border text-muted-foreground hover:border-border/80 hover:text-foreground"
                             }`}
                         >
                           <div className="flex items-center justify-between mb-1">
@@ -1423,7 +1422,7 @@ export default function ProductSettingsPage() {
                             src={member.avatar_url || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80"}
                             alt=""
                             className="w-10 h-10 rounded-full object-cover border border-border"
-                          width={40} height={40} />
+                            width={40} height={40} />
                           <div>
                             <span className="text-xs font-semibold text-foreground block">{member.full_name}</span>
                             <span className="text-[10px] text-muted-foreground block">@{member.username}</span>
@@ -1708,7 +1707,7 @@ export default function ProductSettingsPage() {
                   <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
                     Set up CPC/CPM campaigns and dynamically get featured right below product galleries, discussions, newsletter issues, and more.
                   </p>
-                  <button 
+                  <button
                     onClick={() => setShowLaunchAdModal(true)}
                     className="bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer inline-block"
                   >
@@ -1727,24 +1726,23 @@ export default function ProductSettingsPage() {
                             <h4 className="text-xs font-mono font-semibold text-foreground mt-0.5">#{camp.id.substring(0, 8)}</h4>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider ${
-                              camp.status === "active" 
-                                ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/15" 
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider ${camp.status === "active"
+                                ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/15"
                                 : camp.status === "paused"
-                                ? "bg-amber-500/10 text-amber-500 border border-amber-500/15"
-                                : camp.status === "paused_by_admin"
-                                ? "bg-rose-500/10 text-rose-500 border border-rose-500/15"
-                                : camp.status === "pending_payment" || camp.status === "draft"
-                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25"
-                                : "bg-muted text-muted-foreground border border-border"
-                            }`}>
-                              {camp.status === "paused_by_admin" 
-                                ? "Paused by Admin" 
+                                  ? "bg-amber-500/10 text-amber-500 border border-amber-500/15"
+                                  : camp.status === "paused_by_admin"
+                                    ? "bg-rose-500/10 text-rose-500 border border-rose-500/15"
+                                    : camp.status === "pending_payment" || camp.status === "draft"
+                                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25"
+                                      : "bg-muted text-muted-foreground border border-border"
+                              }`}>
+                              {camp.status === "paused_by_admin"
+                                ? "Paused by Admin"
                                 : camp.status === "pending_payment"
-                                ? "Payment Pending"
-                                : camp.status === "draft"
-                                ? "Draft (Pending)"
-                                : camp.status}
+                                  ? "Payment Pending"
+                                  : camp.status === "draft"
+                                    ? "Draft (Pending)"
+                                    : camp.status}
                             </span>
                             <div className="flex items-center gap-2">
                               <Link
@@ -1836,7 +1834,7 @@ export default function ProductSettingsPage() {
                       ✕
                     </button>
                     <h3 className="text-base font-semibold text-foreground">Launch Self Ad Campaign</h3>
-                    
+
                     <form onSubmit={handleLaunchAd} className="space-y-3.5">
                       <div>
                         <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest block mb-1">CTA text</label>

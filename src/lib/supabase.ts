@@ -190,9 +190,9 @@ function withCache<Args extends any[], Ret>(
     const key = `${keyPrefix}_${getKeySuffix(...args)}`;
     const cached = getCachedData(key);
     if (cached !== null && (!Array.isArray(cached) || cached.length > 0)) {
-      // Revalidate silently in background if older than 30 seconds
+      // Revalidate silently in background if older than 5 minutes
       const entry = clientCache[key];
-      if (!entry || (Date.now() - entry.timestamp > 30000)) {
+      if (!entry || (Date.now() - entry.timestamp > 5 * 60 * 1000)) {
         fn(...args).then(fresh => {
           if (fresh !== undefined && fresh !== null && (!Array.isArray(fresh) || fresh.length > 0)) {
             setCachedData(key, fresh);
@@ -394,37 +394,7 @@ export async function checkProductUrlExists(
     }
   } catch (err) { }
 
-  // 2. Direct Supabase check
-  if (supabase) {
-    try {
-      const { data: dbMatches } = await supabase
-        .from('products')
-        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)')
-        .or(`website_url.ilike.%${normalizedInput}%`)
-        .limit(20);
-
-      if (dbMatches && dbMatches.length > 0) {
-        const match = dbMatches.find((p: any) => {
-          if (excludeProductId && (p.id === excludeProductId || getProductSlug(p.name) === excludeProductId)) {
-            return false;
-          }
-          if (p.is_deleted) return false;
-          const normExisting = normalizeProductUrl(p.website_url || '');
-          return normExisting === normalizedInput;
-        });
-
-        if (match) {
-          return {
-            exists: true,
-            product: match as Product,
-            message: `This product (${match.name}) has already been launched on IndiHunt!`
-          };
-        }
-      }
-    } catch (e) { }
-  }
-
-  // 3. Fallback: check local storage & mock products
+  // 2. Fallback: check local storage & mock products
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem('indihunt_products');
@@ -680,7 +650,8 @@ export function getISTStartOfDay(date: Date = new Date()): Date {
 
 /**
  * Checks if the current time falls within the daily Indian Pre-Launch Window:
- * - 8:00 PM (20:00) to 2:00 AM (02:00) IST (Indian Standard Time)
+ * - 8:00 PM (20:00) to 12:00 AM (23:59:59) IST (Indian Standard Time)
+ * - At 12:00 AM (00:00:00 IST), scheduled products go live in Today's feed.
  */
 export function isIndianPreLaunchWindow(date: Date = new Date()): boolean {
   try {
@@ -688,14 +659,14 @@ export function isIndianPreLaunchWindow(date: Date = new Date()): boolean {
     const match = istTimeStr.match(/(\d+):(\d+):(\d+)/);
     if (match) {
       const hour = parseInt(match[1], 10);
-      return hour >= 20 || hour < 2;
+      return hour >= 20 && hour < 24;
     }
   } catch {
     const hour = date.getHours();
-    return hour >= 20 || hour < 2;
+    return hour >= 20 && hour < 24;
   }
   const hour = date.getHours();
-  return hour >= 20 || hour < 2;
+  return hour >= 20 && hour < 24;
 }
 
 export const isGlobalPreLaunchWindow = isIndianPreLaunchWindow;
@@ -739,26 +710,8 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
     }
   }
 
-  // 2. Direct Supabase query during SSR / Server execution (0ms network loopback overhead)
-  if (typeof window === 'undefined' && supabase) {
-    try {
-      const { data: dbProducts } = await supabase
-        .from('products')
-        .select('*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)')
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false });
-
-      if (dbProducts && dbProducts.length > 0) {
-        if (!currentUserId) {
-          setRedisCache('public_products', dbProducts, 300).catch(() => { });
-        }
-        return dbProducts as Product[];
-      }
-    } catch { }
-  }
-
   try {
-    const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}&limit=500` : '?limit=500';
+    const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}&limit=300` : '?limit=300';
     const res = await secureApiFetch<Product[]>(`/t/products${query}`);
     if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
       if (!currentUserId) {
@@ -1161,8 +1114,10 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
         const products = await getProducts();
         const nextProducts = [prodData, ...products];
         localStorage.setItem('indihunt_products', JSON.stringify(nextProducts));
-        const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
-        localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, prodData.id]));
+        if (prodData.has_upvoted) {
+          const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
+          localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, prodData.id]));
+        }
       }
       return prodData;
     } else if (res && !res.success) {
@@ -1187,23 +1142,30 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
       throw new Error(`This product (${existing.name}) has already been launched on IndiHunt!`);
     }
 
+    const isScheduled = !!(
+      product.status === 'scheduled' ||
+      (product.scheduled_for && new Date(product.scheduled_for) > new Date())
+    );
+
     const newProduct: Product = {
       ...product,
       id: `prod-${Date.now()}`,
       maker_id: userId,
       maker: profile,
-      upvotes_count: 1, // Start with self-upvote
+      upvotes_count: isScheduled ? 0 : 1, // Start with self-upvote only for live launches
       comments_count: 0,
       created_at: new Date().toISOString(),
-      has_upvoted: true
+      has_upvoted: !isScheduled
     };
 
     const nextProducts = [newProduct, ...products];
     localStorage.setItem('indihunt_products', JSON.stringify(nextProducts));
 
-    // Set self-upvote in votes
-    const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
-    localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, newProduct.id]));
+    // Set self-upvote in votes only for live launches
+    if (!isScheduled) {
+      const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
+      localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, newProduct.id]));
+    }
 
     return newProduct;
   }
@@ -1319,10 +1281,29 @@ async function getUserProfileRaw(userId: string) {
   try {
     const res = await secureApiFetch<Profile>(`/t/profiles?userId=${encodeURIComponent(userId)}`);
     if (res && res.success && res.data) {
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(`ih_profile_${userId}`, JSON.stringify(res.data));
+          localStorage.setItem('indihunt_profile', JSON.stringify(res.data));
+        } catch (e) { }
+      }
       return res.data;
     }
   } catch (err) {
     // fallback
+  }
+
+  // LocalStorage check for existing profile
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem(`ih_profile_${userId}`) || localStorage.getItem('indihunt_profile');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && (parsed.id === userId || !parsed.id)) {
+          return { ...parsed, id: userId };
+        }
+      }
+    } catch (e) { }
   }
 
   const allUsers = await getAllUsersAdmin();
@@ -1341,10 +1322,23 @@ async function getUserProfileByUsernameRaw(username: string) {
   try {
     const res = await secureApiFetch<Profile>(`/t/profiles?username=${encodeURIComponent(cleaned)}`);
     if (res && res.success && res.data) {
+      if (typeof window !== "undefined" && res.data.id) {
+        try {
+          localStorage.setItem(`ih_profile_${res.data.id}`, JSON.stringify(res.data));
+        } catch (e) { }
+      }
       return res.data;
     }
   } catch (err) {
     // fallback
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const allProfiles: Profile[] = JSON.parse(localStorage.getItem('indihunt_profiles') || '[]');
+      const foundLocal = allProfiles.find(p => p.username?.toLowerCase() === cleaned);
+      if (foundLocal) return foundLocal;
+    } catch (e) { }
   }
 
   const found = Object.values(MOCK_PROFILES).find(p => p.username.toLowerCase() === cleaned);
@@ -1357,12 +1351,25 @@ export async function updateUserProfile(userId: string, updates: any) {
   clearCache(`user_profile_${userId}`);
   clearCache('user_profile_by_username');
 
+  // Normalize website / website_url in updates
+  const cleanUpdates = { ...updates };
+  if ('website_url' in cleanUpdates) {
+    if (!cleanUpdates.website) {
+      cleanUpdates.website = cleanUpdates.website_url;
+    }
+    delete cleanUpdates.website_url;
+  }
+
   // Helper to update local storage profile cache
   const syncLocalStorageProfile = (baseProfile: any) => {
     if (typeof window === "undefined") return baseProfile;
     try {
-      const merged = { ...(baseProfile || {}), ...updates, id: userId };
+      const merged = { ...(baseProfile || {}), ...cleanUpdates, id: userId };
+      const web = merged.website || merged.website_url || null;
+      merged.website = web;
+      merged.website_url = web;
       localStorage.setItem(`ih_profile_${userId}`, JSON.stringify(merged));
+      localStorage.setItem(`indihunt_profile`, JSON.stringify(merged));
 
       const profiles: Profile[] = JSON.parse(localStorage.getItem('indihunt_profiles') || '[]');
       const idx = profiles.findIndex(p => p.id === userId || (merged.username && p.username === merged.username));
@@ -1383,7 +1390,7 @@ export async function updateUserProfile(userId: string, updates: any) {
   try {
     const res = await secureApiFetch<Profile>('/t/profiles', {
       method: 'PUT',
-      body: JSON.stringify({ userId, updates }),
+      body: JSON.stringify({ userId, updates: cleanUpdates }),
     });
     if (res && res.success && res.data) {
       resultData = res.data;
@@ -1396,7 +1403,7 @@ export async function updateUserProfile(userId: string, updates: any) {
     let localCache: any = null;
     if (typeof window !== "undefined") {
       try {
-        const raw = localStorage.getItem(`ih_profile_${userId}`);
+        const raw = localStorage.getItem(`ih_profile_${userId}`) || localStorage.getItem('indihunt_profile');
         if (raw) localCache = JSON.parse(raw);
       } catch (e) { }
     }
@@ -1484,91 +1491,124 @@ export function getCategorySlug(category: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DETAIL_QUERY_COLUMNS =
+  '*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)';
+
 async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Product | null> {
   if (!id) return null;
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-  const normalizedKey = id.toLowerCase();
+  const normalizedKey = id.toLowerCase().trim();
 
   // 1. High-speed cache check for public/guest SSR (< 1ms)
   if (!currentUserId) {
     const cachedItem = await getRedisCache<Product>(`public_product_${normalizedKey}`);
     if (cachedItem) return cachedItem;
+  }
 
-    // Check if we already have the public products list in Redis / Memory
-    const cachedList = await getRedisCache<Product[]>('public_products');
-    if (cachedList && cachedList.length > 0) {
-      const match = cachedList.find(p => p.id === id || getProductSlug(p.name) === normalizedKey);
-      if (match) {
-        setRedisCache(`public_product_${normalizedKey}`, match, 120).catch(() => { });
-        setRedisCache(`public_product_${match.id}`, match, 120).catch(() => { });
-        return match;
+  // 2. Direct Supabase Query when running on server (avoids SSR self-fetch network loops)
+  if (supabase && typeof window === 'undefined') {
+    try {
+      if (UUID_REGEX.test(id)) {
+        const { data } = await supabase
+          .from('products')
+          .select(DETAIL_QUERY_COLUMNS)
+          .eq('id', id)
+          .eq('is_deleted', false)
+          .maybeSingle();
+        if (data) {
+          const prod = data as Product;
+          if (!currentUserId) {
+            setRedisCache(`public_product_${normalizedKey}`, prod, 300).catch(() => {});
+            setRedisCache(`public_product_${prod.id}`, prod, 300).catch(() => {});
+          }
+          return prod;
+        }
       }
+
+      // If not UUID or not found by ID, query by slug/name directly
+      const { data: prods } = await supabase
+        .from('products')
+        .select(DETAIL_QUERY_COLUMNS)
+        .eq('is_deleted', false)
+        .limit(500);
+
+      if (prods && prods.length > 0) {
+        const found = prods.find((p: any) =>
+          p.id === id ||
+          p.id?.toLowerCase() === normalizedKey ||
+          getProductSlug(p.name).toLowerCase() === normalizedKey ||
+          p.name?.toLowerCase().trim() === normalizedKey ||
+          p.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') === normalizedKey ||
+          p.name?.toLowerCase().replace(/[^a-z0-9]+/g, '') === normalizedKey.replace(/[^a-z0-9]+/g, '') ||
+          ((p as any).slug && (p as any).slug.toLowerCase() === normalizedKey)
+        );
+        if (found) {
+          const prod = found as Product;
+          if (!currentUserId) {
+            const productSlug = getProductSlug(prod.name);
+            setRedisCache(`public_product_${normalizedKey}`, prod, 300).catch(() => {});
+            setRedisCache(`public_product_${prod.id}`, prod, 300).catch(() => {});
+            if (productSlug !== normalizedKey) {
+              setRedisCache(`public_product_${productSlug}`, prod, 300).catch(() => {});
+            }
+          }
+          return prod;
+        }
+      }
+    } catch (e) {
+      console.error('Direct Supabase fetch error in getProductByIdRaw:', e);
     }
   }
 
-  // 2. Direct Supabase query during SSR / Server execution (0ms network loopback overhead)
-  if (typeof window === 'undefined' && supabase) {
-    try {
-      const DETAIL_COLUMNS = '*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)';
-      let dbProduct: any = null;
-      if (isUUID) {
-        const { data } = await supabase
-          .from('products')
-          .select(DETAIL_COLUMNS)
-          .eq('id', id)
-          .maybeSingle();
-        dbProduct = data;
-      }
-      if (!dbProduct) {
-        const decodedId = decodeURIComponent(id).toLowerCase().trim();
-        const { data: matched } = await supabase
-          .from('products')
-          .select(DETAIL_COLUMNS)
-          .or(`slug.eq.${normalizedKey},name.ilike.${decodedId}`)
-          .limit(1)
-          .maybeSingle();
-        dbProduct = matched;
-      }
-      if (dbProduct) {
-        if (currentUserId) {
-          const { data: upvote } = await supabase
-            .from('upvotes')
-            .select('id')
-            .eq('product_id', dbProduct.id)
-            .eq('user_id', currentUserId)
-            .maybeSingle();
-          dbProduct.has_upvoted = !!upvote;
-        } else {
-          dbProduct.has_upvoted = false;
-        }
-        return dbProduct as Product;
-      }
-    } catch { }
-  }
-
+  // 3. Try secureApiFetch (client-side or server fallback)
   try {
     const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}` : '';
     const res = await secureApiFetch<Product>(`/t/products/${encodeURIComponent(id)}${query}`);
     if (res && res.data && res.data.id) {
       if (!currentUserId) {
         const productSlug = getProductSlug(res.data.name);
-        setRedisCache(`public_product_${normalizedKey}`, res.data, 120).catch(() => { });
-        setRedisCache(`public_product_${res.data.id}`, res.data, 120).catch(() => { });
+        setRedisCache(`public_product_${normalizedKey}`, res.data, 300).catch(() => { });
+        setRedisCache(`public_product_${res.data.id}`, res.data, 300).catch(() => { });
         if (productSlug !== normalizedKey) {
-          setRedisCache(`public_product_${productSlug}`, res.data, 120).catch(() => { });
+          setRedisCache(`public_product_${productSlug}`, res.data, 300).catch(() => { });
         }
       }
       return res.data;
     }
   } catch { }
 
-  const products = await getProducts(currentUserId);
-  return products.find(p =>
-    p.id === id ||
-    getProductSlug(p.name).toLowerCase() === normalizedKey ||
-    ((p as any).slug && (p as any).slug.toLowerCase() === normalizedKey) ||
-    p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === normalizedKey
-  ) || null;
+  // 4. Direct Supabase Query as client-side fallback if secureApiFetch failed
+  if (supabase) {
+    try {
+      if (UUID_REGEX.test(id)) {
+        const { data } = await supabase
+          .from('products')
+          .select(DETAIL_QUERY_COLUMNS)
+          .eq('id', id)
+          .eq('is_deleted', false)
+          .maybeSingle();
+        if (data) return data as Product;
+      }
+    } catch {}
+  }
+
+  // 5. LocalStorage Fallback for local offline dev
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('indihunt_products');
+      if (raw) {
+        const prods: Product[] = JSON.parse(raw);
+        return prods.find(p =>
+          p.id === id ||
+          getProductSlug(p.name).toLowerCase() === normalizedKey ||
+          ((p as any).slug && (p as any).slug.toLowerCase() === normalizedKey) ||
+          p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === normalizedKey
+        ) || null;
+      }
+    } catch { }
+  }
+
+  return null;
 }
 
 export const getProductById = reactCache(getProductByIdRaw);
@@ -1605,24 +1645,6 @@ async function getThreadsRaw(currentUserId?: string): Promise<Thread[]> {
     if (cachedThreads && Array.isArray(cachedThreads) && cachedThreads.length > 0) {
       return cachedThreads;
     }
-  }
-
-  // 2. Direct Supabase query during SSR / Server execution (0ms network loopback overhead)
-  if (typeof window === 'undefined' && supabase) {
-    try {
-      const { data: dbThreads } = await supabase
-        .from('threads')
-        .select('*, author:profiles!author_id(*)')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (dbThreads && dbThreads.length > 0) {
-        if (!currentUserId) {
-          setRedisCache('public_threads', dbThreads, 60).catch(() => { });
-        }
-        return dbThreads as Thread[];
-      }
-    } catch { }
   }
 
   try {
@@ -2184,18 +2206,6 @@ export async function uploadImage(
     return null;
   }
 
-  // Ensure storage bucket exists
-  try {
-    const { data: buckets } = await supabase.storage.listBuckets();
-    if (buckets && !buckets.some(b => b.name === bucketName)) {
-      await supabase.storage.createBucket(bucketName, {
-        public: true
-      });
-    }
-  } catch (err) {
-    console.warn("Storage bucket auto-creation check failed or skipped:", err);
-  }
-
   const { data, error } = await supabase.storage
     .from(bucketName)
     .upload(finalPath, fileToUpload, {
@@ -2277,7 +2287,8 @@ export async function addReview(
     alternatives_vs?: string;
   }
 ): Promise<Review | null> {
-  clearCache();
+  clearCache(`reviews_${productId}`);
+  clearCache('reviews');
   const profile = {
     id: userId,
     username: "reviewer",
@@ -3928,29 +3939,63 @@ Product Hunt resets at 12:01 AM PST (which is 12:31 PM IST). You want to launch 
 ];
 
 async function getStoriesRaw(search?: string): Promise<Story[]> {
+  let apiStories: Story[] = [];
   try {
     const url = search ? `/t/stories?search=${encodeURIComponent(search)}` : `/t/stories`;
     const res = await secureApiFetch<Story[]>(url);
-    if (res && res.success && Array.isArray(res.data)) {
-      return res.data;
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      apiStories = res.data;
     }
   } catch (err) {
     // fallback
   }
 
+  const mergedMap = new Map<string, Story>();
+
+  // 1. Read local user stories from localStorage
   if (typeof window !== 'undefined') {
-    const cached = localStorage.getItem('indihunt_stories') || '[]';
-    let list: Story[] = JSON.parse(cached);
-    if (list.length === 0) {
-      list = [...DEFAULT_STORIES];
-      localStorage.setItem('indihunt_stories', JSON.stringify(list));
-    }
-    if (search) {
-      list = list.filter(s => s.title.toLowerCase().includes(search.toLowerCase()));
-    }
-    return list;
+    try {
+      const cached = localStorage.getItem('indihunt_stories');
+      if (cached) {
+        const localList: Story[] = JSON.parse(cached);
+        if (Array.isArray(localList)) {
+          localList.forEach(s => {
+            if (s && s.id) mergedMap.set(s.id, s);
+          });
+        }
+      }
+    } catch {}
   }
-  return [];
+
+  // 2. Add API/DB stories
+  apiStories.forEach(s => {
+    if (s && s.id) mergedMap.set(s.id, s);
+  });
+
+  // 3. Add Mock DEFAULT_STORIES
+  DEFAULT_STORIES.forEach(s => {
+    if (s && s.id && !mergedMap.has(s.id)) {
+      mergedMap.set(s.id, s);
+    }
+  });
+
+  let result = Array.from(mergedMap.values());
+
+  if (search) {
+    const q = search.toLowerCase();
+    result = result.filter(s =>
+      s.title?.toLowerCase().includes(q) ||
+      (s.excerpt ? s.excerpt.toLowerCase().includes(q) : false)
+    );
+  }
+
+  if (typeof window !== 'undefined' && result.length > 0) {
+    try {
+      localStorage.setItem('indihunt_stories', JSON.stringify(result));
+    } catch {}
+  }
+
+  return result;
 }
 
 export const getStories = withCache('stories', getStoriesRaw);
@@ -4391,8 +4436,37 @@ export async function cancelProductDeletion(productId: string): Promise<boolean>
 }
 
 export function getCachedStories(search?: string): Story[] {
-  const key = `stories_${search || ''}`;
-  return getCachedData(key) || [];
+  const mergedMap = new Map<string, Story>();
+
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem('indihunt_stories');
+      if (cached) {
+        const localList: Story[] = JSON.parse(cached);
+        if (Array.isArray(localList)) {
+          localList.forEach(s => {
+            if (s && s.id) mergedMap.set(s.id, s);
+          });
+        }
+      }
+    } catch {}
+  }
+
+  DEFAULT_STORIES.forEach(s => {
+    if (s && s.id && !mergedMap.has(s.id)) {
+      mergedMap.set(s.id, s);
+    }
+  });
+
+  let result = Array.from(mergedMap.values());
+  if (search) {
+    const q = search.toLowerCase();
+    result = result.filter(s =>
+      s.title?.toLowerCase().includes(q) ||
+      (s.excerpt ? s.excerpt.toLowerCase().includes(q) : false)
+    );
+  }
+  return result;
 }
 
 // --- Self-Serve Advertising Platform Types & DB Operations ---
@@ -4570,64 +4644,32 @@ export async function deleteAdCampaign(campaignId: string): Promise<boolean> {
 }
 
 export async function getActiveAdsPool(excludeProductId?: string): Promise<AdCampaign[]> {
-  const adsCacheKey = 'public_active_ads_pool';
+  const key = 'public_active_ads_pool';
+  const valid = (list: AdCampaign[]) => list.filter(c =>
+    c.status === 'active' &&
+    !(c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) &&
+    (!excludeProductId || c.product_id !== excludeProductId));
 
-  // L1/L2 cache check first
-  const cachedAds = await getRedisCache<AdCampaign[]>(adsCacheKey);
-  if (cachedAds && Array.isArray(cachedAds) && cachedAds.length > 0) {
-    const valid = cachedAds.filter(c => {
-      if (c.status !== 'active') return false;
-      if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) return false;
-      return excludeProductId ? c.product_id !== excludeProductId : true;
-    });
-    if (valid.length > 0) return valid;
-  }
+  const cached = await getRedisCache<AdCampaign[]>(key);
+  if (Array.isArray(cached)) return valid(cached);
 
-  // === PERF FIX: Direct Supabase query on server (avoids self HTTP loopback roundtrip) ===
-  if (typeof window === 'undefined' && supabase) {
-    try {
-      const { data: dbCampaigns } = await supabase
-        .from('ad_campaigns')
-        .select('*')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false });
-      if (dbCampaigns && dbCampaigns.length > 0) {
-        setRedisCache(adsCacheKey, dbCampaigns, 120).catch(() => {});
-        const valid = (dbCampaigns as AdCampaign[]).filter(c => {
-          if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) return false;
-          return excludeProductId ? c.product_id !== excludeProductId : true;
-        });
-        return valid;
-      }
-      // No active ads — still cache empty to avoid repeated DB hits
-      setRedisCache(adsCacheKey, [], 60).catch(() => {});
-      return [];
-    } catch { }
-  }
-
-  // Client-side / fallback: API call
   try {
     const res = await secureApiFetch<AdCampaign[]>('/t/ads/campaigns?all=true');
-    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-      setRedisCache(adsCacheKey, res.data, 120).catch(() => {});
-      const valid = (res.data as AdCampaign[]).filter(c => {
-        if (c.status !== 'active') return false;
-        if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) return false;
-        return excludeProductId ? c.product_id !== excludeProductId : true;
-      });
-      return valid;
+    if (res && res.success && Array.isArray(res.data)) {
+      setRedisCache(key, res.data, 120).catch(() => {});
+      return valid(res.data);
     }
-  } catch (e) { }
+  } catch {}
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
     try {
       const list: AdCampaign[] = JSON.parse(cached);
-      const valid = list.filter(c => !c.target_impressions || (c.delivered_impressions || 0) < c.target_impressions);
-      if (valid.length !== list.length) {
-        localStorage.setItem('indihunt_ad_campaigns', JSON.stringify(valid));
+      const validList = list.filter(c => !c.target_impressions || (c.delivered_impressions || 0) < c.target_impressions);
+      if (validList.length !== list.length) {
+        localStorage.setItem('indihunt_ad_campaigns', JSON.stringify(validList));
       }
-      const active = valid.filter(c => c.status === 'active');
+      const active = validList.filter(c => c.status === 'active');
       return excludeProductId ? active.filter(c => c.product_id !== excludeProductId) : active;
     } catch (e) { }
   }
@@ -5142,10 +5184,10 @@ export const MOCK_NOTIFICATIONS: NotificationItem[] = [
   },
 ];
 
-export async function getNotifications(userId?: string): Promise<NotificationItem[]> {
+export async function getNotifications(userId?: string, limit = 20): Promise<NotificationItem[]> {
   if (userId) {
     try {
-      const res = await secureApiFetch<any[]>(`/t/notifications?userId=${encodeURIComponent(userId)}&limit=50`);
+      const res = await secureApiFetch<any[]>(`/t/notifications?userId=${encodeURIComponent(userId)}&limit=${limit}`);
       const rows = res?.data;
       if (rows && Array.isArray(rows) && rows.length > 0) {
         const mapped = rows.map((n: any) => {
@@ -5197,10 +5239,20 @@ export async function getNotifications(userId?: string): Promise<NotificationIte
     }
   }
 
-  // Only show mock notifications to guests (no userId)
-  if (!userId) return MOCK_NOTIFICATIONS;
   return [];
 }
+
+export async function getUnreadNotificationsCount(userId?: string): Promise<number> {
+  if (!userId) return 0;
+  try {
+    const res = await secureApiFetch<{ count: number }>(`/t/notifications?userId=${encodeURIComponent(userId)}&count_only=true`);
+    if (res?.success && typeof res?.data?.count === 'number') {
+      return res.data.count;
+    }
+  } catch { }
+  return 0;
+}
+
 
 
 export async function markNotificationAsRead(notifId: string, userId?: string): Promise<boolean> {
@@ -5973,67 +6025,59 @@ export async function getAllAdCampaignsAllUsers(): Promise<AdCampaign[]> {
   return [];
 }
 
-export async function getTopHuntersData(timeframe: string = "all_time"): Promise<Hunter[]> {
+export async function getTopHuntersData(timeframe: string = "all_time", existingProducts?: Product[]): Promise<Hunter[]> {
   const cacheKey = `public_top_hunters_${timeframe}_v2`;
   const cachedHunters = await getRedisCache<Hunter[]>(cacheKey);
   if (cachedHunters && Array.isArray(cachedHunters) && cachedHunters.length > 0) {
     return cachedHunters;
   }
 
-  // === PERF FIX: Direct Supabase query on server (avoids self HTTP loopback roundtrip) ===
-  if (typeof window === 'undefined' && supabase) {
-    try {
-      const now = Date.now();
-      let timeLimitMs = 0;
-      if (timeframe === 'weekly' || timeframe === 'last_week') timeLimitMs = 7 * 86400000;
-      else if (timeframe === 'monthly' || timeframe === 'last_month') timeLimitMs = 30 * 86400000;
-      else if (timeframe === 'yearly' || timeframe === 'last_year') timeLimitMs = 365 * 86400000;
+  const now = Date.now();
+  let timeLimitMs = 0;
+  if (timeframe === 'weekly' || timeframe === 'last_week') timeLimitMs = 7 * 86400000;
+  else if (timeframe === 'monthly' || timeframe === 'last_month') timeLimitMs = 30 * 86400000;
+  else if (timeframe === 'yearly' || timeframe === 'last_year') timeLimitMs = 365 * 86400000;
 
-      const hunterMap = new Map<string, Hunter>();
+  // === OPTIMIZATION: If products already provided, compute directly without DB query ===
+  if (existingProducts && existingProducts.length > 0) {
+    let prods = existingProducts;
+    if (timeLimitMs > 0) {
+      prods = prods.filter(p => p.created_at && (now - new Date(p.created_at).getTime()) <= timeLimitMs);
+    }
+    const hunterMap = new Map<string, Hunter>();
+    prods.forEach((p: any) => {
+      const maker = p.maker || (p.maker_id ? { id: p.maker_id } : null);
+      if (!maker) return;
+      const key = (maker.username || maker.id || p.maker_id || '').toLowerCase();
+      if (!key) return;
+      const existing = hunterMap.get(key) || {
+        id: maker.id || p.maker_id || key,
+        name: maker.full_name || maker.username || 'Indie Maker',
+        username: maker.username || key,
+        avatar_url: maker.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        bio: maker.bio || maker.headline || 'IndiHunt Creator',
+        hunts_count: 0, upvotes_count: 0, comments_count: 0,
+        first_places_count: 0, avg_upvotes: 0, avg_comments: 0,
+        is_verified: !!maker.is_verified
+      };
+      existing.hunts_count += 1;
+      existing.upvotes_count += (p.upvotes_count || 0);
+      existing.comments_count += (p.comments_count || 0);
+      if (p.featured || (p.quality_score && p.quality_score >= 75)) existing.first_places_count += 1;
+      hunterMap.set(key, existing);
+    });
 
-      const { data: dbProducts } = await supabase
-        .from('products')
-        .select('id, maker_id, upvotes_count, comments_count, featured, quality_score, created_at, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, karma_points, is_verified)')
-        .order('created_at', { ascending: false })
-        .limit(1000);
-
-      if (dbProducts && dbProducts.length > 0) {
-        (dbProducts as any[]).forEach((p: any) => {
-          if (timeLimitMs > 0 && p.created_at && (now - new Date(p.created_at).getTime()) > timeLimitMs) return;
-          const maker = p.maker || (p.maker_id ? { id: p.maker_id } : null);
-          if (!maker) return;
-          const key = (maker.username || maker.id || p.maker_id || '').toLowerCase();
-          if (!key) return;
-          const existing = hunterMap.get(key) || {
-            id: maker.id || p.maker_id || key,
-            name: maker.full_name || maker.username || 'Indie Maker',
-            username: maker.username || key,
-            avatar_url: maker.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-            bio: maker.bio || maker.headline || 'IndiHunt Creator',
-            hunts_count: 0, upvotes_count: 0, comments_count: 0,
-            first_places_count: 0, avg_upvotes: 0, avg_comments: 0,
-            is_verified: !!maker.is_verified
-          };
-          existing.hunts_count += 1;
-          existing.upvotes_count += (p.upvotes_count || 0);
-          existing.comments_count += (p.comments_count || 0);
-          if (p.featured || (p.quality_score && p.quality_score >= 75)) existing.first_places_count += 1;
-          hunterMap.set(key, existing);
-        });
-      }
-
-      if (hunterMap.size > 0) {
-        const serverList = Array.from(hunterMap.values());
-        serverList.forEach(h => {
-          h.avg_upvotes = h.hunts_count > 0 ? Math.round(h.upvotes_count / h.hunts_count) : h.upvotes_count;
-          h.avg_comments = h.hunts_count > 0 ? Math.round(h.comments_count / h.hunts_count) : h.comments_count;
-        });
-        serverList.sort((a, b) => b.hunts_count - a.hunts_count || b.upvotes_count - a.upvotes_count);
-        const top100 = serverList.slice(0, 100);
-        setRedisCache(cacheKey, top100, 300).catch(() => {});
-        return top100;
-      }
-    } catch { }
+    if (hunterMap.size > 0) {
+      const serverList = Array.from(hunterMap.values());
+      serverList.forEach(h => {
+        h.avg_upvotes = h.hunts_count > 0 ? Math.round(h.upvotes_count / h.hunts_count) : h.upvotes_count;
+        h.avg_comments = h.hunts_count > 0 ? Math.round(h.comments_count / h.hunts_count) : h.comments_count;
+      });
+      serverList.sort((a, b) => b.hunts_count - a.hunts_count || b.upvotes_count - a.upvotes_count);
+      const top100 = serverList.slice(0, 100);
+      setRedisCache(cacheKey, top100, 300).catch(() => {});
+      return top100;
+    }
   }
 
   // Client-side or server-cache-miss fallback via API
@@ -6044,12 +6088,6 @@ export async function getTopHuntersData(timeframe: string = "all_time"): Promise
       return res.data;
     }
   } catch { }
-
-  const now = Date.now();
-  let timeLimitMs = 0;
-  if (timeframe === "weekly" || timeframe === "last_week") timeLimitMs = 7 * 86400000;
-  else if (timeframe === "monthly" || timeframe === "last_month") timeLimitMs = 30 * 86400000;
-  else if (timeframe === "yearly" || timeframe === "last_year") timeLimitMs = 365 * 86400000;
 
   // Load products to accurately calculate per-maker statistics
   let products = getCachedProducts();
@@ -7133,97 +7171,11 @@ export async function deleteLaunchTag(id: string): Promise<{ success: boolean; e
 
 // Get scheduled product counts grouped by date (YYYY-MM-DD)
 export async function getScheduledProductCounts(): Promise<Record<string, number>> {
-  // 1. Primary path: API route
   try {
     const res = await secureApiFetch<Record<string, number>>('/t/products/scheduled-counts');
-    if (res && res.data && typeof res.data === 'object' && Object.keys(res.data).length > 0) {
-      return res.data;
-    }
-  } catch (e) { }
-
-  const counts: Record<string, number> = {};
-
-  const recordProductDate = (dateVal: string | Date | undefined) => {
-    if (!dateVal) return;
-    try {
-      const dateKeys = new Set<string>();
-      if (typeof dateVal === 'string') {
-        const match = dateVal.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-          dateKeys.add(`${match[1]}-${match[2]}-${match[3]}`);
-        }
-      }
-      const d = new Date(dateVal);
-      if (!isNaN(d.getTime())) {
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        dateKeys.add(`${yyyy}-${mm}-${dd}`);
-
-        // Also UTC date representation
-        const utcYyyy = d.getUTCFullYear();
-        const utcMm = String(d.getUTCMonth() + 1).padStart(2, '0');
-        const utcDd = String(d.getUTCDate()).padStart(2, '0');
-        dateKeys.add(`${utcYyyy}-${utcMm}-${utcDd}`);
-      }
-
-      dateKeys.forEach((key) => {
-        counts[key] = (counts[key] || 0) + 1;
-      });
-    } catch {}
-  };
-
-  // 2. Direct Supabase query during SSR / fallback
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, scheduled_for, status, is_deleted')
-        .eq('is_deleted', false)
-        .not('scheduled_for', 'is', null);
-
-      if (!error && data && data.length > 0) {
-        data.forEach((p: any) => {
-          if (!p.is_deleted && p.scheduled_for) {
-            recordProductDate(p.scheduled_for);
-          }
-        });
-        if (Object.keys(counts).length > 0) return counts;
-      }
-    } catch (e) { }
-  }
-
-  // 2. Fallback via getProducts API
-  try {
-    const prods = await getProducts();
-    if (prods && prods.length > 0) {
-      prods.forEach((p: any) => {
-        if (!p.is_deleted && p.scheduled_for) {
-          recordProductDate(p.scheduled_for);
-        }
-      });
-      if (Object.keys(counts).length > 0) return counts;
-    }
-  } catch (e) { }
-
-  // 3. Local storage fallback
-  if (typeof window !== 'undefined') {
-    try {
-      const local = localStorage.getItem('indihunt_products');
-      if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((p: any) => {
-            if (!p.is_deleted && p.scheduled_for) {
-              recordProductDate(p.scheduled_for);
-            }
-          });
-        }
-      }
-    } catch (e) { }
-  }
-
-  return counts;
+    if (res && res.data && typeof res.data === 'object') return res.data;
+  } catch {}
+  return {};
 }
 
 

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -15,34 +15,34 @@ export async function GET(request: NextRequest) {
 
     if (userId) {
       const supabase = await createServerSupabaseClient();
-      const { data: reviews, error } = await supabase
+      const { data, error } = await supabase
         .from('reviews')
-        .select('*, product:products(*, maker:profiles!maker_id(*))')
+        .select('*, product:products(id,name,tagline,logo_url)')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
+        .order('created_at', { ascending: false })
+        .limit(100);
       if (error) return apiFailure(error.message, 500);
-      return apiSuccessSecure(reviews || []);
+      return apiSuccessSecure(data || []);
     }
 
     if (!productId) return apiFailure('productId or userId is required', 400);
 
     const cacheKey = `reviews:product:${productId}`;
     const cached = await getCachedData<any[]>(cacheKey);
-    if (cached) return apiSuccessSecure(cached);
+    if (cached) return apiSuccessSecure(cached, 200, PUBLIC_CACHE_HEADERS);
 
     const supabase = await createServerSupabaseClient();
-    const { data: reviews, error } = await supabase
+    const { data, error } = await supabase
       .from('reviews')
       .select('*, user:profiles(id, username, full_name, avatar_url, headline, karma_points, is_maker)')
       .eq('product_id', productId)
-      .order('created_at', { ascending: false });
-
+      .order('created_at', { ascending: false })
+      .limit(100);
     if (error) return apiFailure(error.message, 500);
 
-    const list = reviews || [];
+    const list = data || [];
     await setCachedData(cacheKey, list, 300);
-    return apiSuccessSecure(list);
+    return apiSuccessSecure(list, 200, PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch reviews', 500);
   }
@@ -73,7 +73,6 @@ export async function POST(request: NextRequest) {
         user_id: uId,
         rating,
         body: reviewBody || null,
-        title: title || null,
         easy_to_use: easy_to_use ?? null,
         customizable: customizable ?? null,
         reliable: reliable ?? null,
@@ -88,6 +87,10 @@ export async function POST(request: NextRequest) {
     if (error) return apiFailure(error.message, 500);
 
     await invalidateCache(`reviews:product:${pId}`);
+    try {
+      const { revalidateTag } = await import('next/cache');
+      (revalidateTag as any)(`reviews-${pId}`, 'max');
+    } catch {}
     return apiSuccessSecure(review, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to post review', 500);
@@ -115,17 +118,19 @@ export async function PATCH(request: NextRequest) {
 // DELETE /t/reviews?id=xxx
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    const id = new URL(request.url).searchParams.get('id');
     if (!id) return apiFailure('id is required', 400);
 
     const supabase = await createServerSupabaseClient();
-    const { error } = await supabase.from('reviews').delete().eq('id', id);
+    const { data: deleted, error } = await supabase
+      .from('reviews').delete().eq('id', id).select('product_id').maybeSingle();
     if (error) return apiFailure(error.message, 500);
 
+    if (deleted?.product_id) await invalidateCache(`reviews:product:${deleted.product_id}`);
     return apiSuccessSecure({ success: true });
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to delete review', 500);
   }
 }
+
 

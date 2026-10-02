@@ -129,6 +129,7 @@ export default function Footer() {
             </h4>
             <Link
               href="/home"
+              prefetch={false}
               className="text-xs sm:text-sm font-bold text-[#ff5a00] hover:text-orange-400 flex items-center gap-1.5 transition-colors group"
             >
               <span>CEO's Letter</span>
@@ -146,6 +147,7 @@ export default function Footer() {
                     <li key={link.label}>
                       <Link
                         href={link.href}
+                        prefetch={false}
                         className={`text-xs sm:text-sm hover:text-orange-500 transition-colors ${link.highlight ? "font-bold text-white hover:underline" : "text-white/90"
                           }`}
                       >
@@ -201,6 +203,7 @@ export default function Footer() {
               <Link
                 key={page.label}
                 href={page.href}
+                prefetch={false}
                 className="text-xs sm:text-sm font-medium text-white hover:text-orange-500 transition-colors whitespace-nowrap"
               >
                 {page.label}

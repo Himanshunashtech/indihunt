@@ -590,7 +590,7 @@ export default function BestProductsCatchAllPage() {
                             className="relative hidden sm:block"
                             title="View discussions"
                           >
-                            <div className="group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl border-2 border-slate-200 dark:border-slate-800 bg-card hover:border-[#ff5733] transition-all duration-300">
+                            <div className="group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl bg-muted/65 transition-all duration-300">
                               <MessageSquare className="size-3.5 stroke-[#344054] dark:stroke-slate-400 group-hover/accessory:stroke-[#ff5733] transition-colors" />
                               <p className="text-sm font-medium leading-none text-foreground">{product.comments_count || 0}</p>
                             </div>
@@ -606,7 +606,7 @@ export default function BestProductsCatchAllPage() {
                             <div
                               className={`group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-300 ${
                                 isUpvoted
-                                  ? "border-2 border-[#ff5733] bg-orange-500/10 text-[#ff5733] dark:bg-orange-500/20"
+                                  ? "bg-orange-500/10 dark:bg-orange-500/20"
                                   : "border border-border bg-card hover:border-[#ff5733]"
                               }`}
                               data-filled={isUpvoted ? "true" : "false"}
@@ -625,11 +625,7 @@ export default function BestProductsCatchAllPage() {
                               >
                                 <path d="M6.579 3.467c.71-1.067 2.132-1.067 2.842 0L12.975 8.8c.878 1.318.043 3.2-1.422 3.2H4.447c-1.464 0-2.3-1.882-1.422-3.2z" />
                               </svg>
-                              <p
-                                className={`text-sm font-semibold leading-none ${
-                                  isUpvoted ? "text-[#ff5733]" : "text-foreground"
-                                }`}
-                              >
+                              <p className="text-sm font-semibold leading-none text-foreground">
                                 {upvoteCount}
                               </p>
                             </div>

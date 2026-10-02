@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { useSearchParams } from "next/navigation";
 import {
   MessageSquare,
@@ -503,11 +504,7 @@ export default function DiscussionSection({
                     {product.maker_id === node.user_id && (
                       <Link href={`/products/${getProductSlug(product.name)}`} className="flex items-center gap-2 mb-1.5 px-2.5 py-1.5 bg-muted/40 border border-border/60 rounded-xl w-fit hover:bg-muted/70 transition-colors">
                         <div className="w-5 h-5 rounded-md overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center">
-                          {product.logo_url ? (
-                            <Image src={product.logo_url} alt={product.name} className="w-full h-full object-cover" width={48} height={48} />
-                          ) : (
-                            <span className="text-[8px] font-medium text-orange-500">{product.name?.charAt(0)}</span>
-                          )}
+                          <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt={product.name} className="w-full h-full object-cover" />
                         </div>
                         <span className="text-[11px] font-medium text-foreground/80">{product.name}</span>
                       </Link>

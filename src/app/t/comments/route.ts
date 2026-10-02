@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const cacheKey = targetProductId ? `comments:product:${targetProductId}` : `comments:thread:${threadId}`;
     const cached = await getCachedData<any[]>(cacheKey);
     if (cached) {
-      return apiSuccessSecure(cached);
+      return apiSuccessSecure(cached, 200, PUBLIC_CACHE_HEADERS);
     }
 
     let query = supabase.from('comments').select('*, user:profiles(id, username, full_name, avatar_url, headline, karma_points, is_maker)');
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       await setCachedData(`comments:product:${productId}`, list, 600);
     }
 
-    return apiSuccessSecure(list);
+    return apiSuccessSecure(list, 200, PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch comments', 500);
   }
@@ -114,12 +114,19 @@ export async function POST(request: NextRequest) {
         await supabase.from('products').update({ comments_count: (prod.comments_count || 0) + 1 }).eq('id', pId);
         await invalidateCache(`comments:product:${pId}`);
         const { getProductSlug } = await import('@/lib/supabase');
+        const { revalidateTag } = await import('next/cache');
         const slug = getProductSlug(prod.name);
         if (slug) {
           await invalidateCache(`comments:product:${slug}`);
+          try { (revalidateTag as any)(`comments-${slug}`, 'max'); } catch {}
         }
+        try { (revalidateTag as any)(`comments-${pId}`, 'max'); } catch {}
       } else {
         await invalidateCache(`comments:product:${pId}`);
+        try {
+          const { revalidateTag } = await import('next/cache');
+          (revalidateTag as any)(`comments-${pId}`, 'max');
+        } catch {}
       }
     } else if (tId) {
       const { data: thr } = await supabase.from('threads').select('comments_count').eq('id', tId).maybeSingle();
@@ -127,6 +134,10 @@ export async function POST(request: NextRequest) {
         await supabase.from('threads').update({ comments_count: (thr.comments_count || 0) + 1 }).eq('id', tId);
       }
       await invalidateCache(`comments:thread:${tId}`);
+      try {
+        const { revalidateTag } = await import('next/cache');
+        (revalidateTag as any)(`comments-${tId}`, 'max');
+      } catch {}
     }
 
     // Fire-and-forget: notify the maker/thread author about the new comment

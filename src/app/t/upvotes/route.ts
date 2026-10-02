@@ -19,8 +19,10 @@ export async function GET(request: NextRequest) {
     if (withProducts) {
       const { data: upvotes, error } = await supabase
         .from('upvotes')
-        .select('product:products(*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker))')
-        .eq('user_id', userId);
+        .select('product:products(id, name, tagline, logo_url, website_url, tags, status, scheduled_for, created_at, upvotes_count, comments_count, quality_score, featured, country, pricing_type, is_open_source, is_deleted, maker_id, worked_on_launch, maker:profiles!maker_id(id, username, full_name, avatar_url, headline, is_maker, is_verified))')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
       if (error) {
         return apiFailure(error.message, 500);
@@ -33,7 +35,8 @@ export async function GET(request: NextRequest) {
     const { data: upvotes, error } = await supabase
       .from('upvotes')
       .select('product_id')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .limit(2000);
 
     if (error) {
       return apiFailure(error.message, 500);

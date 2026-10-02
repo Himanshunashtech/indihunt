@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { useParams, useRouter, notFound } from "next/navigation";
 import {
   ArrowLeft,
@@ -254,11 +255,7 @@ export default function PreLaunchDashboardPage() {
               {/* Product Details Header Card */}
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center font-medium text-lg text-orange-500 border border-orange-500/15 overflow-hidden flex-shrink-0">
-                  {product.logo_url ? (
-                    <Image src={product.logo_url} alt="Logo" className="w-full h-full object-cover" width={48} height={48} />
-                  ) : (
-                    product.name.charAt(0)
-                  )}
+                  <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt="Logo" className="w-full h-full object-cover" />
                 </div>
                 <div>
                   <h2 className="text-base font-medium text-foreground/90">{product.name}</h2>

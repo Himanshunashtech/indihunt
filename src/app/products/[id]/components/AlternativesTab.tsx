@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { ArrowUp, Sparkles, ExternalLink, ChevronRight, Award, Plus } from "lucide-react";
 import { AlternativeProduct, Product, addAlternative, getAlternatives, toggleAlternativeVote, getProductSlug, getCachedProducts } from "@/lib/supabase";
 import { useAppDispatch, setAuthModalOpen } from "@/lib/store";
@@ -115,11 +116,7 @@ export default function AlternativesTab({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl overflow-hidden bg-muted border border-border flex items-center justify-center flex-shrink-0">
-              {product?.logo_url ? (
-                <Image src={product.logo_url} alt={productName} className="w-full h-full object-cover" width={48} height={48} />
-              ) : (
-                <span className="font-bold text-orange-500">{productName.charAt(0)}</span>
-              )}
+              <Favicon src={product?.logo_url} websiteUrl={product?.website_url} size={48} alt={productName} className="w-full h-full object-cover" />
             </div>
             <div>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
@@ -170,11 +167,7 @@ export default function AlternativesTab({
                 >
                   <div className="flex items-start gap-3.5">
                     <div className="w-11 h-11 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center font-bold text-orange-500">
-                      {alt.logo_url ? (
-                        <Image src={alt.logo_url} alt={alt.name} className="w-full h-full object-cover" width={48} height={48} />
-                      ) : (
-                        alt.name.charAt(0)
-                      )}
+                      <Favicon src={alt.logo_url} websiteUrl={alt.website_url} size={48} alt={alt.name} className="w-full h-full object-cover" />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center justify-between gap-2">

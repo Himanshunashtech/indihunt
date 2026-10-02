@@ -1,7 +1,6 @@
 "use client";
 
-
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -11,56 +10,30 @@ import {
   Globe,
   ArrowLeft,
   CheckCheck,
-  Sparkles,
-  Flame,
-  UserCheck
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { CircularLoader } from "@/components/CircularLoader";
+import { useAppSelector } from "@/lib/store";
+import { useNotifications } from "@/hooks/useDb";
 import {
-  supabase,
-  getNotifications,
-  markNotificationAsRead,
   markAllNotificationsAsRead,
   NotificationItem,
-  MOCK_NOTIFICATIONS
 } from "@/lib/supabase";
 
 export default function NotificationsPage() {
-  const [user, setUser] = useState<any>(null);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const reduxUser = useAppSelector((state) => state.auth.user);
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
+  const [localNotifications, setLocalNotifications] = useState<NotificationItem[] | null>(null);
 
-  useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
+  const { data: fetchedNotifications = [], isLoading } = useNotifications(reduxUser?.id, !!reduxUser?.id);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      fetchNotifs(session?.user?.id);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      fetchNotifs(session?.user?.id);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchNotifs = async (userId?: string) => {
-    setLoading(true);
-    const data = await getNotifications(userId);
-    setNotifications(data);
-    setLoading(false);
-  };
+  const notifications = localNotifications || fetchedNotifications;
+  const loading = isLoading && !localNotifications;
 
   const handleMarkAllRead = async () => {
-    await markAllNotificationsAsRead(user?.id);
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    if (!reduxUser?.id) return;
+    await markAllNotificationsAsRead(reduxUser.id);
+    setLocalNotifications(notifications.map(n => ({ ...n, read: true })));
   };
 
   const filteredNotifications = notifications.filter(n => {
@@ -103,7 +76,7 @@ export default function NotificationsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-2 mb-6  pb-3">
+        <div className="flex items-center gap-2 mb-6 pb-3">
           <button
             onClick={() => setActiveTab("all")}
             className={`px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer ${

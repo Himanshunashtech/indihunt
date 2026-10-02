@@ -119,7 +119,7 @@ export function UpcomingProductActions({
             <input
               type="date"
               value={newDate}
-              min={new Date().toISOString().split("T")[0]}
+              min={new Date(Date.now() + 86400000).toISOString().split("T")[0]}
               onChange={(e) => setNewDate(e.target.value)}
               className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white mb-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />

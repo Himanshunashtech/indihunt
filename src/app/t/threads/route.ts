@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     if (!userId && !authorId && !queryStr) {
       const cached = await getCachedData<any[]>(cacheKey);
       if (cached && Array.isArray(cached) && cached.length > 0) {
-        return apiSuccessSecure(cached);
+        return apiSuccessSecure(cached, 200, PUBLIC_CACHE_HEADERS);
       }
     }
 
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
       }));
     }
 
-    return apiSuccessSecure(threads);
+    return apiSuccessSecure(threads, 200, (userId || authorId || queryStr) ? undefined : PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch threads', 500);
   }

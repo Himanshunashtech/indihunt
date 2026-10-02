@@ -1,88 +1,80 @@
-import type { Metadata } from "next";
 import { notFound, redirect, RedirectType } from "next/navigation";
-import { getProductById, getProducts, getCachedProducts, calculateProductRank, getProductSlug, getSimilarProducts, getComments, type Product } from "@/lib/supabase";
-import { getCachedData as getRedisCache } from "@/lib/redis";
+import {
+  supabase,
+  getProductSlug,
+  getSimilarProducts,
+  calculateProductRank,
+  getCachedProducts,
+  getProducts,
+  type Product,
+} from "@/lib/supabase";
+import { getProductCached } from "@/lib/product-cache";
 import ProductDetailPageClient from "./ProductDetailPageClient";
 
-export const revalidate = 60; // ISR: Revalidate page data at most every 60 seconds
+export const revalidate = 60;
+export const dynamicParams = true;
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { id } = await params;
-  const product = await getProductById(id);
-  if (!product) return { title: "Product Not Found | IndiHunt" };
-
-  const slug = getProductSlug(product.name);
-  const shouldIndex =
-    Boolean(product.description && product.description.length > 40) ||
-    Boolean(product.upvotes_count && product.upvotes_count > 0) ||
-    Boolean(product.maker_id) ||
-    Boolean(product.website_url);
-
-  return {
-    title: `${product.name} – ${product.tagline || "Discover & Upvote"} | IndiHunt`,
-    description: product.description || product.tagline || `Discover ${product.name} on IndiHunt.`,
-    alternates: { canonical: `https://indihunt.in/products/${slug}` },
-    robots: {
-      index: shouldIndex,
-      follow: true,
-    },
-    openGraph: {
-      title: `${product.name} – ${product.tagline || "IndiHunt"}`,
-      description: product.tagline || product.description,
-      url: `https://indihunt.in/products/${slug}`,
-      siteName: "IndiHunt",
-      images: product.logo_url ? [{ url: product.logo_url }] : [{ url: "https://indihunt.in/og-image.webp" }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: `${product.name} – ${product.tagline || "IndiHunt"}`,
-      description: product.tagline || product.description,
-      images: product.logo_url ? [product.logo_url] : ["https://indihunt.in/og-image.webp"],
+// pre-render top products at build so first visit is instant
+export async function generateStaticParams() {
+  try {
+    let list = await getProducts().catch(() => [] as Product[]);
+    if (!list.length && supabase) {
+      const { data } = await supabase
+        .from("products")
+        .select("name")
+        .order("upvotes_count", { ascending: false })
+        .limit(50);
+      list = (data as Product[]) || [];
     }
-  };
+    if (!list.length) {
+      list = getCachedProducts() || [];
+    }
+    return list.slice(0, 50).map((p) => ({ id: getProductSlug(p.name) }));
+  } catch {
+    return [];
+  }
 }
+
+const timed = async <T,>(label: string, p: Promise<T>): Promise<T> => {
+  const s = performance.now();
+  try {
+    return await p;
+  } finally {
+    console.log(`[perf] ${label}: ${Math.round(performance.now() - s)}ms`);
+  }
+};
 
 export default async function ProductDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const product = await getProductById(id);
+  const product = await timed("product", getProductCached(id));
 
-  if (!product) {
-    notFound();
-  }
+  if (!product) notFound();
 
   const slug = getProductSlug(product.name);
   if (slug && id.toLowerCase() !== slug.toLowerCase()) {
     redirect(`/products/${slug}`, RedirectType.replace);
   }
 
-  // Phase 2a PERF: Run Redis cache lookup + getComments in parallel — both are independent.
-  // Redis 'public_products' is primed by the home page visit (TTL 5 min).
-  // Falls back to in-memory cache then full getProducts() only on cold start.
-  const [redisListResult, initialComments] = await Promise.all([
-    getRedisCache<Product[]>('public_products'),
-    getComments(product.id).catch(() => []),
-  ]);
+  const initialComments: any[] = [];
+  const initialReviews: any[] = [];
 
-  let allProducts: Product[] = [];
-  if (redisListResult && Array.isArray(redisListResult) && redisListResult.length > 0) {
-    allProducts = redisListResult;
-  } else {
-    allProducts = getCachedProducts();
-    if (!allProducts || allProducts.length === 0) {
-      allProducts = await getProducts().catch(() => []);
-    }
-  }
+  const allProducts = await timed("allProducts", getProducts().catch(() => [] as Product[]));
 
-  const rankDetails = calculateProductRank(product, allProducts.length > 0 ? allProducts : [product]);
+  const rankDetails = calculateProductRank(
+    product,
+    allProducts.length > 0 ? allProducts : [product]
+  );
   const similarProducts = getSimilarProducts(product, allProducts, 3);
 
-  // Sliced relevant dataset (maker's products + similar) so HTML flight payload stays ~30KB instead of 1MB
   const relevantProducts = allProducts.filter(
-    p => p.id === product.id || (product.maker_id && p.maker_id === product.maker_id) || similarProducts.some(s => s.id === p.id)
+    (p) =>
+      p.id === product.id ||
+      (product.maker_id && p.maker_id === product.maker_id) ||
+      similarProducts.some((s) => s.id === p.id)
   );
 
   return (
@@ -91,7 +83,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
       initialProduct={product}
       initialSimilarProducts={similarProducts}
       initialComments={initialComments}
-      initialReviews={[]}
+      initialReviews={initialReviews}
       initialAlternatives={[]}
       initialAllProducts={relevantProducts}
       initialRank={rankDetails.rank}
@@ -102,4 +94,3 @@ export default async function ProductDetailPage({ params }: PageProps) {
     />
   );
 }
-

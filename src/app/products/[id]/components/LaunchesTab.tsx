@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import {
   Rocket,
   Calendar,
@@ -195,11 +196,13 @@ export default function LaunchesTab({
                   className="shrink-0 relative focus:outline-hidden"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <Image
-                    src={item.logo_url || "/favicon.png"}
+                  <Favicon
+                    src={item.logo_url}
+                    websiteUrl={item.website_url}
+                    size={48}
                     alt={item.name}
                     className="w-12 h-12 rounded-xl object-cover border border-border/60 bg-white dark:bg-slate-900 shadow-2xs group-hover:scale-105 transition-transform"
-                  width={48} height={48} />
+                  />
                 </Link>
 
                 <div className="min-w-0 flex-1">

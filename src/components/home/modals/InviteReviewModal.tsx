@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 
 import React, { useState } from "react";
 import { X } from "lucide-react";
@@ -53,11 +54,13 @@ export default function InviteReviewModal({
           <div className="text-center space-y-6">
             {/* Top Product Logo */}
             <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden bg-muted border border-border/80 shadow-md flex items-center justify-center">
-              <Image
+              <Favicon
                 src={product.logo_url}
+                websiteUrl={product.website_url}
+                size={48}
                 alt={product.name}
                 className="w-full h-full object-cover"
-              width={48} height={48} />
+              />
             </div>
 
             {/* Title & Subtitle */}

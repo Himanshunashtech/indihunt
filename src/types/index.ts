@@ -212,6 +212,8 @@ export interface StoryComment {
   body: string;
   created_at: string;
   replies?: StoryComment[];
+  upvotes_count?: number;
+  has_upvoted?: boolean;
 }
 
 export interface ProductInvestorDetails {

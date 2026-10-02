@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import {
   Users,
   ChevronDown,
@@ -107,17 +108,7 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
                 return (
                   <Link key={shout.id} href={`/products/${slug}`} title={`Built with ${shout.shouted_product.name}`}>
                     <div className="w-8 h-8 rounded-xl border-2 border-card overflow-hidden bg-muted flex items-center justify-center shadow-sm cursor-pointer hover:scale-105 transition-all">
-                      {shout.shouted_product.logo_url ? (
-                        <Image
-                          src={shout.shouted_product.logo_url}
-                          alt={shout.shouted_product.name}
-                          className="object-cover w-full h-full"
-                        width={48} height={48} />
-                      ) : (
-                        <span className="text-[10px] font-semibold text-orange-500">
-                          {shout.shouted_product.name.charAt(0)}
-                        </span>
-                      )}
+                      <Favicon src={shout.shouted_product.logo_url} websiteUrl={shout.shouted_product.website_url} size={48} alt={shout.shouted_product.name} className="object-cover w-full h-full" />
                     </div>
                   </Link>
                 );
@@ -241,15 +232,7 @@ export default function MakersSection({ product, teamMembers, shoutoutsGiven }: 
                         href={`/products/${slug}`}
                         className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex items-center justify-center flex-shrink-0 font-semibold text-sm text-orange-500 shadow-sm hover:opacity-90 transition-opacity"
                       >
-                        {shout.shouted_product.logo_url ? (
-                          <Image
-                            src={shout.shouted_product.logo_url}
-                            alt={shout.shouted_product.name}
-                            className="w-full h-full object-cover"
-                          width={48} height={48} />
-                        ) : (
-                          shout.shouted_product.name.charAt(0) || "P"
-                        )}
+                        <Favicon src={shout.shouted_product.logo_url} websiteUrl={shout.shouted_product.website_url} size={48} alt={shout.shouted_product.name} className="w-full h-full object-cover" />
                       </Link>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">

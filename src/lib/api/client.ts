@@ -66,11 +66,19 @@ export async function secureApiFetch<T = any>(
     try {
       const fullUrl = url.startsWith('/') ? `${getBaseUrl()}${url}` : url;
 
+      // On the server, add an internal bypass header so the middleware
+      // skips bot-detection for SSR self-requests (Node fetch UA triggers the block)
+      const isServer = typeof window === 'undefined';
+      const internalHeaders: Record<string, string> = isServer
+        ? { 'X-Internal-SSR': '1', 'User-Agent': 'IndiHunt-SSR/1.0' }
+        : {};
+
       const res = await fetch(fullUrl, {
         ...options,
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
+          ...internalHeaders,
           ...(options?.headers || {}),
         },
       });

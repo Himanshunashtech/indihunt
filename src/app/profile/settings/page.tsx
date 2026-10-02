@@ -54,6 +54,7 @@ import {
   Review,
   INDIE_PAGE_THEMES
 } from "@/lib/supabase";
+import { useAppDispatch, setProfile as setReduxProfile } from "@/lib/store";
 
 function BlueToggleSwitch({
   checked,
@@ -86,6 +87,7 @@ function BlueToggleSwitch({
 
 export default function ProfileSettingsPage() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [followersList, setFollowersList] = useState<Profile[]>([]);
@@ -203,6 +205,7 @@ export default function ProfileSettingsPage() {
       });
       if (updated) {
         setProfile(updated);
+        dispatch(setReduxProfile(updated));
         setProfileMsg("Profile updated successfully!");
       } else {
         const updatedMock = {
@@ -218,6 +221,7 @@ export default function ProfileSettingsPage() {
           location: editLocation
         } as Profile;
         setProfile(updatedMock);
+        dispatch(setReduxProfile(updatedMock));
         setProfileMsg("Profile updated (local preview)!");
       }
     } catch (err: any) {
@@ -297,7 +301,10 @@ export default function ProfileSettingsPage() {
           
           <div className="flex flex-row items-center justify-between">
             <h1 className="text-base font-semibold text-foreground tracking-tight">My details</h1>
-            <Link href="/profile" className="text-sm font-medium text-orange-500 hover:underline">
+            <Link
+              href={profile?.username ? `/@${profile.username}` : "/profile"}
+              className="text-sm font-medium text-orange-500 hover:underline"
+            >
               View my profile
             </Link>
           </div>

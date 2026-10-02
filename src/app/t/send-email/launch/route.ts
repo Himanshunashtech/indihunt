@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const plainTextContent = `Hi ${firstName},
 
-${productName} is now live on IndiHunt.
+${productName} is now scheduled on IndiHunt.
 
 Here's your product page:
 ${productUrl}

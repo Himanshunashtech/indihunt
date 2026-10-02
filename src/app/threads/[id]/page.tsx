@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { useParams, useRouter } from "next/navigation";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
@@ -513,11 +514,11 @@ export default function ThreadDetailPage() {
                     <div className="flex items-center justify-between gap-4 bg-card border border-border p-4 rounded-xl mb-6 shadow-xs">
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div className="w-12 h-12 rounded-xl overflow-hidden bg-card border border-border flex-shrink-0 flex items-center justify-center p-0.5" style={{ width: "48px", height: "48px" }}>
-                          <Image
+                          <Favicon
                             src={linkedProduct.logo_url}
+                            websiteUrl={linkedProduct.website_url}
+                            size={48}
                             alt={linkedProduct.name}
-                            width={48}
-                            height={48}
                             className="w-full h-full object-cover rounded-lg"
                           />
                         </div>

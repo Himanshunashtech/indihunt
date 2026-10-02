@@ -14,6 +14,7 @@ import {
   BarChart2,
   Trophy,
   Search,
+  Clock,
   Bot,
   MessageSquare,
   Zap,
@@ -26,6 +27,7 @@ import {
   CreditCard,
   Flame,
   LayoutGrid,
+  Bell,
 } from "lucide-react";
 
 const TAG_STYLES: Record<string, string> = {
@@ -48,6 +50,7 @@ const TAG_STYLES: Record<string, string> = {
   "Ads": "bg-amber-500/10 text-amber-400 border-amber-500/20",
   "Discussions": "bg-pink-500/10 text-pink-400 border-pink-500/20",
   "Search": "bg-sky-500/10 text-sky-400 border-sky-500/20",
+  "Bugfix": "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
 };
 
 interface ChangelogItem {
@@ -64,6 +67,157 @@ interface ChangelogItem {
 }
 
 const CHANGELOG: ChangelogItem[] = [
+  {
+    version: "v7.3.6",
+    date: "October 2026",
+    title: "Favicon 3-Stage Fallback & Storage Egress Reduction",
+    summary: "Replaced all direct Next.js Image / ProductLogo usages for product logos with a new reusable Favicon component that tries the stored URL first, then Google Favicons API (zero our-storage egress), then a local placeholder — dramatically reducing Supabase storage bandwidth.",
+    icon: Zap,
+    iconColor: "text-violet-400",
+    iconBg: "bg-violet-500/10",
+    tags: ["Performance", "Architecture", "Improvement"],
+    features: [
+      { icon: Zap, text: "Created <Favicon> component with 3-stage onError fallback: logo_url (stored) → Google Favicons API (derived from website_url, zero our egress) → /default-favicon.png local placeholder." },
+      { icon: Database, text: "Migrated ProductItem (feed), search page, and CategoryPageClient logos from direct <Image> / deleted ProductLogo to <Favicon>." },
+      { icon: ShieldCheck, text: "Added website_url to CompanyLogo interface in CategoryPageClient so the Google Favicons fallback can resolve from the product domain." },
+      { icon: Rocket, text: "Added /public/default-favicon.png placeholder so the final fallback always renders gracefully without hitting our storage." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.3.5",
+    date: "October 2026",
+    title: "Midnight IST Launch Scheduling & SSR Upcoming Products",
+    summary: "Aligned product launch scheduling with exact 12:00 AM Midnight IST rollover and ensured upcoming scheduled launches are included in server-rendered initial data on the home page.",
+    icon: Rocket,
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-500/10",
+    tags: ["Bugfix", "Launches", "SSR"],
+    features: [
+      { icon: Clock, text: "Fixed DatePickerModal to schedule launches for 12:00:00 AM Midnight IST (00:00:00 IST) instead of 12:00 PM Noon, ensuring products go live at midnight on launch day." },
+      { icon: Database, text: "Updated Home page SSR (src/app/page.tsx) to include upcoming scheduled launches in initialVisibleProducts so the upcoming cohort is populated on initial page load." },
+      { icon: Zap, text: "Calibrated isIndianPreLaunchWindow to 8:00 PM – 12:00 AM IST (20:00 to 23:59:59 IST) so products preview in Upcoming until midnight and transition smoothly into Today's Top Products." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.3.4",
+    date: "October 2026",
+    title: "Maker Profile Persistence & Production Hydration Fix",
+    summary: "Fixed an issue in production where user profiles (avatar image, username, full name, and details) would vanish after a page refresh due to schema column mismatch and unhandled mock fallback overwrites.",
+    icon: User,
+    iconColor: "text-blue-400",
+    iconBg: "bg-blue-500/10",
+    tags: ["Bugfix", "Profiles", "Database", "Hydration"],
+    features: [
+      { icon: Database, text: "Corrected PROFILE_COLS query in /t/profiles to target the valid database column 'website' instead of 'website_url', preventing PostgreSQL 42703 column query failures." },
+      { icon: ShieldCheck, text: "Eliminated destructive mock profile fallbacks that clobbered real user profiles on refresh when querying /t/profiles with authentic user IDs." },
+      { icon: Zap, text: "Implemented background profile hydration in AuthInitializer and synchronized Redux and localStorage across settings updates and profile page loads." },
+    ],
+    highlight: false,
+  },
+  {
+    version: "v7.3.3",
+    date: "October 2026",
+    title: "Direct DB Product Resolution & SSR 404 Prevention",
+    summary: "Eliminated production 404s on product pages by implementing direct Supabase database querying on the server, dynamic slug resolution, and busting Next.js unstable_cache null poisoning.",
+    icon: ShieldCheck,
+    iconColor: "text-blue-400",
+    iconBg: "bg-blue-500/10",
+    tags: ["Bugfix", "SSR", "Database", "Routing"],
+    features: [
+      { icon: Database, text: "Server-side product resolution now queries Supabase directly during SSR, eliminating flaky network self-fetch roundtrips on serverless hosts." },
+      { icon: Zap, text: "Busted stale unstable_cache with product_v3 cache tag and lowered TTL to 60s so cached 404s never persist." },
+      { icon: Shield, text: "Enhanced resolveProductId with database fallback and slug normalization for robust matching by slug, ID, or name." },
+    ],
+    highlight: false,
+  },
+  {
+    version: "v7.3.2",
+    date: "October 2026",
+    title: "Product Detail Page Hydration Stabilization",
+    summary: "Fixed SSR hydration mismatch on the product detail page caused by server vs client similar products calculation differences.",
+    icon: Zap,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Bugfix", "SSR", "Hydration"],
+    features: [
+      { icon: CheckCircle, text: "Server component now calls getProducts() instead of reading cold/empty Redis cache directly, ensuring consistent server-rendered similar products and rank calculations." },
+      { icon: Shield, text: "SidebarPanel similar products state in ProductDetailPageClient is now initialized from server-provided initialSimilarProducts and updated post-mount via useEffect to eliminate React hydration mismatch." },
+      { icon: Zap, text: "Fixed similar product key attributes in SidebarPanel to use unique product IDs." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.3.1",
+    date: "October 2026",
+    title: "SSR Bot-Protection Bypass — Product Pages & Category Pages Fixed",
+    summary: "Fixed critical production bug where server-side rendering self-requests were blocked by the bot-detection middleware, causing 404 errors on product detail pages and empty product lists on category pages.",
+    icon: ShieldCheck,
+    iconColor: "text-rose-400",
+    iconBg: "bg-rose-500/10",
+    tags: ["Security", "Performance", "Architecture"],
+    features: [
+      { icon: ShieldCheck, text: "Root cause: Node.js fetch User-Agent matched 'node-fetch' in the bot blocklist, causing middleware to 403-block all SSR self-requests to /t/products endpoints." },
+      { icon: Zap, text: "Added X-Internal-SSR bypass header to secureApiFetch for server-side requests, with a clean IndiHunt-SSR/1.0 User-Agent." },
+      { icon: Shield, text: "Middleware now skips bot-detection for trusted internal SSR requests while maintaining full protection for external scrapers." },
+      { icon: CheckCircle, text: "Product detail pages, category pages, home feed, and all server-rendered product listings now load correctly in production." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.3.0",
+    date: "October 2026",
+    title: "Login Pipeline Neutralization, WebSocket Stability & Zero-Egress Reviews",
+    summary: "Eliminated duplicate login fetch cascades in DataOrchestrator, stabilized WebSocket callbacks and provider context references, prevented channel leaks on publish, and optimized React Query cache with targeted mutation updates.",
+    icon: Zap,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Performance", "Architecture", "Realtime"],
+    features: [
+      { icon: Zap, text: "DataOrchestrator streamlined to instant COMPLETED transition with zero background fetch cascades." },
+      { icon: Rocket, text: "React Query defaults updated to 5m staleTime, 30m gcTime, and disabled window-focus/reconnect refetches." },
+      { icon: ShieldCheck, text: "WebSocketProvider memoized with useCallback/useMemo and transient channel cleanup on publish." },
+      { icon: Database, text: "Reviews caching optimized with 30m TTL, no mount refetches, and setQueryData mutation cache updates." },
+      { icon: CheckCircle, text: "Selective columns and edge caching enabled across threads and profiles API routes." }
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.2.0",
+    date: "October 2026",
+    title: "Edge CDN Caching, Proxy Hardening & Navbar Egress Optimization",
+    summary: "Enabled Vercel Edge caching for guest requests, added lightweight head-count notification queries, throttled Supabase proxy behind rate-limits, and optimized review and comment cache keys.",
+    icon: ShieldCheck,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Performance", "Security", "Improvement"],
+    features: [
+      { icon: Zap, text: "Vercel Edge Caching: Enabled public CDN caching with stale-while-revalidate headers on guest GET endpoints for products, comments, and reviews." },
+      { icon: ShieldCheck, text: "Proxy Hardening & Rate Limiting: Moved IP rate limiting upstream of the Supabase rewrite proxy and removed blanket API caching." },
+      { icon: Bell, text: "Lightweight Head Count Notifications: Added count_only notification head query and React Query caching for instant unread dot badges." },
+      { icon: Zap, text: "Zero-Overhead Auth Initialization: Replaced duplicate session fetchers and eager cache wipes with deduplicated onAuthStateChange and single-network-request upvote hydration." },
+      { icon: Database, text: "Selective Review Joins: Replaced heavy full-table joins with targeted columns and added Redis eviction on review deletion." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.1.0",
+    date: "October 2026",
+    title: "Sub-Second Page Load Optimization & Request Deduplication",
+    summary: "Eliminated duplicate product queries via React request caching, chained home page leaderboard queries to reuse in-flight data, and prevented footer link prefetch congestion.",
+    icon: Zap,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Performance", "Improvement", "Architecture"],
+    features: [
+      { icon: Zap, text: "React & Next.js Request + ISR Caching: Unified metadata and layout fetching with unstable_cache and React cache, caching across requests with tag-based invalidation." },
+      { icon: CheckCircle, text: "Streaming JSON-LD in Suspense: Offloaded structured schema generation to a non-blocking background Suspense stream with vanilla JSON-LD scripts." },
+      { icon: Database, text: "Leaderboard Dataset Sharing: Top hunters calculation now reuses the in-flight home page products promise, eliminating parallel 1000-row table queries." },
+      { icon: TrendingUp, text: "Prefetch Throttling: Disabled aggressive viewport link prefetching across 35+ footer links, preventing network saturation when scrolling." },
+    ],
+    highlight: true,
+  },
   {
     version: "v7.0.0",
     date: "September 2026",
@@ -271,26 +425,23 @@ export default function ChangelogPage() {
                 <div key={`${item.version}-${idx}`} className="relative pl-12">
                   {/* Node */}
                   <div
-                    className={`absolute left-0 top-4 w-[30px] h-[30px] rounded-full border-2 flex items-center justify-center transition-all ${
-                      isOpen
+                    className={`absolute left-0 top-4 w-[30px] h-[30px] rounded-full border-2 flex items-center justify-center transition-all ${isOpen
                         ? "border-orange-500 bg-orange-500/10"
                         : "border-border bg-background"
-                    }`}
+                      }`}
                   >
                     <Icon
-                      className={`w-3.5 h-3.5 ${
-                        isOpen ? "text-orange-500" : "text-muted-foreground"
-                      }`}
+                      className={`w-3.5 h-3.5 ${isOpen ? "text-orange-500" : "text-muted-foreground"
+                        }`}
                     />
                   </div>
 
                   {/* Card */}
                   <div
-                    className={`bg-card border rounded-2xl shadow-xs transition-all ${
-                      item.highlight
+                    className={`bg-card border rounded-2xl shadow-xs transition-all ${item.highlight
                         ? "border-orange-500/30 shadow-orange-500/5"
                         : "border-border/80"
-                    }`}
+                      }`}
                   >
                     {/* Header — always visible, clickable to expand */}
                     <button
@@ -311,9 +462,8 @@ export default function ChangelogPage() {
                             {item.tags.map((tag) => (
                               <span
                                 key={tag}
-                                className={`text-xs font-medium uppercase tracking-wider px-2 py-0.5 rounded-md border ${
-                                  TAG_STYLES[tag] || "bg-muted text-muted-foreground"
-                                }`}
+                                className={`text-xs font-medium uppercase tracking-wider px-2 py-0.5 rounded-md border ${TAG_STYLES[tag] || "bg-muted text-muted-foreground"
+                                  }`}
                               >
                                 {tag}
                               </span>
@@ -330,11 +480,10 @@ export default function ChangelogPage() {
 
                         {/* Expand toggle */}
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
-                            isOpen
+                          className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${isOpen
                               ? "bg-orange-500/10 text-orange-500"
                               : "bg-muted text-muted-foreground"
-                          }`}
+                            }`}
                         >
                           {isOpen ? (
                             <ChevronUp className="w-4 h-4" />

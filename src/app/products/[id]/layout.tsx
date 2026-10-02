@@ -1,52 +1,11 @@
 import type { Metadata } from "next";
-import { createClient } from "@supabase/supabase-js";
-import Script from "next/script";
+import { Suspense } from "react";
+import { getProductSlug } from "@/lib/supabase";
+import { getProductCached } from "@/lib/product-cache";
+
+export const revalidate = 3600;
 
 const baseUrl = "https://indihunt.in";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
-
-function getProductSlug(name: string): string {
-  if (!name) return "";
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-async function fetchProductForSeo(idOrSlug: string) {
-  try {
-    if (supabase) {
-      // 1. Direct ID lookup
-      let { data: product } = await supabase
-        .from("products")
-        .select("*, maker:profiles!maker_id(*)")
-        .eq("id", idOrSlug)
-        .maybeSingle();
-
-      // 2. Slug lookup if ID fails
-      if (!product) {
-        const { data: allProds } = await supabase
-          .from("products")
-          .select("*, maker:profiles!maker_id(*)");
-        if (allProds) {
-          product = allProds.find(
-            (p: any) => getProductSlug(p.name) === idOrSlug.toLowerCase() || p.id === idOrSlug
-          ) || null;
-        }
-      }
-      if (product) return product;
-    }
-  } catch (e) {
-    console.error("Error fetching SEO product directly from Supabase:", e);
-  }
-
-  return null;
-}
 
 // ─── Dynamic Metadata ─────────────────────────────────────────────────────────
 export async function generateMetadata({
@@ -55,7 +14,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const product = await fetchProductForSeo(id);
+  const product = await getProductCached(id);
 
   if (!product) {
     return {
@@ -133,6 +92,11 @@ export async function generateMetadata({
     "indie maker",
   ].filter(Boolean);
 
+  const shouldIndex =
+    !product.is_deleted &&
+    product.status !== "draft" &&
+    !(product as any).deleted_at;
+
   return {
     title: `${product.name} — ${product.tagline}`,
     description,
@@ -155,10 +119,10 @@ export async function generateMetadata({
       creator: "@indihunt",
     },
     robots: {
-      index: true,
+      index: shouldIndex,
       follow: true,
       googleBot: {
-        index: true,
+        index: shouldIndex,
         follow: true,
         "max-image-preview": "large",
         "max-snippet": -1,
@@ -168,6 +132,108 @@ export async function generateMetadata({
 }
 
 // ─── Layout with JSON-LD Structured Data ──────────────────────────────────────
+async function JsonLd({ id }: { id: string }) {
+  const product = await getProductCached(id);
+  if (!product) return null;
+
+  const slug = getProductSlug(product.name);
+  const canonicalUrl = `${baseUrl}/products/${slug}`;
+
+  const firstProductImage =
+    product.screenshots?.[0] || product.logo_url || `${baseUrl}/og-image.webp`;
+
+  const tagsLower = (product.tags || []).map((t: string) => t.toLowerCase());
+  const platforms: string[] = [];
+  if (["ios", "mobile", "iphone"].some((t) => tagsLower.includes(t))) platforms.push("iOS");
+  if (tagsLower.includes("android")) platforms.push("Android");
+  if (["macos", "mac"].some((t) => tagsLower.includes(t))) platforms.push("macOS");
+  if (tagsLower.includes("windows")) platforms.push("Windows");
+  if (tagsLower.includes("linux")) platforms.push("Linux");
+  if (platforms.length === 0) platforms.push("Web");
+
+  const rawPrice = (product as any).price;
+  const offers =
+    product.pricing_type === "free"
+      ? { "@type": "Offer", price: "0", priceCurrency: "USD", availability: "https://schema.org/InStock" }
+      : rawPrice
+      ? {
+          "@type": "Offer",
+          price: String(rawPrice).replace(/[^0-9.]/g, "") || "0",
+          priceCurrency: "USD",
+          availability: "https://schema.org/InStock",
+        }
+      : undefined;
+
+  const primaryCategory =
+    typeof product.category === "string" && product.category.trim()
+      ? product.category.split(",")[0].trim()
+      : product.tags?.[0] ?? null;
+
+  const breadcrumbItems: any[] = [
+    { "@type": "ListItem", position: 1, name: "Home", item: baseUrl },
+    { "@type": "ListItem", position: 2, name: "Categories", item: `${baseUrl}/categories` },
+  ];
+  if (primaryCategory) {
+    breadcrumbItems.push({
+      "@type": "ListItem",
+      position: 3,
+      name: primaryCategory,
+      item: `${baseUrl}/categories/${getProductSlug(primaryCategory)}`,
+    });
+  }
+  breadcrumbItems.push({
+    "@type": "ListItem",
+    position: breadcrumbItems.length + 1,
+    name: product.name,
+    item: canonicalUrl,
+  });
+
+  const softwareAppLd: Record<string, any> = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: product.name,
+    description: product.description || product.tagline,
+    url: product.website_url || canonicalUrl,
+    applicationCategory: primaryCategory || "WebApplication",
+    operatingSystem: platforms.join(", "),
+    ...(offers && { offers }),
+    image: firstProductImage,
+    ...(product.screenshots?.length > 0 && { screenshot: product.screenshots.slice(0, 4) }),
+    keywords: (product.tags || []).join(", "),
+    datePublished: product.created_at,
+    publisher: {
+      "@type": "Organization",
+      name: "IndiHunt",
+      url: baseUrl,
+      logo: `${baseUrl}/favicon.webp`,
+    },
+  };
+
+  if (product.maker) {
+    softwareAppLd.author = {
+      "@type": "Person",
+      name: product.maker.full_name || product.maker.username || "Indie Maker",
+      url: product.maker.username ? `${baseUrl}/@${product.maker.username}` : canonicalUrl,
+    };
+  }
+
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: breadcrumbItems,
+  };
+
+  // escape "<" so product text can't break out of the script tag
+  const serialize = (o: unknown) => JSON.stringify(o).replace(/</g, "\\u003c");
+
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialize(softwareAppLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialize(breadcrumbLd) }} />
+    </>
+  );
+}
+
 export default async function ProductLayout({
   children,
   params,
@@ -176,130 +242,13 @@ export default async function ProductLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const product = await fetchProductForSeo(id);
-
-  if (!product) return <>{children}</>;
-
-  const slug = getProductSlug(product.name);
-  const canonicalUrl = `${baseUrl}/products/${slug}`;
-
-  const firstProductImage = (product.screenshots && product.screenshots.length > 0 && product.screenshots[0])
-    ? product.screenshots[0]
-    : (product.logo_url || `${baseUrl}/og-image.webp`);
-
-  // Determine operating systems from product tags or default to Web
-  const detectedPlatforms: string[] = [];
-  const tagsLower = (product.tags || []).map((t: string) => t.toLowerCase());
-  if (tagsLower.includes("ios") || tagsLower.includes("mobile") || tagsLower.includes("iphone")) detectedPlatforms.push("iOS");
-  if (tagsLower.includes("android")) detectedPlatforms.push("Android");
-  if (tagsLower.includes("macos") || tagsLower.includes("mac")) detectedPlatforms.push("macOS");
-  if (tagsLower.includes("windows")) detectedPlatforms.push("Windows");
-  if (tagsLower.includes("linux")) detectedPlatforms.push("Linux");
-  if (detectedPlatforms.length === 0) detectedPlatforms.push("Web");
-
-  const offers = product.pricing_type === "free"
-    ? {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD",
-        "availability": "https://schema.org/InStock",
-      }
-    : (product as any).price
-    ? {
-        "@type": "Offer",
-        "price": String((product as any).price).replace(/[^0-9.]/g, "") || "0",
-        "priceCurrency": "USD",
-        "availability": "https://schema.org/InStock",
-      }
-    : undefined;
-
-  // Category handling for Breadcrumbs
-  const primaryCategory = (product.category && typeof product.category === 'string' && product.category.trim())
-    ? product.category.split(',')[0].trim()
-    : (product.tags && Array.isArray(product.tags) && product.tags.length > 0 ? product.tags[0] : null);
-
-  const categorySlug = primaryCategory ? getProductSlug(primaryCategory) : null;
-
-  // BreadcrumbList items
-  const breadcrumbItems: any[] = [
-    { "@type": "ListItem", "position": 1, "name": "Home", "item": baseUrl },
-    { "@type": "ListItem", "position": 2, "name": "Categories", "item": `${baseUrl}/categories` },
-  ];
-
-  if (primaryCategory && categorySlug) {
-    breadcrumbItems.push({
-      "@type": "ListItem",
-      "position": 3,
-      "name": primaryCategory,
-      "item": `${baseUrl}/categories/${categorySlug}`,
-    });
-    breadcrumbItems.push({
-      "@type": "ListItem",
-      "position": 4,
-      "name": product.name,
-      "item": canonicalUrl,
-    });
-  } else {
-    breadcrumbItems.push({
-      "@type": "ListItem",
-      "position": 3,
-      "name": product.name,
-      "item": canonicalUrl,
-    });
-  }
-
-  // Schema.org SoftwareApplication — enables rich results in Google Search
-  const softwareAppLd: Record<string, any> = {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": product.name,
-    "description": product.description || product.tagline,
-    "url": product.website_url || canonicalUrl,
-    "applicationCategory": primaryCategory || "WebApplication",
-    "operatingSystem": detectedPlatforms.join(", "),
-    ...(offers && { "offers": offers }),
-    "image": firstProductImage,
-    ...(product.screenshots?.length > 0 && {
-      "screenshot": product.screenshots.slice(0, 4),
-    }),
-    "keywords": (product.tags || []).join(", "),
-    "datePublished": product.created_at,
-    "publisher": {
-      "@type": "Organization",
-      "name": "IndiHunt",
-      "url": baseUrl,
-      "logo": `${baseUrl}/favicon.webp`,
-    },
-  };
-
-  if (product.maker) {
-    softwareAppLd.author = {
-      "@type": "Person",
-      "name": product.maker.full_name || product.maker.username || "Indie Maker",
-      "url": product.maker.username ? `${baseUrl}/@${product.maker.username}` : canonicalUrl,
-    };
-  }
-
-  // BreadcrumbList — helps Google show rich breadcrumbs in SERPs
-  const breadcrumbLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    "itemListElement": breadcrumbItems,
-  };
 
   return (
     <>
-      <Script
-        id={`jsonld-sw-${product.id}`}
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareAppLd) }}
-      />
-      <Script
-        id={`jsonld-bc-${product.id}`}
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
-      />
       {children}
+      <Suspense fallback={null}>
+        <JsonLd id={id} />
+      </Suspense>
     </>
   );
 }

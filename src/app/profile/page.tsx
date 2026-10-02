@@ -4,6 +4,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -150,7 +151,8 @@ function ProfileContent({
     if (isTargetingSelf && reduxProfile) return reduxProfile;
     if (typeof window !== "undefined") {
       try {
-        const stored = localStorage.getItem("indihunt_profile");
+        const cachedKey = targetUserId ? `ih_profile_${targetUserId}` : (reduxUser?.id ? `ih_profile_${reduxUser.id}` : 'indihunt_profile');
+        const stored = localStorage.getItem(cachedKey) || localStorage.getItem("indihunt_profile");
         if (stored) {
           const parsed = JSON.parse(stored);
           if (!targetUserId || parsed.id === targetUserId || parsed.username === targetUsername) {
@@ -210,8 +212,10 @@ function ProfileContent({
   // Campaigns State
   const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
 
-  const isOwnProfile = profile
-    ? (user ? user.id === profile.id : false)
+  const isOwnProfile = isMounted
+    ? (profile
+        ? (user ? user.id === profile.id : false)
+        : (!targetUserId && !targetUsername))
     : (!targetUserId && !targetUsername);
 
   // New Collection Form State
@@ -303,27 +307,18 @@ function ProfileContent({
     if (!initialProf) {
       if (isTargetingSelf && reduxProfile) {
         initialProf = reduxProfile;
-      } else if (targetUserId && typeof window !== "undefined") {
+      } else if (typeof window !== "undefined") {
         try {
-          const cached = localStorage.getItem(`ih_profile_${targetUserId}`);
+          const cachedKey = targetUserId ? `ih_profile_${targetUserId}` : (reduxUser?.id ? `ih_profile_${reduxUser.id}` : 'indihunt_profile');
+          const cached = localStorage.getItem(cachedKey) || localStorage.getItem('indihunt_profile');
           if (cached) initialProf = JSON.parse(cached);
         } catch (e) {}
       }
     }
-    setProfile(initialProf);
-    setIsLoading(!initialProf);
-    setFollowersList([]);
-    setFollowingList([]);
-    setFollowedProducts([]);
-    setProducts([]);
-    setUserThreads([]);
-    setPacts([]);
-    setUserUpvotes([]);
-    setUserReviews([]);
-    setCollections([]);
-    setUserStack([]);
-    setUserStories([]);
-    setCampaigns([]);
+    if (initialProf) {
+      setProfile(initialProf);
+      setIsLoading(false);
+    }
 
     if (!supabase) return;
     const client = supabase;
@@ -350,14 +345,14 @@ function ProfileContent({
       }
     };
     loadProfile();
-  }, [router, targetUserId, targetUsername, reduxUser, reduxProfile, initialProfile]);
+  }, [router, targetUserId, targetUsername, reduxUser?.id, initialProfile]);
 
   // Redirect to username slug URL format (e.g. /@username) if currently on query-based URL (e.g. /profile?id=xyz)
   useEffect(() => {
     if (profile && profile.username && !targetUsername) {
       router.replace(`/@${profile.username}`);
     }
-  }, [profile, targetUsername, router]);
+  }, [profile?.username, targetUsername, router]);
 
   const fetchProfileData = async (uid: string) => {
     if (!profile) {
@@ -403,7 +398,17 @@ function ProfileContent({
         getKarmaLeaderboard(100)
       ]);
 
-      if (prof) setProfile(prof);
+      if (prof) {
+        setProfile(prof);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(`ih_profile_${uid}`, JSON.stringify(prof));
+            if (sessionResult?.data?.session?.user?.id === uid) {
+              localStorage.setItem('indihunt_profile', JSON.stringify(prof));
+            }
+          } catch (e) { }
+        }
+      }
       setCollections(cols);
       setUserStack(stack);
       setAvailableProducts(allProds);
@@ -1069,11 +1074,7 @@ function ProfileContent({
                     <div key={p.id} className="relative flex items-start gap-3 group">
                       {/* Logo / Marker */}
                       <div className="absolute -left-[41px] top-0 w-8 h-8 rounded-xl overflow-hidden bg-muted border-2 border-background shadow-xs flex-shrink-0 flex items-center justify-center">
-                        {p.logo_url ? (
-                          <Image src={p.logo_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" width={48} height={48} />
-                        ) : (
-                          <span className="text-xs font-semibold text-[#ff5733]">{p.name.slice(0, 1)}</span>
-                        )}
+                        <Favicon src={p.logo_url} websiteUrl={p.website_url} size={48} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                       </div>
                       <div className="min-w-0 flex-1 pl-1">
                         <div className="flex items-center gap-2 flex-wrap">

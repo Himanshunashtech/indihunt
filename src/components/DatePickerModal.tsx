@@ -14,12 +14,25 @@ export default function DatePickerModal({
   onSelectDate,
   currentSelectedDate
 }: DatePickerModalProps) {
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(currentSelectedDate);
+  const isPastOrToday = (d?: Date) => {
+    if (!d) return false;
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return d.getTime() <= today.getTime();
+  };
+
+  const getValidDate = (date?: Date) => {
+    if (!date) return undefined;
+    return isPastOrToday(date) ? undefined : date;
+  };
+
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(getValidDate(currentSelectedDate));
   const [scheduledCounts, setScheduledCounts] = useState<Record<string, number>>({});
   const [, setLoadingCounts] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
+    setSelectedDate(getValidDate(currentSelectedDate));
     let isMounted = true;
     setLoadingCounts(true);
     getScheduledProductCounts()
@@ -36,13 +49,14 @@ export default function DatePickerModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen]);
+  }, [isOpen, currentSelectedDate]);
 
   if (!isOpen) return null;
 
-  // Generate dates starting from today up to December 31 of the next calendar year
+  // Generate dates starting from tomorrow up to December 31 of the next calendar year
   const dates: Date[] = [];
   const start = new Date();
+  start.setDate(start.getDate() + 1); // Exclude today; scheduling begins from tomorrow
   const end = new Date(start.getFullYear() + 2, 11, 31); // December 31 of the year after next
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     dates.push(new Date(d));
@@ -79,9 +93,12 @@ export default function DatePickerModal({
 
   const handleScheduleClick = () => {
     if (selectedDate) {
-      // Set to noon (12:00:00) so timezone offsets don't shift the date day
-      const scheduledDate = new Date(selectedDate);
-      scheduledDate.setHours(12, 0, 0, 0);
+      // Set to 12:00:00 AM Midnight IST (00:00:00 IST) so the product goes live at midnight
+      const yyyy = selectedDate.getFullYear();
+      const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
+      const dd = String(selectedDate.getDate()).padStart(2, "0");
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      const scheduledDate = new Date(new Date(`${yyyy}-${mm}-${dd}T00:00:00.000Z`).getTime() - IST_OFFSET_MS);
       onSelectDate(scheduledDate);
     }
   };

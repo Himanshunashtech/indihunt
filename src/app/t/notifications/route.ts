@@ -14,7 +14,23 @@ export async function GET(request: NextRequest) {
       return apiFailure('Missing userId parameter', 400);
     }
 
+    const countOnly = searchParams.get('count_only') === 'true' || searchParams.get('unread_count') === 'true';
+
     const supabase = await createServerSupabaseClient();
+
+    if (countOnly) {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('read', false);
+
+      if (error) {
+        return apiFailure(error.message, 500);
+      }
+      return apiSuccessSecure({ count: count || 0 });
+    }
+
     let notifs: any[] = [];
 
     // Attempt select with joined actor profile

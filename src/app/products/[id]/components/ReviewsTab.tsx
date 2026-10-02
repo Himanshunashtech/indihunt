@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Star, Search, ThumbsUp, Share2, Flag, Eye, Clock } from "lucide-react";
 import { Review } from "@/lib/supabase";
 import { recordView } from "@/lib/supabase";
@@ -17,6 +18,7 @@ interface ReviewsTabProps {
 
 export default function ReviewsTab({ reviews, productId, user, setReportModalState }: ReviewsTabProps) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const [reviewsSearchQuery, setReviewsSearchQuery] = useState("");
   const [reviewsSortBy, setReviewsSortBy] = useState<"helpful" | "newest">("helpful");
   const [reviewsLimit, setReviewsLimit] = useState(3);
@@ -139,23 +141,20 @@ export default function ReviewsTab({ reviews, productId, user, setReportModalSta
 
         <div className="w-full md:w-auto text-center md:text-right flex flex-col items-center md:items-end gap-2">
           <span className="text-xs text-muted-foreground font-medium">Share your feedback to support the makers!</span>
-          {user ? (
-            <Link
-              href={`/products/${productId}/review`}
-              className="inline-flex items-center gap-1.5 bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-xs px-5 py-2.5 rounded-xl cursor-pointer transition-colors"
-            >
-              <Star className="w-4 h-4 fill-white text-white" />
-              Write a Review
-            </Link>
-          ) : (
-            <button
-              onClick={() => dispatch(setAuthModalOpen(true))}
-              className="inline-flex items-center gap-1.5 bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-xs px-5 py-2.5 rounded-xl cursor-pointer transition-colors"
-            >
-              <Star className="w-4 h-4 fill-white text-white" />
-              Login to Review
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (user) {
+                router.push(`/products/${productId}/review`);
+              } else {
+                dispatch(setAuthModalOpen(true));
+              }
+            }}
+            className="inline-flex items-center gap-1.5 bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-xs px-5 py-2.5 rounded-xl cursor-pointer transition-colors shadow-xs active:scale-95"
+          >
+            <Star className="w-4 h-4 fill-white text-white" />
+            Write a Review
+          </button>
         </div>
       </div>
 
@@ -255,7 +254,7 @@ export default function ReviewsTab({ reviews, productId, user, setReportModalSta
       </div>
 
       {/* Reviews Header row */}
-      <div className="flex items-center justify-between  pb-3">
+      <div className="flex items-center justify-between pb-3">
         <h3 className="text-sm font-bold text-foreground tracking-tight">Reviews</h3>
         <div className="flex items-center gap-4 text-xs font-semibold text-muted-foreground">
           <DropdownMenu.Root>

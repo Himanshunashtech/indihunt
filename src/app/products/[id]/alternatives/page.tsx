@@ -2,6 +2,7 @@ import React from "react";
 import type { Metadata } from "next";
 import { notFound, redirect, RedirectType } from "next/navigation";
 import { getProductById, getProducts, calculateProductRank, getReviews, getAlternatives, getProductSlug } from "@/lib/supabase";
+import { getProductCached } from "@/lib/product-cache";
 import ProductDetailPageClient from "../ProductDetailPageClient";
 
 export const revalidate = 60;
@@ -14,7 +15,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const product = await getProductById(id);
+  const product = await getProductCached(id);
   if (!product) return { title: "Alternatives Not Found | IndiHunt" };
 
   const slug = getProductSlug(product.name);
@@ -39,13 +40,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title,
       description,
       images: product.logo_url ? [product.logo_url] : [`${SITE_URL}/og-image.webp`],
-    }
+    },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
+    },
   };
 }
 
 export default async function ProductAlternativesPage({ params }: PageProps) {
   const { id } = await params;
-  const product = await getProductById(id);
+  const product = await getProductCached(id);
 
   if (!product) {
     notFound();

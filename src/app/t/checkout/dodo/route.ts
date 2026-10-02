@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccess, apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return apiSuccessSecure({ status: 'ok', service: 'dodo-checkout-api' });
+  return apiSuccess({ status: 'ok', service: 'dodo-checkout-api' });
 }
 
 export async function HEAD() {
@@ -44,7 +44,14 @@ export async function POST(req: NextRequest | Request) {
 
     const baseUrl = isLive ? 'https://live.dodopayments.com' : 'https://test.dodopayments.com';
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || 'https://indihunt.in';
+    const origin = req.headers.get('origin') || req.headers.get('referer');
+    let requestHost = 'https://indihunt.in';
+    if (origin) {
+      try {
+        requestHost = new URL(origin).origin;
+      } catch {}
+    }
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || requestHost;
     const returnUrl = `${siteUrl}/?payment_status=success&gateway=dodo&campaign_id=${campaignId || ''}&product_id=${productId || ''}&user_id=${userId || ''}&amount=${amount || 1199}`;
 
     const actualCustomerName = customerName || userName || (userEmail ? userEmail.split('@')[0] : 'IndiHunt Maker');
@@ -59,7 +66,7 @@ export async function POST(req: NextRequest | Request) {
       if (userId) checkoutUrl.searchParams.set('metadata[userId]', userId);
       checkoutUrl.searchParams.set('redirect_url', returnUrl);
 
-      return apiSuccessSecure({ url: checkoutUrl.toString(), provider: 'dodo', campaignId });
+      return apiSuccess({ url: checkoutUrl.toString(), provider: 'dodo', campaignId });
     }
 
     if (DODO_PAYMENTS_API_KEY) {
@@ -115,7 +122,7 @@ export async function POST(req: NextRequest | Request) {
         } catch { }
 
         if (checkoutRes.ok && (sessionData.checkout_url || sessionData.url || sessionData.payment_link)) {
-          return apiSuccessSecure({
+          return apiSuccess({
             url: sessionData.checkout_url || sessionData.url || sessionData.payment_link,
             provider: 'dodo',
             campaignId,
@@ -146,7 +153,7 @@ export async function POST(req: NextRequest | Request) {
         } catch { }
 
         if (legacyRes.ok && (legacyData.payment_link || legacyData.url || legacyData.checkout_url)) {
-          return apiSuccessSecure({
+          return apiSuccess({
             url: legacyData.payment_link || legacyData.url || legacyData.checkout_url,
             provider: 'dodo',
             campaignId,
@@ -156,7 +163,7 @@ export async function POST(req: NextRequest | Request) {
     }
 
     const fallbackUrl = `${siteUrl}/?payment_status=success&campaign_id=${campaignId || 'test'}&test_paid=true&gateway=dodo`;
-    return apiSuccessSecure({
+    return apiSuccess({
       url: fallbackUrl,
       mode: 'test_sandbox',
       provider: 'dodo',

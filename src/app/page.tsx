@@ -12,7 +12,8 @@ export default async function Home() {
   const [products, threads, topHunters, promotedProductsResolved] = await Promise.all([
     productsPromise,
     getThreads().catch(() => []),
-    getTopHuntersData().catch(() => []),
+    // Chain off productsPromise — reuses the same product dataset with zero additional DB roundtrips
+    productsPromise.then(prods => getTopHuntersData("all_time", prods).catch(() => [])),
     // Phase 1c: chain off productsPromise — no extra Supabase roundtrip, runs in parallel
     productsPromise.then(prods => getPromotedProducts(prods).catch(() => [] as Product[])),
   ]);
@@ -26,12 +27,24 @@ export default async function Home() {
   const oneWeekAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
   const oneMonthAgo = new Date(startOfToday.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  // Exclude future scheduled products from live discovery
-  const liveProducts = (products || []).filter((p: Product) => {
-    if (p.status === "scheduled" && p.scheduled_for) {
-      return new Date(p.scheduled_for) <= now;
+  // Separate upcoming and live products
+  const upcomingList: Product[] = [];
+  const liveProducts: Product[] = [];
+
+  (products || []).forEach((p: Product) => {
+    if (p.status === "draft") return;
+    if (p.scheduled_for) {
+      const launchDate = new Date(p.scheduled_for);
+      if (launchDate > now) {
+        upcomingList.push(p);
+        return;
+      }
     }
-    return p.status !== "scheduled" && p.status !== "draft";
+    if (p.status !== "scheduled") {
+      liveProducts.push(p);
+    } else if (p.scheduled_for && new Date(p.scheduled_for) <= now) {
+      liveProducts.push({ ...p, status: "live" });
+    }
   });
 
   const todayList: Product[] = [];
@@ -58,14 +71,15 @@ export default async function Home() {
   const sortedLastWeek = sortByUpvotes(lastWeekList);
   const sortedLastMonth = sortByUpvotes(lastMonthList);
 
-  // Sliced visible datasets for minimal initial wire payload (20 today + 5 yesterday + 5 last week + 5 last month)
+  // Sliced visible datasets for minimal initial wire payload (20 today + 5 yesterday + 5 last week + 5 last month + 20 upcoming)
   const visibleToday = sortedToday.slice(0, 20);
   const visibleYesterday = sortedYesterday.slice(0, 5);
   const visibleLastWeek = sortedLastWeek.slice(0, 5);
   const visibleLastMonth = sortedLastMonth.slice(0, 5);
+  const visibleUpcoming = upcomingList.slice(0, 20);
 
   const initialVisibleMap = new Map<string, Product>();
-  [...visibleToday, ...visibleYesterday, ...visibleLastWeek, ...visibleLastMonth].forEach(p => {
+  [...visibleUpcoming, ...visibleToday, ...visibleYesterday, ...visibleLastWeek, ...visibleLastMonth].forEach(p => {
     if (p && p.id) initialVisibleMap.set(p.id, p);
   });
   const initialVisibleProducts = Array.from(initialVisibleMap.values());

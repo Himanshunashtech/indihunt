@@ -43,30 +43,23 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const botResult = detectBotOrScraper(userAgent);
-  if (botResult.isBot && !botResult.isLegitimateSeoBot) {
-    return NextResponse.json(
-      { success: false, error: 'Access Denied - Automated Request Blocked', reason: botResult.reason, errors: [] },
-      { status: 403, headers: { ...corsHeaders, 'x-request-id': requestId, 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff' } }
-    );
-  }
+  // Trust internal SSR self-requests — they carry a bypass header set by secureApiFetch
+  // so they won't be caught by the bot-detection layer (Node.js fetch UA triggers it)
+  const isInternalSSR = request.headers.get('x-internal-ssr') === '1';
 
-  if (pathname.startsWith('/t/proxy/supabase') || pathname.startsWith('/api/proxy/supabase')) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    if (!supabaseUrl) {
-      return NextResponse.json({ error: 'Supabase URL not configured' }, { status: 500 });
+  if (!isInternalSSR) {
+    const botResult = detectBotOrScraper(userAgent);
+    if (botResult.isBot && !botResult.isLegitimateSeoBot) {
+      return NextResponse.json(
+        { success: false, error: 'Access Denied - Automated Request Blocked', reason: botResult.reason, errors: [] },
+        { status: 403, headers: { ...corsHeaders, 'x-request-id': requestId, 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff' } }
+      );
     }
-    const path = pathname.replace('/t/proxy/supabase', '').replace('/api/proxy/supabase', '');
-    const targetUrl = `${supabaseUrl}${path}${search}`;
-    const headers = new Headers(request.headers);
-    headers.set('host', new URL(supabaseUrl).host);
-    headers.set('x-request-id', requestId);
-    return NextResponse.rewrite(new URL(targetUrl), { request: { headers } });
   }
 
-  const isApiRoute = (pathname.startsWith('/t/') || pathname.startsWith('/api/')) && !pathname.startsWith('/t/proxy/');
+  const isApiOrProxy = pathname.startsWith('/t/') || pathname.startsWith('/api/');
 
-  if (isApiRoute) {
+  if (isApiOrProxy) {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || '127.0.0.1';
     let limit = 60;
     if (pathname.includes('/upload') || pathname.includes('/ai/')) {
@@ -81,6 +74,20 @@ export async function middleware(request: NextRequest) {
         { status: 429, headers: { ...corsHeaders, 'X-RateLimit-Limit': rateResult.limit.toString(), 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': rateResult.resetMs.toString(), 'Retry-After': Math.ceil(rateResult.resetMs / 1000).toString(), 'x-request-id': requestId } }
       );
     }
+
+    if (pathname.startsWith('/t/proxy/supabase') || pathname.startsWith('/api/proxy/supabase')) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      if (!supabaseUrl) {
+        return NextResponse.json({ error: 'Supabase URL not configured' }, { status: 500 });
+      }
+      const path = pathname.replace('/t/proxy/supabase', '').replace('/api/proxy/supabase', '');
+      const targetUrl = `${supabaseUrl}${path}${search}`;
+      const headers = new Headers(request.headers);
+      headers.set('host', new URL(supabaseUrl).host);
+      headers.set('x-request-id', requestId);
+      return NextResponse.rewrite(new URL(targetUrl), { request: { headers } });
+    }
+
     const response = NextResponse.next();
     Object.entries(corsHeaders).forEach(([key, value]) => response.headers.set(key, value));
     response.headers.set('X-RateLimit-Limit', rateResult.limit.toString());
@@ -91,12 +98,10 @@ export async function middleware(request: NextRequest) {
     response.headers.set('X-XSS-Protection', '1; mode=block');
     response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    if (request.method === 'GET' && !pathname.includes('/auth') && !pathname.includes('/admin') && !pathname.includes('/upload') && !pathname.includes('/checkout') && !pathname.includes('/webhooks')) {
-      response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
-    } else {
-      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-      response.headers.set('Pragma', 'no-cache');
-    }
+    
+    // Default API routes to private no-store; public routes explicitly set PUBLIC_CACHE_HEADERS in their route handlers
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
     return response;
   }
 
@@ -121,8 +126,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/my-products') ||
     pathname.startsWith('/new') ||
     pathname.startsWith('/notifications') ||
-    pathname.startsWith('/t/account') ||
-    pathname.startsWith('/t/admin');
+    pathname.startsWith('/settings');
 
   if (isAuthCallback || (hasAuthCookie && isProtectedPath)) {
     try {
@@ -158,7 +162,15 @@ export async function middleware(request: NextRequest) {
   response.headers.set('x-request-id', requestId);
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=299');
+
+  // Set Cache-Control: no-store for authenticated / protected pages, public edge cache for guest landing/content pages
+  if (hasAuthCookie || isProtectedPath || isAuthCallback) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+  } else {
+    response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=299');
+  }
+
   return response;
 }
 

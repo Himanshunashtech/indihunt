@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import React, { useState, useMemo, useEffect } from "react";
 import { ChevronLeft, ChevronRight, MessageSquare, ThumbsUp, Edit2, Trash2, Flag } from "lucide-react";
 import {
@@ -258,7 +259,7 @@ export default function ForumsTab({
           {/* Thread Original Post */}
           <div className="bg-card border border-border p-6 rounded-3xl flex items-start gap-4">
             <div className="w-12 h-12 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center mt-1">
-              <Image src={product.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
+              <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt="" className="w-full h-full object-cover" />
             </div>
             <div className="flex-1 space-y-3">
               <div className="flex items-center gap-2">
@@ -589,7 +590,7 @@ export default function ForumsTab({
                   className="bg-card border border-border p-5 rounded-2xl hover:border-orange-500/20 hover:shadow-sm transition-all flex items-start gap-4 cursor-pointer relative group"
                 >
                   <div className="w-10 h-10 rounded-xl overflow-hidden bg-muted border border-border flex-shrink-0 flex items-center justify-center mt-0.5">
-                    <Image src={product.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
+                    <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt="" className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 space-y-2 pr-8">
                     <div className="flex items-center gap-2">

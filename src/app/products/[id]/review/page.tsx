@@ -1,11 +1,12 @@
 "use client";
 
-
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import Favicon from "@/components/Favicon";
 import Navbar from "@/components/Navbar";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Star,
@@ -31,6 +32,7 @@ import {
 
 export default function ReviewWizardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { id } = useParams() as { id: string };
 
   const [product, setProduct] = useState<Product | null>(null);
@@ -218,6 +220,12 @@ export default function ReviewWizardPage() {
       );
 
       if (added) {
+        // Optimistically update reviews cache with setQueryData instead of invalidating
+        queryClient.setQueryData(["reviews", product.id], (old: any) => {
+          if (!Array.isArray(old)) return [added];
+          return [added, ...old.filter((r: any) => r.id !== added.id)];
+        });
+
         setSuccess(true);
         setTimeout(() => {
           router.push(`/products/${id}?tab=Reviews`);
@@ -269,11 +277,7 @@ export default function ReviewWizardPage() {
           <div className="bg-card border border-border p-6 rounded-3xl shadow-sm space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 rounded-2xl border border-border/80 bg-muted overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm">
-                {product.logo_url ? (
-                  <Image src={product.logo_url} alt={product.name} className="w-full h-full object-cover" width={48} height={48} />
-                ) : (
-                  <span className="text-lg font-semibold text-orange-500">{product.name.charAt(0)}</span>
-                )}
+                <Favicon src={product.logo_url} websiteUrl={product.website_url} size={48} alt={product.name} className="w-full h-full object-cover" />
               </div>
               <div>
                 <h2 className="font-bold text-base tracking-tight text-foreground truncate max-w-[180px]">
@@ -414,13 +418,13 @@ export default function ReviewWizardPage() {
                         );
                       })}
                       {showCustomProInput ? (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <input
                             type="text"
                             value={customProVal}
                             onChange={(e) => setCustomProVal(e.target.value)}
                             placeholder="Add feature..."
-                            className="bg-background border border-border rounded-full px-3 py-1 text-xs text-foreground focus:outline-none focus:border-emerald-500"
+                            className="bg-background border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:border-emerald-500 shadow-xs"
                             onKeyDown={(e) => {
                               if (e.key === "Enter") addCustomPro();
                             }}
@@ -429,7 +433,7 @@ export default function ReviewWizardPage() {
                           <button
                             type="button"
                             onClick={addCustomPro}
-                            className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                            className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline px-2 py-1"
                           >
                             Add
                           </button>
@@ -438,18 +442,18 @@ export default function ReviewWizardPage() {
                         <button
                           type="button"
                           onClick={() => setShowCustomProInput(true)}
-                          className="px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-dashed border-emerald-500/25 hover:bg-emerald-500/10 cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-dashed border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
                         >
-                          Add features
+                          + Add features
                         </button>
                       )}
                     </div>
                     <textarea
                       value={prosText}
                       onChange={(e) => setProsText(e.target.value)}
-                      placeholder="Tell us why this product is fantastic..."
-                      rows={3}
-                      className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-xs text-foreground focus:outline-none focus:border-emerald-500/60 resize-none animate-in fade-in"
+                      placeholder="Tell us why this product is fantastic, what standout features you love, and your day-to-day experience..."
+                      rows={6}
+                      className="w-full bg-background border border-border rounded-2xl p-5 text-base sm:text-base text-foreground focus:outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10 resize-y min-h-[180px] leading-relaxed shadow-xs transition-all"
                     />
                   </div>
 
@@ -477,13 +481,13 @@ export default function ReviewWizardPage() {
                         );
                       })}
                       {showCustomConInput ? (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <input
                             type="text"
                             value={customConVal}
                             onChange={(e) => setCustomConVal(e.target.value)}
                             placeholder="Add improvement..."
-                            className="bg-background border border-border rounded-full px-3 py-1 text-xs text-foreground focus:outline-none focus:border-orange-500"
+                            className="bg-background border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:border-orange-500 shadow-xs"
                             onKeyDown={(e) => {
                               if (e.key === "Enter") addCustomCon();
                             }}
@@ -492,7 +496,7 @@ export default function ReviewWizardPage() {
                           <button
                             type="button"
                             onClick={addCustomCon}
-                            className="text-xs font-semibold text-red-500 hover:underline"
+                            className="text-xs font-bold text-red-500 hover:underline px-2 py-1"
                           >
                             Add
                           </button>
@@ -501,18 +505,18 @@ export default function ReviewWizardPage() {
                         <button
                           type="button"
                           onClick={() => setShowCustomConInput(true)}
-                          className="px-3 py-1.5 rounded-full text-xs font-semibold text-red-500 border border-dashed border-red-500/20 hover:bg-red-500/5 cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-red-500 border border-dashed border-red-500/30 hover:bg-red-500/5 cursor-pointer"
                         >
-                          Add improvements
+                          + Add improvements
                         </button>
                       )}
                     </div>
                     <textarea
                       value={consText}
                       onChange={(e) => setConsText(e.target.value)}
-                      placeholder="Tell us what can be improved about this product..."
-                      rows={3}
-                      className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-xs text-foreground focus:outline-none focus:border-orange-500 resize-none"
+                      placeholder="Tell us what could be improved, missing functionality, or challenges you encountered..."
+                      rows={6}
+                      className="w-full bg-background border border-border rounded-2xl p-5 text-base sm:text-base text-foreground focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10 resize-y min-h-[180px] leading-relaxed shadow-xs transition-all"
                     />
                   </div>
                 </div>
@@ -536,21 +540,17 @@ export default function ReviewWizardPage() {
                       Search for products to compare
                     </label>
                     {selectedCompareProduct ? (
-                      <div className="flex items-center justify-between bg-muted/40 border border-border rounded-2xl px-4 py-3 text-xs font-semibold text-foreground">
+                      <div className="flex items-center justify-between bg-muted/40 border border-border rounded-2xl px-4 py-3.5 text-sm font-semibold text-foreground">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg overflow-hidden border border-border bg-card flex items-center justify-center flex-shrink-0">
-                            {selectedCompareProduct.logo_url ? (
-                              <Image src={selectedCompareProduct.logo_url} alt="" className="w-full h-full object-cover" width={48} height={48} />
-                            ) : (
-                              <span className="text-xs font-semibold text-orange-500">{selectedCompareProduct.name.charAt(0)}</span>
-                            )}
+                          <div className="w-8 h-8 rounded-lg overflow-hidden border border-border bg-card flex items-center justify-center flex-shrink-0">
+                            <Favicon src={selectedCompareProduct.logo_url} websiteUrl={selectedCompareProduct.website_url} size={48} alt="" className="w-full h-full object-cover" />
                           </div>
                           <span>{selectedCompareProduct.name}</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setSelectedCompareProduct(null)}
-                          className="text-xs text-muted-foreground hover:text-foreground font-extrabold cursor-pointer"
+                          className="text-xs text-muted-foreground hover:text-foreground font-extrabold cursor-pointer px-1"
                         >
                           ✕
                         </button>
@@ -568,7 +568,7 @@ export default function ReviewWizardPage() {
                               setShowCompareDropdown(true);
                             }}
                             onFocus={() => setShowCompareDropdown(true)}
-                            className="w-full bg-background border border-border rounded-2xl pl-10 pr-4 py-3 text-xs text-foreground focus:outline-none focus:border-orange-500"
+                            className="w-full bg-background border border-border rounded-2xl pl-11 pr-4 py-3.5 text-sm text-foreground focus:outline-none focus:border-orange-500 shadow-xs"
                           />
                         </div>
                         {showCompareDropdown && compareSearch && (
@@ -586,11 +586,7 @@ export default function ReviewWizardPage() {
                                   className="w-full px-4 py-3 text-left hover:bg-muted text-xs font-medium text-foreground flex items-center gap-3 transition-colors cursor-pointer"
                                 >
                                   <div className="w-8 h-8 rounded-lg overflow-hidden border border-border bg-muted flex items-center justify-center flex-shrink-0">
-                                    {p.logo_url ? (
-                                      <Image src={p.logo_url} alt={p.name} className="w-full h-full object-cover" width={48} height={48} />
-                                    ) : (
-                                      <span className="text-xs font-semibold text-orange-500">{p.name.charAt(0)}</span>
-                                    )}
+                                    <Favicon src={p.logo_url} websiteUrl={p.website_url} size={48} alt={p.name} className="w-full h-full object-cover" />
                                   </div>
                                   <div>
                                     <span className="block font-semibold text-foreground">{p.name}</span>
@@ -620,8 +616,8 @@ export default function ReviewWizardPage() {
                       value={compareText}
                       onChange={(e) => setCompareText(e.target.value)}
                       placeholder={`Tell us why you chose ${product.name} over ${selectedCompareProduct ? selectedCompareProduct.name : 'other alternatives'}...`}
-                      rows={6}
-                      className="w-full bg-background border border-border rounded-2xl px-4 py-3 text-xs text-foreground focus:outline-none focus:border-orange-500 resize-none font-normal leading-relaxed"
+                      rows={8}
+                      className="w-full bg-background border border-border rounded-2xl p-5 text-base sm:text-base text-foreground focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/10 resize-y min-h-[200px] font-normal leading-relaxed shadow-xs transition-all"
                     />
                   </div>
                 </div>
