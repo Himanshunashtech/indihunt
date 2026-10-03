@@ -10,6 +10,38 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT
 const supabaseKey = serviceRoleKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const dbClient = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
+// Direct Supabase query for fresh products — bypasses Redis/public cache
+// so the daily digest always sees the latest launches.
+const LIST_COLS =
+  'id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,is_promoted,promoted';
+
+async function getFreshProducts(): Promise<any[]> {
+  // 1. Try a direct DB query (no cache) so today's products are always included
+  if (dbClient) {
+    try {
+      const { data, error } = await dbClient
+        .from('products')
+        .select(LIST_COLS)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .limit(300);
+
+      if (!error && data && data.length > 0) {
+        const now = new Date();
+        return data.map((p: any) =>
+          p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+            ? { ...p, status: 'live' }
+            : p
+        );
+      }
+    } catch { }
+  }
+
+  // 2. Fallback to getProducts() (may serve cached data, but better than nothing)
+  const fallback = await getProducts();
+  return (fallback && fallback.length > 0) ? fallback : [];
+}
+
 export async function POST(req: Request) {
   return handleDailyDigest(req);
 }
@@ -20,8 +52,7 @@ export async function GET(req: Request) {
 
 async function handleDailyDigest(req: Request) {
   try {
-    const allProducts = await getProducts();
-    const prods = (allProducts && allProducts.length > 0) ? allProducts : [];
+    const prods = await getFreshProducts();
 
     const now = new Date();
     const nowMs = now.getTime();
@@ -181,12 +212,12 @@ async function handleDailyDigest(req: Request) {
       return `
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
         <tr>
-          <td width="52" valign="top" style="padding-right: 14px;">
+          <td width="52" valign="middle" style="padding-right: 14px;">
             <a href="${productUrl}" target="_blank" style="text-decoration: none;">
               <img src="${logo}" alt="${p.name}" width="52" height="52" style="width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 1px solid #e2e8f0; display: block;" />
             </a>
           </td>
-          <td valign="top" style="padding-right: 12px;">
+          <td valign="middle" style="padding-right: 12px;">
             <div style="font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3;">
               <a href="${productUrl}" target="_blank" style="color: #0f172a; text-decoration: none;">${idx + 1}. ${p.name}</a>
               <span style="font-weight: 400; color: #475569;"> — ${p.tagline || ''}</span>
@@ -198,11 +229,11 @@ async function handleDailyDigest(req: Request) {
               ${promotedBadge}
             </div>
           </td>
-          <td width="64" valign="middle" align="right">
+          <td width="44" valign="middle" align="right">
             <a href="${productUrl}" target="_blank" style="text-decoration: none;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #e2e8f0; border-radius: 8px; background-color: #ffffff;">
                 <tr>
-                  <td align="center" style="padding: 8px 10px; min-width: 48px;">
+                  <td align="center" style="padding: 6px 8px; min-width: 36px;">
                     <div style="font-size: 10px; color: #64748b; line-height: 1;">▲</div>
                     <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1;">${p.upvotes_count || p.upvotes || 0}</div>
                   </td>
