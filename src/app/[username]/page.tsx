@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache as reactCache } from "react";
 import { createClient } from "@supabase/supabase-js";
-import ProfilePage from "@/app/profile/page";
+import ProfilePageClient from "@/app/profile/ProfilePageClient";
 import Script from "next/script";
 
 const baseUrl = "https://indihunt.in";
@@ -194,7 +194,7 @@ export default async function UsernameProfilePage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
       />
-      <ProfilePage
+      <ProfilePageClient
         initialUsername={cleanUsername}
         initialProfile={profile}
         initialProducts={initialProducts}

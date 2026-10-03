@@ -28,6 +28,7 @@ import {
   Flame,
   LayoutGrid,
   Bell,
+  Settings,
 } from "lucide-react";
 
 const TAG_STYLES: Record<string, string> = {
@@ -68,6 +69,59 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.5.0",
+    date: "October 2026",
+    title: "Server-Side Rendering (SSR) for Profile, Settings & My Products",
+    summary: "Transformed Maker Profile (/profile), Account Settings (/profile/settings), and Maker Dashboard (/my-products) into Server Components with prefetching, SEO metadata, BreadcrumbList JSON-LD schemas, and zero-flash client hydration.",
+    icon: Sparkles,
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-500/10",
+    tags: ["Performance", "SSR", "Profiles", "SEO"],
+    features: [
+      { icon: User, text: "Converted /profile into an async Server Component with server-side profile prefetching, canonical metadata, and BreadcrumbList JSON-LD schema." },
+      { icon: Trophy, text: "Converted Maker Karma Leaderboard (/profile/leaderboard) into an async Server Component with 60s ISR caching and ItemList schema." },
+      { icon: Flame, text: "Converted Maker Streaks (/profile/streak) into an async Server Component with 60s ISR caching and pre-hydrated streak leaders." },
+      { icon: MessageSquare, text: "Converted Community Discussions (/discussions) into an async Server Component with 60s ISR caching and ItemList schema." },
+      { icon: MessageSquare, text: "Converted Thread Detail (/threads/[id]) into an async Server Component with server pre-hydration of discussion comments and related products." },
+      { icon: Settings, text: "Separated /profile/settings into a dynamic Server Component with secure robots exclusion and dedicated ProfileSettingsClient." },
+      { icon: Rocket, text: "Converted /my-products into an async Server Component with server-side catalog pre-hydration and clean dashboard performance." },
+      { icon: Settings, text: "Converted /my-products/[id]/settings into an async Server Component with dynamic product metadata and initial props pre-hydration." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.4.0",
+    date: "October 2026",
+    title: "Server-Side Rendering (SSR) & 60s ISR for Top Hunters & Leaderboard",
+    summary: "Converted Top Hunters (/top-hunters) and Product Leaderboard into async Server Components with Incremental Static Regeneration (revalidate = 60), JSON-LD ItemList schemas, and zero-flash client hydration.",
+    icon: Trophy,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Performance", "SSR", "Leaderboard", "SEO"],
+    features: [
+      { icon: Trophy, text: "Converted /top-hunters into an async Server Component with server-side hunter data fetching and ItemList structured data." },
+      { icon: Sparkles, text: "Converted product discovery into an async Server Component with server-side category ranking queries and 60-second ISR caching." },
+      { icon: ShieldCheck, text: "Eliminated client loading skeletons on initial page load by hydrating TopHuntersClient directly with server props." },
+    ],
+    highlight: false,
+  },
+  {
+    version: "v7.3.9",
+    date: "October 2026",
+    title: "Static Pre-Rendering & ISR Across All 54 Product Categories",
+    summary: "Configured full server-side rendering (SSR) and Incremental Static Regeneration (ISR with revalidate = 60) across all 54 product categories with generateStaticParams for instant page loads and full search engine indexing.",
+    icon: Sparkles,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Performance", "SSR", "Categories", "SEO"],
+    features: [
+      { icon: Sparkles, text: "Implemented generateStaticParams in categories/[category]/page.tsx to pre-render all 54 product categories statically at build time." },
+      { icon: Database, text: "Enabled 60-second Incremental Static Regeneration (ISR) and dynamicParams fallback for instant initial loads with real-time data freshness." },
+      { icon: ShieldCheck, text: "Verified server-rendered HTML payloads with ItemList, BreadcrumbList, and FAQPage JSON-LD schemas across all category pages." },
+    ],
+    highlight: false,
+  },
+  {
     version: "v7.3.8",
     date: "October 2026",
     title: "Product Category Matching Engine & Client-Side Hydration",
@@ -81,7 +135,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Database, text: "Added client-side hydration in CategoryPageClient to ensure products load immediately even during cold SSR start or client-side navigation." },
       { icon: ShieldCheck, text: "Fixed JSON/array string tag parsing so products with various tag formats are accurately categorized." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.3.7",
@@ -458,8 +512,8 @@ export default function ChangelogPage() {
                   {/* Node */}
                   <div
                     className={`absolute left-0 top-4 w-[30px] h-[30px] rounded-full border-2 flex items-center justify-center transition-all ${isOpen
-                        ? "border-orange-500 bg-orange-500/10"
-                        : "border-border bg-background"
+                      ? "border-orange-500 bg-orange-500/10"
+                      : "border-border bg-background"
                       }`}
                   >
                     <Icon
@@ -471,8 +525,8 @@ export default function ChangelogPage() {
                   {/* Card */}
                   <div
                     className={`bg-card border rounded-2xl shadow-xs transition-all ${item.highlight
-                        ? "border-orange-500/30 shadow-orange-500/5"
-                        : "border-border/80"
+                      ? "border-orange-500/30 shadow-orange-500/5"
+                      : "border-border/80"
                       }`}
                   >
                     {/* Header — always visible, clickable to expand */}
@@ -513,8 +567,8 @@ export default function ChangelogPage() {
                         {/* Expand toggle */}
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${isOpen
-                              ? "bg-orange-500/10 text-orange-500"
-                              : "bg-muted text-muted-foreground"
+                            ? "bg-orange-500/10 text-orange-500"
+                            : "bg-muted text-muted-foreground"
                             }`}
                         >
                           {isOpen ? (

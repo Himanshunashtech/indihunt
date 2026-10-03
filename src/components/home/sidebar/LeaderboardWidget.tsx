@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import Favicon from "@/components/Favicon";
 import { ChevronRight } from "lucide-react";
-import { Product } from "@/lib/supabase";
+import { Product, getProductSlug } from "@/lib/supabase";
 
 interface LeaderboardWidgetProps {
   products: Product[];
@@ -23,7 +23,7 @@ export default function LeaderboardWidget({
           <h4 className="text-xl font-medium text-foreground/80">Top Products</h4>
         </div>
         <Link
-          href="/leaderboard"
+          href="/best-products"
           className="text-base font-semibold text-[#ff5733] hover:underline flex items-center gap-1 transition-colors"
         >
           Show all
@@ -35,7 +35,7 @@ export default function LeaderboardWidget({
         {products.map((prod, idx) => (
           <Link
               key={prod.id}
-              href="/leaderboard"
+              href={`/products/${getProductSlug(prod.name)}`}
               className="flex items-center justify-between p-2.5 rounded-2xl bg-card hover:bg-muted/60 border border-border/60 transition-all group shadow-2xs"
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -75,10 +75,10 @@ export default function LeaderboardWidget({
       </div>
 
       <Link
-        href="/leaderboard"
+        href="/best-products"
         className="w-full py-2.5 px-4 rounded-full border border-border bg-card hover:bg-muted flex items-center justify-center text-base font-semibold text-foreground/85 hover:text-[#ff5733] transition-all group shadow-2xs"
       >
-        <span>Show all Product Leaderboard</span>
+        <span>Show all Top Products</span>
       </Link>
     </div>
   );

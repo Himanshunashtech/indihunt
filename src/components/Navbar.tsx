@@ -359,7 +359,7 @@ export default function Navbar({
     { label: "Changelog", href: "/changelog", emoji: "📗" },
     { label: "Makers", href: "/makers", emoji: "👾" },
     { label: "Top Hunters", href: "/top-hunters", emoji: "🎯" },
-    { label: "Leaderboard", href: "/leaderboard", emoji: "🏆" },
+    { label: "Top Products", href: "/best-products", emoji: "🏆" },
   ];
 
   return (
@@ -1164,7 +1164,7 @@ export default function Navbar({
             {activeMobileSubmenu === "top" && (
               <div className="px-2.5 py-1.5 space-y-1 bg-muted/20 border-t border-border/40">
                 {[
-                  { href: "/leaderboard", icon: Trophy, label: "Top Products", sub: "Most-loved and top-rated launches", bg: "bg-amber-500/10", color: "text-amber-500" },
+                  { href: "/best-products", icon: Trophy, label: "Top Products", sub: "Most-loved and top-rated launches", bg: "bg-amber-500/10", color: "text-amber-500" },
                   { href: "/top-hunters", icon: Target, label: "Top Hunters", sub: "Leaderboard of top product hunters", bg: "bg-emerald-500/10", color: "text-emerald-500" },
                   { href: "/awards", icon: Award, label: "Product Awards", sub: "Platform awards & recognition", bg: "bg-rose-500/10", color: "text-rose-500" },
                 ].map((subItem) => (

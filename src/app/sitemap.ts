@@ -99,11 +99,10 @@ function getSupabaseClient() {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: SITE_URL, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 1.0 },
-    { url: `${SITE_URL}/leaderboard`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.95 },
     { url: `${SITE_URL}/top-hunters`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.95 },
+    { url: `${SITE_URL}/best-products`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.95 },
     { url: `${SITE_URL}/pages`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/categories`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.9 },
-    { url: `${SITE_URL}/best-products`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/products`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/discussions`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "hourly", priority: 0.85 },
     { url: `${SITE_URL}/makers`, lastModified: STATIC_LAST_MODIFIED, changeFrequency: "weekly", priority: 0.85 },

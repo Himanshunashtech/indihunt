@@ -4,10 +4,17 @@ import { getProducts, Product, getProductSlug } from "@/lib/supabase";
 import CategoryPageClient from "./CategoryPageClient";
 
 export const revalidate = 60; // ISR: Revalidate page data every 60 seconds
+export const dynamicParams = true;
 
 const SITE_URL = "https://indihunt.in";
 
 import { SLUG_TO_NAME, isProductInCategory } from "@/lib/categoryMatcher";
+
+export async function generateStaticParams() {
+  return Object.keys(SLUG_TO_NAME).map((slug) => ({
+    category: slug,
+  }));
+}
 
 const ALL_CATEGORIES_PANEL = Object.entries(SLUG_TO_NAME).map(([slug, name]) => ({
   slug,
