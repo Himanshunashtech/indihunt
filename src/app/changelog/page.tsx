@@ -70,6 +70,23 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.5.3",
+    date: "October 2026",
+    title: "Launch Archive Date-Wise Daily, Weekly, Monthly & Yearly Aggregation",
+    summary: "Implemented date-wise filtering across Daily, Weekly, Monthly, and Yearly periods on the Launch Archive (/best-products), added week-by-week selectors, and increased items per page to 50 with automatic fallback.",
+    icon: Rocket,
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-500/10",
+    tags: ["Launches", "Improvement", "Leaderboard"],
+    features: [
+      { icon: Calendar, text: "Added dedicated Weekly period filter with interactive week selectors (Weeks 1 to 5) to browse launches by week of the month." },
+      { icon: CheckCircle, text: "Implemented precise IST date-range matching for Daily, Weekly, Monthly, and Yearly views." },
+      { icon: Rocket, text: "Increased items per page from 20 to 50 to display all launched products without premature pagination cutoffs." },
+      { icon: Sparkles, text: "Added auto-fallback to all live products when visiting root archive view if the current month has no new launches yet." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.5.2",
     date: "October 2026",
     title: "Top Hunters Leaderboard Full Community Members & Cache Isolation Fix",
@@ -84,7 +101,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Zap, text: "Increased top hunters leaderboard API query limit from 100 to 300 members with smooth multi-page pagination." },
       { icon: ShieldCheck, text: "Added client/offline fallback hydration for registered profiles so members are always listed." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.5.1",

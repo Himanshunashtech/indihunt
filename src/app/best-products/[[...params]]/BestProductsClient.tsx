@@ -247,7 +247,7 @@ export default function BestProductsCatchAllPage() {
   // Safe navigation helper that never breaks routing
   function navigate(p: Period, y: number, m: string, d: number | null) {
     const mSlug = m.toLowerCase();
-    if (p === "daily" && d !== null) {
+    if ((p === "daily" || p === "weekly") && d !== null) {
       router.push(`/best-products/${p}/${y}/${mSlug}/${d}`);
     } else {
       router.push(`/best-products/${p}/${y}/${mSlug}`);
@@ -279,41 +279,70 @@ export default function BestProductsCatchAllPage() {
       const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
       let dateFiltered: Product[] = [];
 
-      if (rawDay !== null && period === "daily") {
+      if (period === "daily") {
+        if (rawDay !== null) {
+          dateFiltered = filtered.filter(p => {
+            const pDate = p.scheduled_for ? new Date(p.scheduled_for) : p.created_at ? new Date(p.created_at) : null;
+            if (!pDate) return false;
+            const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
+            return (
+              istPDate.getUTCFullYear() === year &&
+              istPDate.getUTCMonth() === monthIndex &&
+              istPDate.getUTCDate() === rawDay
+            );
+          });
+        } else {
+          // All days of the month
+          dateFiltered = filtered.filter(p => {
+            const pDate = p.scheduled_for ? new Date(p.scheduled_for) : p.created_at ? new Date(p.created_at) : null;
+            if (!pDate) return false;
+            const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
+            return istPDate.getUTCFullYear() === year && istPDate.getUTCMonth() === monthIndex;
+          });
+        }
+      } else if (period === "weekly") {
+        if (rawDay !== null) {
+          // rawDay represents week number 1, 2, 3, 4, 5
+          const weekNum = rawDay;
+          const startDay = (weekNum - 1) * 7 + 1;
+          const endDay = Math.min(weekNum * 7, getDaysInMonth(monthFull, year));
+          dateFiltered = filtered.filter(p => {
+            const pDate = p.scheduled_for ? new Date(p.scheduled_for) : p.created_at ? new Date(p.created_at) : null;
+            if (!pDate) return false;
+            const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
+            const d = istPDate.getUTCDate();
+            return (
+              istPDate.getUTCFullYear() === year &&
+              istPDate.getUTCMonth() === monthIndex &&
+              d >= startDay && d <= endDay
+            );
+          });
+        } else {
+          // All weeks of the month
+          dateFiltered = filtered.filter(p => {
+            const pDate = p.scheduled_for ? new Date(p.scheduled_for) : p.created_at ? new Date(p.created_at) : null;
+            if (!pDate) return false;
+            const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
+            return istPDate.getUTCFullYear() === year && istPDate.getUTCMonth() === monthIndex;
+          });
+        }
+      } else if (period === "monthly") {
         dateFiltered = filtered.filter(p => {
-          const pDate = p.scheduled_for
-            ? new Date(p.scheduled_for)
-            : p.created_at ? new Date(p.created_at) : null;
-          if (!pDate) return false;
-          const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
-          return (
-            istPDate.getUTCFullYear() === year &&
-            istPDate.getUTCMonth() === monthIndex &&
-            istPDate.getUTCDate() === rawDay
-          );
-        });
-      } else if (period === "yearly") {
-        dateFiltered = filtered.filter(p => {
-          const pDate = p.scheduled_for
-            ? new Date(p.scheduled_for)
-            : p.created_at ? new Date(p.created_at) : null;
-          if (!pDate) return false;
-          const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
-          return istPDate.getUTCFullYear() === year;
-        });
-      } else {
-        // month / week / daily all-days
-        dateFiltered = filtered.filter(p => {
-          const pDate = p.scheduled_for
-            ? new Date(p.scheduled_for)
-            : p.created_at ? new Date(p.created_at) : null;
+          const pDate = p.scheduled_for ? new Date(p.scheduled_for) : p.created_at ? new Date(p.created_at) : null;
           if (!pDate) return false;
           const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
           return istPDate.getUTCFullYear() === year && istPDate.getUTCMonth() === monthIndex;
         });
+      } else if (period === "yearly") {
+        dateFiltered = filtered.filter(p => {
+          const pDate = p.scheduled_for ? new Date(p.scheduled_for) : p.created_at ? new Date(p.created_at) : null;
+          if (!pDate) return false;
+          const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
+          return istPDate.getUTCFullYear() === year;
+        });
       }
 
-      // If viewing the root archive without specific path parameters and the current month has no launches, show all available launches
+      // If viewing root archive without parameters and current month is empty, show all available launches
       if (dateFiltered.length === 0 && rawParams.length === 0 && filtered.length > 0) {
         dateFiltered = filtered;
       }
@@ -340,13 +369,24 @@ export default function BestProductsCatchAllPage() {
     },
   });
 
-  const displayDate = rawDay && period === "daily"
-    ? `${monthFull} ${rawDay}, ${year}`
-    : period === "yearly"
-      ? `${year}`
-      : `${monthFull} ${year}`;
+  const displayDate = useMemo(() => {
+    if (period === "yearly") return `${year} (Full Year)`;
+    if (period === "monthly") return `${monthFull} ${year} (Monthly Leaderboard)`;
+    if (period === "weekly") {
+      if (rawDay !== null) {
+        const startDay = (rawDay - 1) * 7 + 1;
+        const endDay = Math.min(rawDay * 7, getDaysInMonth(monthFull, year));
+        return `Week ${rawDay} (${monthFull} ${startDay}–${endDay}, ${year})`;
+      }
+      return `${monthFull} ${year} (All Weeks)`;
+    }
+    if (rawDay !== null) {
+      return `${monthFull} ${rawDay}, ${year}`;
+    }
+    return `${monthFull} ${year} (All Days)`;
+  }, [period, year, monthFull, rawDay]);
 
-  const ITEMS_PER_PAGE = 20;
+  const ITEMS_PER_PAGE = 50;
   const totalPages = Math.max(1, Math.ceil(products.length / ITEMS_PER_PAGE));
   const validCurrentPage = Math.min(currentPage, totalPages);
   const paginatedProducts = products.slice(
@@ -411,7 +451,7 @@ export default function BestProductsCatchAllPage() {
                 {(["daily", "weekly", "monthly", "yearly"] as Period[]).map(tab => (
                   <button
                     key={tab}
-                    onClick={() => navigate(tab, year, monthFull, tab === "daily" ? (rawDay || defaultDay) : null)}
+                    onClick={() => navigate(tab, year, monthFull, null)}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all cursor-pointer ${period === tab
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:text-foreground"
@@ -427,7 +467,7 @@ export default function BestProductsCatchAllPage() {
             {period === "daily" && (
               <div className="bg-card border border-border p-4 rounded-2xl space-y-2">
                 <span suppressHydrationWarning className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest block">
-                  Select Day of the Month ({monthFull})
+                  Select Day of the Month ({monthFull} {year})
                 </span>
                 <div className="flex items-center gap-2 overflow-x-auto pb-1">
                   <button
@@ -451,6 +491,44 @@ export default function BestProductsCatchAllPage() {
                       {day}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Week Selector (Shown when in weekly view) */}
+            {period === "weekly" && (
+              <div className="bg-card border border-border p-4 rounded-2xl space-y-2">
+                <span suppressHydrationWarning className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest block">
+                  Select Week of the Month ({monthFull} {year})
+                </span>
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  <button
+                    onClick={() => navigate("weekly", year, monthFull, null)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${rawDay === null
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-muted text-muted-foreground border-border hover:text-foreground"
+                      }`}
+                  >
+                    All Weeks
+                  </button>
+                  {[1, 2, 3, 4, 5].map(w => {
+                    const startDay = (w - 1) * 7 + 1;
+                    const maxDays = getDaysInMonth(monthFull, year);
+                    if (startDay > maxDays) return null;
+                    const endDay = Math.min(w * 7, maxDays);
+                    return (
+                      <button
+                        key={w}
+                        onClick={() => navigate("weekly", year, monthFull, w)}
+                        className={`px-3.5 py-1.5 flex-shrink-0 flex items-center justify-center rounded-xl text-xs font-semibold transition-all cursor-pointer border ${rawDay === w
+                          ? "bg-orange-500 text-white border-orange-500 scale-105 shadow-md"
+                          : "bg-muted text-foreground border-border hover:border-orange-500/35"
+                          }`}
+                      >
+                        Week {w} (Days {startDay}–{endDay})
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
