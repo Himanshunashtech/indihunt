@@ -37,7 +37,7 @@ const MONTHS_SHORT = [
   "july", "august", "september", "october", "november", "december",
 ];
 
-const YEARS = [2027, 2026];
+const YEARS = [2027, 2026, 2025, 2024];
 
 function getDaysInMonth(monthName: string, year: number) {
   const idx = MONTHS_FULL.findIndex(m => m.toLowerCase() === monthName.toLowerCase());
@@ -101,7 +101,7 @@ export default function BestProductsCatchAllPage() {
   const rawDaySegment = rawParams[3] ? parseInt(rawParams[3], 10) : null;
   const rawDay = rawDaySegment !== null && !isNaN(rawDaySegment) && rawDaySegment >= 1 && rawDaySegment <= 31
     ? rawDaySegment
-    : (rawParams.length === 0 ? defaultDay : null);
+    : null;
 
   const [productState, setProductState] = useState<Record<string, { upvotes_count?: number; has_upvoted: boolean }>>({});
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -311,6 +311,11 @@ export default function BestProductsCatchAllPage() {
           const istPDate = new Date(pDate.getTime() + IST_OFFSET_MS);
           return istPDate.getUTCFullYear() === year && istPDate.getUTCMonth() === monthIndex;
         });
+      }
+
+      // If viewing the root archive without specific path parameters and the current month has no launches, show all available launches
+      if (dateFiltered.length === 0 && rawParams.length === 0 && filtered.length > 0) {
+        dateFiltered = filtered;
       }
 
       let votedSet = new Set<string>();
