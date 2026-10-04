@@ -45,12 +45,37 @@ export default function PreLaunchDashboardPage() {
   const params = useParams();
   const router = useRouter();
   const productId = params.id as string;
-
   const [user, setUser] = useState<any>(null);
-  const [product, setProduct] = useState<Product | null>(null);
+
+  // Instant synchronous hydration from localStorage/seed (0ms initial render)
+  const [product, setProduct] = useState<Product | null>(() => {
+    if (typeof window !== 'undefined' && productId) {
+      try {
+        const seeded = localStorage.getItem('ih_prelaunch_seed');
+        if (seeded) {
+          const parsed = JSON.parse(seeded);
+          if (parsed && (parsed.id === productId || getProductSlug(parsed.name) === productId)) {
+            return parsed;
+          }
+        }
+        const cachedDirect = localStorage.getItem(`ih_product_${productId}`);
+        if (cachedDirect) {
+          return JSON.parse(cachedDirect);
+        }
+        const raw = localStorage.getItem('indihunt_products');
+        if (raw) {
+          const list: Product[] = JSON.parse(raw);
+          const found = list.find(p => p.id === productId || getProductSlug(p.name) === productId);
+          if (found) return found;
+        }
+      } catch {}
+    }
+    return null;
+  });
+
   const [shoutoutsGiven, setShoutoutsGiven] = useState<ProductShoutout[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !product);
 
   // Countdown State
   const [timeLeft, setTimeLeft] = useState("Calculating...");
@@ -71,21 +96,23 @@ export default function PreLaunchDashboardPage() {
 
   const loadData = async () => {
     if (!productId) return;
-    setIsLoading(true);
     try {
       const prod = await getProductById(productId);
       if (prod) {
         setProduct(prod);
-        const shoutouts = await getProductShoutoutsGiven(prod.id);
+        setIsLoading(false);
+        // Fetch shoutouts and comments in parallel
+        const [shoutouts, productComments] = await Promise.all([
+          getProductShoutoutsGiven(prod.id),
+          getComments(prod.id)
+        ]);
         setShoutoutsGiven(shoutouts);
-        const productComments = await getComments(prod.id);
         setComments(productComments);
       } else {
-        setProduct(null);
+        if (!product) setProduct(null);
       }
     } catch (err) {
       console.error("Error loading pre-launch product:", err);
-      setProduct(null);
     } finally {
       setIsLoading(false);
     }

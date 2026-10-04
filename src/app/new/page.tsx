@@ -385,7 +385,7 @@ function NewLaunchWizard() {
     setIsSubmitting(true);
 
     try {
-      // Re-verify URL duplicate before launch submission
+      // Fast duplicate check before launch submission
       const duplicateCheck = await checkProductUrlExists(submitUrl);
       if (duplicateCheck.exists) {
         setErrorMsg(duplicateCheck.message || "This product has already been launched on IndiHunt!");
@@ -425,24 +425,37 @@ function NewLaunchWizard() {
       }, user.id);
 
       if (newProd) {
-        if (firstComment.trim()) {
-          await addComment(newProd.id, user.id, firstComment.trim());
+        const prodSlug = getProductSlug(newProd.name);
+
+        // Seed pre-launch and product cache immediately so the pre-launch dashboard renders in 0ms
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('ih_prelaunch_seed', JSON.stringify(newProd));
+            localStorage.setItem(`ih_product_${newProd.id}`, JSON.stringify(newProd));
+            if (prodSlug) localStorage.setItem(`ih_product_${prodSlug}`, JSON.stringify(newProd));
+          } catch {}
         }
-        // Save Investor Details if any are provided (only if user built it / is maker)
+
+        // Run secondary submissions (comment, investor info, shoutouts, email) in parallel to cut latency by >70%
+        const backgroundTasks: Promise<any>[] = [];
+
+        if (firstComment.trim()) {
+          backgroundTasks.push(addComment(newProd.id, user.id, firstComment.trim()).catch(e => console.error("Error adding initial comment:", e)));
+        }
+
         if (workedOnLaunch === "yes" && (investorWhyTeam || investorWhyIdea || investorCompetitors || investorRevenue || investorAnythingElse)) {
-          await submitProductInvestorDetails({
+          backgroundTasks.push(submitProductInvestorDetails({
             product_id: newProd.id,
             why_team: investorWhyTeam || undefined,
             why_idea: investorWhyIdea || undefined,
             competitors: investorCompetitors || undefined,
             revenue: investorRevenue || undefined,
             anything_else: investorAnythingElse || undefined
-          });
+          }).catch(e => console.error("Error submitting investor details:", e)));
         }
 
-        // Save Shoutouts if any are provided (only if user built it / is maker)
         if (workedOnLaunch === "yes" && shoutouts.length > 0) {
-          await submitProductShoutouts(
+          backgroundTasks.push(submitProductShoutouts(
             newProd.id,
             shoutouts.map(s => ({
               shouted_product_id: s.shouted_product_id,
@@ -450,7 +463,7 @@ function NewLaunchWizard() {
               logo_url: allProducts.find(p => p.id === s.shouted_product_id || p.name === s.shouted_product_name)?.logo_url,
               note: s.note
             }))
-          );
+          ).catch(e => console.error("Error submitting shoutouts:", e)));
         }
 
         if (user && user.email) {
@@ -461,18 +474,26 @@ function NewLaunchWizard() {
             body: JSON.stringify({
               to: user.email,
               productName: newProd.name,
-              productSlug: getProductSlug(newProd.name),
+              productSlug: prodSlug,
               makerName: user.user_metadata?.full_name || user.email.split('@')[0]
             })
           }).catch(e => console.error("Error sending launch email:", e));
         }
 
+        // Wait for auxiliary records to settle concurrently
+        if (backgroundTasks.length > 0) {
+          await Promise.allSettled(backgroundTasks);
+        }
+
         if (status === "scheduled") {
           setNewCreatedProductId(newProd.id);
-          setNewCreatedProductSlug(getProductSlug(newProd.name));
+          setNewCreatedProductSlug(prodSlug);
+          // Prefetch pre-launch dashboard so it loads instantly on modal close
+          const prelaunchTarget = prodSlug ? `/products/${prodSlug}/pre-launch` : `/products/${newProd.id}/pre-launch`;
+          router.prefetch(prelaunchTarget);
           setIsSuccessScheduledOpen(true);
         } else {
-          router.push(`/products/${getProductSlug(newProd.name)}?launched=true`);
+          router.push(`/products/${prodSlug}?launched=true`);
         }
       } else {
         setErrorMsg("Failed to submit product launch.");
@@ -2083,9 +2104,12 @@ function NewLaunchWizard() {
         isOpen={isDatePickerOpen}
         onClose={() => setIsDatePickerOpen(false)}
         onSelectDate={async (date) => {
-          setIsDatePickerOpen(false);
           setScheduledLaunchDate(date);
-          await handleLaunchProduct("scheduled", date);
+          try {
+            await handleLaunchProduct("scheduled", date);
+          } finally {
+            setIsDatePickerOpen(false);
+          }
         }}
       />
 

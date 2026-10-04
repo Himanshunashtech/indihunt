@@ -6,8 +6,10 @@ import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
+// Feed list columns — only what ProductItem card actually renders
+// Feed list columns — only what ProductItem card actually renders
 const LIST_COLS =
-  'id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)';
+  'id,name,tagline,logo_url,website_url,scheduled_for,tags,status,created_at,upvotes_count,comments_count,quality_score,featured,country,pricing_type,is_open_source,is_student_project,is_deleted,maker_id,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)';
 const FULL_COLS =
   '*, maker:profiles!maker_id(id, username, full_name, avatar_url, is_maker, karma_points, streak_count)';
 const MAX_LIMIT = 300;
@@ -18,9 +20,12 @@ function normalizeUrl(raw: string): string {
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//i, '')
+    .replace(/^\/\//, '')
     .replace(/^www\./i, '')
     .split('?')[0]
     .split('#')[0]
+    .trim()
+    .replace(/\/+/g, '/')
     .replace(/\/+$/, '');
 }
 
@@ -37,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     const requested = parseInt(searchParams.get('limit') || (cursor ? '20' : '100'), 10);
     let limit = Math.min(Number.isFinite(requested) ? requested : 100, MAX_LIMIT);
-    if (queryStr || checkUrl) limit = Math.min(limit, 30);
+    if (queryStr || checkUrl) limit = Math.min(limit, 50);
 
     const cacheKey = `redis_products_${category || 'all'}_${limit}_${cursor || 'none'}_${full ? 'full' : 'lite'}`;
     const canUsePublicCache = !queryStr && !checkUrl && !makerId;
@@ -52,9 +57,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (products.length === 0) {
+      const selectCols = checkUrl ? 'id, name, website_url, is_deleted' : (full ? FULL_COLS : LIST_COLS);
       let query = (await db())
         .from('products')
-        .select(full ? FULL_COLS : LIST_COLS)
+        .select(selectCols)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -121,25 +127,21 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createServerSupabaseClient();
 
-    // Check for duplicate products by normalized URL or exact name
+    // Check for duplicate products strictly by normalized URL
     const normSubmitted = normalizeUrl(website_url);
-    const cleanName = name.trim().toLowerCase();
 
     if (normSubmitted) {
       const { data: existingProds } = await supabase
         .from('products')
-        .select('id, name, website_url')
-        .or(`website_url.ilike.%${normSubmitted}%,name.ilike.${name.trim()}`)
-        .limit(20);
+        .select('id, name, website_url, is_deleted')
+        .ilike('website_url', `%${normSubmitted}%`)
+        .limit(50);
 
       if (existingProds && existingProds.length > 0) {
         const duplicate = existingProds.find((p: any) => {
+          if (p.is_deleted) return false;
           const normExisting = normalizeUrl(p.website_url || '');
-          const existingName = (p.name || '').trim().toLowerCase();
-          return (
-            normExisting === normSubmitted ||
-            existingName === cleanName
-          );
+          return normExisting === normSubmitted;
         });
 
         if (duplicate) {

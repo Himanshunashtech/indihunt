@@ -17,8 +17,21 @@ export type ApiResponsePayload<T = unknown> = ApiSuccessPayload<T> | ApiFailureP
 
 import { encodePayload } from './obfuscate';
 
+// Feed data (products, threads) — serve from CDN for 5 min, silently revalidate for 30 min
+// This is the core Product Hunt technique: users always get instant CDN response
 export const PUBLIC_CACHE_HEADERS = {
-  'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+  'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
+};
+
+// Leaderboard, profiles — less volatile data, cache longer at edge
+export const SEMI_PUBLIC_CACHE_HEADERS = {
+  'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600',
+};
+
+// CDN-only caching (not browser) — for Vercel edge specifically
+export const CDN_ONLY_CACHE_HEADERS = {
+  'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
+  'CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=900',
 };
 
 /**

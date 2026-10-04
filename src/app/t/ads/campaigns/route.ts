@@ -25,7 +25,16 @@ export async function GET(request: NextRequest) {
     }
 
     const { data, error } = await query;
-    if (error) return apiFailure(error.message, 500);
+    if (error) {
+      // Fallback query without relational join if foreign key relation is not in schema cache
+      let fbQuery = supabase.from('ad_campaigns').select('*').order('created_at', { ascending: false });
+      if (userId && !all) {
+        fbQuery = fbQuery.eq('user_id', userId);
+      }
+      const { data: fbData, error: fbErr } = await fbQuery;
+      if (fbErr) return apiFailure(fbErr.message, 500);
+      return apiSuccessSecure(fbData || []);
+    }
 
     return apiSuccessSecure(data || []);
   } catch (err: any) {

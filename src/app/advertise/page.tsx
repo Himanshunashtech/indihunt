@@ -81,6 +81,24 @@ export default function AdvertisePage() {
   const [isSubmittingCampaign, setIsSubmittingCampaign] = useState(false);
 
   useEffect(() => {
+    const handlePageShow = () => setIsSubmittingCampaign(false);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") setIsSubmittingCampaign(false);
+    };
+    const handleFocus = () => setIsSubmittingCampaign(false);
+
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       const status = urlParams.get("status");
@@ -199,7 +217,7 @@ export default function AdvertisePage() {
             description: payload.description,
             cta_text: payload.cta_text,
             destination_url: payload.destination_url,
-            status: "active",
+            status: "pending_payment",
             total_budget: payload.amount,
             target_impressions: payload.target_impressions,
             delivered_impressions: 0,

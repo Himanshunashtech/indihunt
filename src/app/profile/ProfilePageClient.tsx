@@ -437,10 +437,12 @@ function ProfileContent({
         setUserRank("#1");
       }
 
-      const currentSessionUid = sessionResult?.data?.session?.user?.id;
-      if (uid === currentSessionUid) {
-        setCampaigns(camps);
-      } else if (currentSessionUid) {
+      const currentSessionUid = sessionResult?.data?.session?.user?.id || user?.id || reduxUser?.id;
+      const isOwn = isOwnProfile || (uid === currentSessionUid) || (!targetUserId && !targetUsername);
+      if (isOwn) {
+        setCampaigns(camps || []);
+      }
+      if (currentSessionUid && uid !== currentSessionUid) {
         // Query following status in background
         isFollowingUser(currentSessionUid, uid).then(status => setIsFollowing(status)).catch(() => { });
       }
@@ -450,7 +452,6 @@ function ProfileContent({
         (value, index, self) => self.findIndex(p => p.id === value.id) === index
       );
 
-      const isOwn = currentSessionUid === uid;
       if (!isOwn) {
         const now = new Date();
         uniqueProducts = uniqueProducts.filter(p => {
@@ -863,7 +864,14 @@ function ProfileContent({
           {(["about", "stories", "forums", "activity", "upvotes", "hunted", "collection", "stacks", "reviews", ...(isOwnProfile ? ["campaigns", "pacts"] : [])] as const).map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab as any)}
+              onClick={() => {
+                setActiveTab(tab as any);
+                if (tab === "campaigns" && (user?.id || profile?.id)) {
+                  getAdCampaigns(user?.id || profile?.id).then(c => {
+                    if (Array.isArray(c)) setCampaigns(c);
+                  }).catch(() => {});
+                }
+              }}
               className={`rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 whitespace-nowrap focus:outline-none ${activeTab === tab
                   ? "bg-muted text-foreground font-medium shadow-xs"
                   : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"

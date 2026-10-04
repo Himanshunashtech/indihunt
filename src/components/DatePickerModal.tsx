@@ -4,7 +4,7 @@ import { getScheduledProductCounts } from "@/lib/supabase";
 interface DatePickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectDate: (date: Date) => void;
+  onSelectDate: (date: Date) => Promise<void> | void;
   currentSelectedDate?: Date;
 }
 
@@ -29,9 +29,13 @@ export default function DatePickerModal({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(getValidDate(currentSelectedDate));
   const [scheduledCounts, setScheduledCounts] = useState<Record<string, number>>({});
   const [, setLoadingCounts] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setIsSubmitting(false);
+      return;
+    }
     setSelectedDate(getValidDate(currentSelectedDate));
     let isMounted = true;
     setLoadingCounts(true);
@@ -91,15 +95,22 @@ export default function DatePickerModal({
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  const handleScheduleClick = () => {
-    if (selectedDate) {
-      // Set to 12:00:00 AM Midnight IST (00:00:00 IST) so the product goes live at midnight
-      const yyyy = selectedDate.getFullYear();
-      const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
-      const dd = String(selectedDate.getDate()).padStart(2, "0");
-      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-      const scheduledDate = new Date(new Date(`${yyyy}-${mm}-${dd}T00:00:00.000Z`).getTime() - IST_OFFSET_MS);
-      onSelectDate(scheduledDate);
+  const handleScheduleClick = async () => {
+    if (selectedDate && !isSubmitting) {
+      setIsSubmitting(true);
+      try {
+        // Set to 12:00:00 AM Midnight IST (00:00:00 IST) so the product goes live at midnight
+        const yyyy = selectedDate.getFullYear();
+        const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
+        const dd = String(selectedDate.getDate()).padStart(2, "0");
+        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+        const scheduledDate = new Date(new Date(`${yyyy}-${mm}-${dd}T00:00:00.000Z`).getTime() - IST_OFFSET_MS);
+        await onSelectDate(scheduledDate);
+      } catch (e) {
+        console.error("Schedule error:", e);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -177,18 +188,26 @@ export default function DatePickerModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={onClose}
-              className="bg-muted hover:bg-muted/80 text-foreground font-medium text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
+              className="bg-muted hover:bg-muted/80 disabled:opacity-50 text-foreground font-medium text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={!selectedDate}
+              disabled={!selectedDate || isSubmitting}
               onClick={handleScheduleClick}
-              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-semibold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              Select a date
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Scheduling...</span>
+                </>
+              ) : (
+                <span>Select a date</span>
+              )}
             </button>
           </div>
         </div>

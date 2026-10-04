@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
+import { revalidateTag } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,7 +89,6 @@ export async function POST(request: NextRequest) {
 
     await invalidateCache(`reviews:product:${pId}`);
     try {
-      const { revalidateTag } = await import('next/cache');
       (revalidateTag as any)(`reviews-${pId}`, 'max');
     } catch {}
     return apiSuccessSecure(review, 201);

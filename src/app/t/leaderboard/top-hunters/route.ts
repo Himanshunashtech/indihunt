@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccessSecure } from '@/lib/api/response';
+import { apiSuccessSecure, SEMI_PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { getCachedData, setCachedData } from '@/lib/redis';
 import { MOCK_PROFILES } from '@/lib/supabase';
 import { Hunter } from '@/types';
@@ -10,10 +10,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
+    const limit = parseInt(searchParams.get('limit') || '300', 10);
     const timeRange = searchParams.get('timeRange') || 'all';
 
-    const cacheKey = `redis_leaderboard_hunters_${timeRange}_${limit}`;
+    const cacheKey = `redis_leaderboard_hunters_${timeRange}_${limit}_v3`;
     const cached = await getCachedData<Hunter[]>(cacheKey);
     if (cached && Array.isArray(cached) && cached.length > 0) {
       return apiSuccessSecure(cached);
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         .select('id, name, maker_id, upvotes_count, comments_count, featured, quality_score, created_at, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, karma_points, is_verified)')
         .eq('is_deleted', false)
         .order('upvotes_count', { ascending: false })
-        .limit(200);
+        .limit(300);
 
       if (timeLimitMs > 0) {
         prodQuery = prodQuery.gte('created_at', new Date(now - timeLimitMs).toISOString());
@@ -86,12 +86,12 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // 2. Fetch top profiles from profiles table to include makers or active members
+      // 2. Fetch top profiles from profiles table to include all active registered members
       const { data: dbProfiles, error: profErr } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, full_name, avatar_url, bio, headline, karma_points, is_verified, created_at')
         .order('karma_points', { ascending: false })
-        .limit(200);
+        .limit(300);
 
       if (!profErr && dbProfiles && dbProfiles.length > 0) {
         dbProfiles.forEach((p: any) => {
@@ -108,9 +108,9 @@ export async function GET(request: NextRequest) {
             if (p.is_verified) existing.is_verified = true;
           } else if (timeLimitMs === 0 || !p.created_at || (now - new Date(p.created_at).getTime() <= timeLimitMs)) {
             const karma = p.karma_points || 0;
-            const hunts = p.hunts_count || (karma > 50 ? Math.min(10, Math.floor(karma / 20)) : 1);
-            const upvotes = p.upvotes_count || (karma > 0 ? karma * 10 : 15);
-            const comments = p.comments_count || Math.max(1, Math.floor(upvotes / 10));
+            const hunts = 0;
+            const upvotes = karma > 0 ? karma * 2 : 0;
+            const comments = 0;
             hunterMap.set(key, {
               id: p.id,
               name: p.full_name || p.username || 'Indie Maker',
@@ -120,14 +120,16 @@ export async function GET(request: NextRequest) {
               hunts_count: hunts,
               upvotes_count: upvotes,
               comments_count: comments,
-              first_places_count: p.first_places_count || (hunts > 2 ? 1 : 0),
-              avg_upvotes: Math.round(upvotes / Math.max(1, hunts)),
-              avg_comments: Math.round(comments / Math.max(1, hunts)),
+              first_places_count: 0,
+              avg_upvotes: upvotes,
+              avg_comments: comments,
               is_verified: !!p.is_verified,
               created_at: p.created_at
             });
           }
         });
+      } else if (profErr) {
+        console.warn('[GET /t/leaderboard/top-hunters] Profiles query notice:', profErr.message);
       }
     } catch (dbErr: any) {
       console.warn('[GET /t/leaderboard/top-hunters] Supabase query error:', dbErr?.message);
@@ -146,9 +148,9 @@ export async function GET(request: NextRequest) {
       await setCachedData(cacheKey, result, 300);
     }
 
-    return apiSuccessSecure(result);
+    return apiSuccessSecure(result, 200, SEMI_PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     console.error('[GET /t/leaderboard/top-hunters] Fatal error:', error);
-    return apiSuccessSecure([]);
+    return apiSuccessSecure([], 200, SEMI_PUBLIC_CACHE_HEADERS);
   }
 }

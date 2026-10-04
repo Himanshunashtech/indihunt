@@ -299,7 +299,7 @@ export default function Navbar({
               document.cookie = cookieName + "=;expires=" + new Date(0).toUTCString() + ";path=/";
             }
           });
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // 2. Optimistic Client Cleanup & URL sanitization
@@ -307,10 +307,10 @@ export default function Navbar({
       if (typeof window !== 'undefined') {
         window.history.replaceState(null, "", "/");
       }
-      
+
       // 3. Trigger full signout in background non-blockingly
       signOut().catch(console.error);
-      
+
       // 4. Instant SPA navigation
       router.push("/");
     } catch (err) {
@@ -448,7 +448,7 @@ export default function Navbar({
                 onMouseLeave={handleCategoriesLeave}
               >
                 {!mounted ? (
-                  <button 
+                  <button
                     className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                   >
                     Best Products <ChevronDown className="w-4 h-4 text-muted-foreground/70" />
@@ -456,7 +456,7 @@ export default function Navbar({
                 ) : (
                   <DropdownMenu.Root open={categoriesOpen} onOpenChange={setCategoriesOpen} modal={false}>
                     <DropdownMenu.Trigger asChild>
-                      <button 
+                      <button
                         className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                       >
                         Best Products {categoriesOpen ? <ChevronUp className="w-4 h-4 text-orange-500" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/70" />}
@@ -527,7 +527,7 @@ export default function Navbar({
                 onMouseLeave={handleLaunchesLeave}
               >
                 {!mounted ? (
-                  <button 
+                  <button
                     className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                   >
                     Launches <ChevronDown className="w-4 h-4 text-muted-foreground/70" />
@@ -535,7 +535,7 @@ export default function Navbar({
                 ) : (
                   <DropdownMenu.Root open={launchesOpen} onOpenChange={setLaunchesOpen} modal={false}>
                     <DropdownMenu.Trigger asChild>
-                      <button 
+                      <button
                         className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                       >
                         Launches {launchesOpen ? <ChevronUp className="w-4 h-4 text-orange-500" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/70" />}
@@ -578,7 +578,7 @@ export default function Navbar({
                 onMouseLeave={handleNewsLeave}
               >
                 {!mounted ? (
-                  <button 
+                  <button
                     className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                   >
                     News <ChevronDown className="w-4 h-4 text-muted-foreground/70" />
@@ -586,7 +586,7 @@ export default function Navbar({
                 ) : (
                   <DropdownMenu.Root open={newsOpen} onOpenChange={setNewsOpen} modal={false}>
                     <DropdownMenu.Trigger asChild>
-                      <button 
+                      <button
                         className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                       >
                         News {newsOpen ? <ChevronUp className="w-4 h-4 text-orange-500" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/70" />}
@@ -629,7 +629,7 @@ export default function Navbar({
                 onMouseLeave={handleDiscussionsLeave}
               >
                 {!mounted ? (
-                  <button 
+                  <button
                     className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                   >
                     Forums <ChevronDown className="w-4 h-4 text-muted-foreground/70" />
@@ -637,7 +637,7 @@ export default function Navbar({
                 ) : (
                   <DropdownMenu.Root open={discussionsOpen} onOpenChange={setDiscussionsOpen} modal={false}>
                     <DropdownMenu.Trigger asChild>
-                      <button 
+                      <button
                         className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer focus:outline-none flex items-center gap-1.5 py-2"
                       >
                         Forums {discussionsOpen ? <ChevronUp className="w-4 h-4 text-orange-500" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/70" />}
@@ -698,7 +698,7 @@ export default function Navbar({
                   onMouseLeave={handleLaunchLeave}
                 >
                   {!mounted ? (
-                    <button 
+                    <button
                       className="flex items-center gap-0 sm:gap-1.5 border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-card hover:bg-slate-50 dark:hover:bg-slate-800/80 text-foreground font-semibold text-sm p-2 sm:px-5 sm:py-2 rounded-full transition-all cursor-pointer focus:outline-none shadow-xs"
                     >
                       <Plus className="w-4 h-4 text-orange-500" />
@@ -707,7 +707,7 @@ export default function Navbar({
                   ) : (
                     <DropdownMenu.Root open={launchOpen} onOpenChange={setLaunchOpen} modal={false}>
                       <DropdownMenu.Trigger asChild>
-                        <button 
+                        <button
                           className="flex items-center gap-0 sm:gap-1.5 border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-card hover:bg-slate-50 dark:hover:bg-slate-800/80 text-foreground font-semibold text-sm p-2 sm:px-5 sm:py-2 rounded-full transition-all cursor-pointer focus:outline-none shadow-xs"
                         >
                           <Plus className="w-4 h-4 text-orange-500" />
@@ -800,7 +800,7 @@ export default function Navbar({
                   onMouseLeave={handleProfileLeave}
                 >
                   {!mounted ? (
-                    <button 
+                    <button
                       className="flex items-center gap-1.5 p-0.5 hover:bg-muted rounded-full transition-all cursor-pointer outline-none focus:outline-none"
                     >
                       <Image
@@ -816,7 +816,7 @@ export default function Navbar({
                   ) : (
                     <DropdownMenu.Root open={profileOpen} onOpenChange={setProfileOpen} modal={false}>
                       <DropdownMenu.Trigger asChild>
-                        <button 
+                        <button
                           className="flex items-center gap-1.5 p-0.5 hover:bg-muted rounded-full transition-all cursor-pointer outline-none focus:outline-none"
                         >
                           <Image
@@ -917,7 +917,7 @@ export default function Navbar({
             Mark all as read
           </button>
         </div>
-        <div 
+        <div
           className="flex-1 overflow-y-auto px-4 py-4 space-y-3.5"
           onScroll={handleNotificationsScroll}
         >
@@ -1156,9 +1156,8 @@ export default function Navbar({
                 <span className="text-base font-semibold">Top Products & Hunters</span>
               </div>
               <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-                  activeMobileSubmenu === "top" ? "rotate-180 text-orange-500" : ""
-                }`}
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${activeMobileSubmenu === "top" ? "rotate-180 text-orange-500" : ""
+                  }`}
               />
             </button>
             {activeMobileSubmenu === "top" && (
@@ -1198,9 +1197,8 @@ export default function Navbar({
                 <span className="text-base font-semibold">Launches & Products</span>
               </div>
               <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-                  activeMobileSubmenu === "launches" ? "rotate-180 text-orange-500" : ""
-                }`}
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${activeMobileSubmenu === "launches" ? "rotate-180 text-orange-500" : ""
+                  }`}
               />
             </button>
             {activeMobileSubmenu === "launches" && (
@@ -1241,9 +1239,8 @@ export default function Navbar({
                 <span className="text-base font-semibold">Forums & Discussions</span>
               </div>
               <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-                  activeMobileSubmenu === "forums" ? "rotate-180 text-orange-500" : ""
-                }`}
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${activeMobileSubmenu === "forums" ? "rotate-180 text-orange-500" : ""
+                  }`}
               />
             </button>
             {activeMobileSubmenu === "forums" && (
@@ -1283,9 +1280,8 @@ export default function Navbar({
                 <span className="text-base font-semibold">News & Updates</span>
               </div>
               <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-                  activeMobileSubmenu === "news" ? "rotate-180 text-orange-500" : ""
-                }`}
+                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${activeMobileSubmenu === "news" ? "rotate-180 text-orange-500" : ""
+                  }`}
               />
             </button>
             {activeMobileSubmenu === "news" && (
@@ -1314,145 +1310,94 @@ export default function Navbar({
             )}
           </div>
 
-          {/* 5. My Profile Accordion */}
-          <div className="rounded-xl overflow-hidden border border-border/40">
-            <button
-              onClick={() => setActiveMobileSubmenu((prev) => (prev === "profile" ? null : "profile"))}
-              className="w-full flex items-center justify-between px-3.5 py-3 text-base font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-2.5">
-                {activeUser?.user_metadata?.avatar_url ? (
-                  <Image
-                    src={activeUser.user_metadata.avatar_url}
-                    alt={activeUser.email || "user"}
-                    width={20}
-                    height={20}
-                    className="w-5 h-5 rounded-full object-cover border border-orange-500/40"
-                  />
-                ) : (
-                  <User className="w-5 h-5 text-orange-500" />
-                )}
-                <span className="text-base font-semibold">My Profile</span>
-              </div>
-              <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
-                  activeMobileSubmenu === "profile" ? "rotate-180 text-orange-500" : ""
-                }`}
-              />
-            </button>
-            {activeMobileSubmenu === "profile" && (
-              <div className="px-2.5 py-1.5 space-y-1 bg-muted/20 border-t border-border/40">
-                {activeUser ? (
-                  <>
-                    {[
-                      { href: profileHref, icon: User, label: "Profile", sub: "View your public maker profile", bg: "bg-orange-500/10", color: "text-orange-500" },
-                      { href: "/my-products", icon: Package, label: "My Products", sub: "Manage your launched products", bg: "bg-indigo-500/10", color: "text-indigo-500" },
-                      { href: "/profile/settings", icon: Settings, label: "Settings", sub: "Update account preferences", bg: "bg-purple-500/10", color: "text-purple-500" },
-                    ].map((subItem) => (
-                      <Link
-                        key={subItem.href}
-                        href={subItem.href}
-                        onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors"
-                      >
-                        <div className={`w-8 h-8 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
-                          <subItem.icon className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <span className="text-base font-medium text-foreground block">{subItem.label}</span>
-                          <span className="text-xs text-muted-foreground block leading-tight">{subItem.sub}</span>
-                        </div>
-                      </Link>
-                    ))}
-                    <button
-                      onClick={handleThemeToggle}
-                      className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
+          {/* 5. My Profile Accordion (Only for logged-in users) */}
+          {activeUser && (
+            <div className="rounded-xl overflow-hidden border border-border/40">
+              <button
+                onClick={() => setActiveMobileSubmenu((prev) => (prev === "profile" ? null : "profile"))}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  {activeUser?.user_metadata?.avatar_url ? (
+                    <img
+                      src={activeUser.user_metadata.avatar_url}
+                      alt={activeUser.email || "user"}
+                      className="w-4 h-4 rounded-full object-cover border border-orange-500/40"
+                    />
+                  ) : (
+                    <User className="w-4 h-4 text-orange-500" />
+                  )}
+                  <span>My Profile</span>
+                </div>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${activeMobileSubmenu === "profile" ? "rotate-180 text-orange-500" : ""
+                    }`}
+                />
+              </button>
+              {activeMobileSubmenu === "profile" && (
+                <div className="px-2.5 py-1.5 space-y-1 bg-muted/20 border-t border-border/40">
+                  {[
+                    { href: "/profile", icon: User, label: "Profile", sub: "View your public maker profile", bg: "bg-orange-500/10", color: "text-orange-500" },
+                    { href: "/my-products", icon: Package, label: "My Products", sub: "Manage your launched products", bg: "bg-indigo-500/10", color: "text-indigo-500" },
+                    { href: "/profile/settings", icon: Settings, label: "Settings", sub: "Update account preferences", bg: "bg-purple-500/10", color: "text-purple-500" },
+                  ].map((subItem) => (
+                    <Link
+                      key={subItem.href}
+                      href={subItem.href}
+                      onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
-                          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-slate-700 dark:text-slate-300" />}
-                        </div>
-                        <div>
-                          <span className="text-base font-medium text-foreground block">
-                            {theme === "dark" ? "Light Mode" : "Dark Mode"}
-                          </span>
-                          <span className="text-xs text-muted-foreground block leading-tight">Switch appearance theme</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
-                        {theme}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMobileOpen(false);
-                        handleSignOut();
-                      }}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
-                        <LogOut className="w-4 h-4" />
+                      <div className={`w-7 h-7 rounded-lg ${subItem.bg} ${subItem.color} flex items-center justify-center flex-shrink-0`}>
+                        <subItem.icon className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <span className="text-base font-medium text-foreground block">Logout</span>
-                        <span className="text-xs text-muted-foreground block leading-tight">Sign out of your account</span>
+                        <span className="text-xs font-medium text-foreground block">{subItem.label}</span>
+                        <span className="text-[10px] text-muted-foreground block leading-tight">{subItem.sub}</span>
                       </div>
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleThemeToggle}
-                      className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
-                          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-slate-700 dark:text-slate-300" />}
-                        </div>
-                        <div>
-                          <span className="text-base font-medium text-foreground block">
-                            {theme === "dark" ? "Light Mode" : "Dark Mode"}
-                          </span>
-                          <span className="text-xs text-muted-foreground block leading-tight">Switch appearance theme</span>
-                        </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
-                        {theme}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setMobileOpen(false);
-                        dispatch(setAuthModalOpen(true));
-                      }}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-orange-500/10 transition-colors text-left cursor-pointer"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center flex-shrink-0">
-                        <User className="w-4 h-4" />
+                    </Link>
+                  ))}
+                  {/* <button
+                    onClick={handleThemeToggle}
+                    className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center flex-shrink-0">
+                        {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />}
                       </div>
                       <div>
-                        <span className="text-base font-semibold text-orange-500 block">Log In / Register</span>
-                        <span className="text-xs text-muted-foreground block leading-tight">Access your products & profile</span>
+                        <span className="text-xs font-medium text-foreground block">
+                          {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground block leading-tight">Switch appearance theme</span>
                       </div>
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-muted/60">
+                      {theme}
+                    </span>
+                  </button> */}
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      handleSignOut();
+                    }}
+                    className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors text-left cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
+                      <LogOut className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-foreground block">Logout</span>
+                      <span className="text-[10px] text-muted-foreground block leading-tight">Sign out of your account</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
         </nav>
 
-        {/* Drawer footer — auth login if logged out */}
-        {!activeUser && pathname !== "/" && (
-          <div className="px-4 py-3 border-t border-border flex-shrink-0">
-            <button
-              onClick={() => { dispatch(setAuthModalOpen(true)); setMobileOpen(false); }}
-              className="w-full bg-[#ff5733] hover:bg-[#e64a19] text-white font-semibold text-base py-2.5 rounded-xl cursor-pointer transition-all"
-            >
-              Log In
-            </button>
-          </div>
-        )}
+
       </div>
     </>
   );

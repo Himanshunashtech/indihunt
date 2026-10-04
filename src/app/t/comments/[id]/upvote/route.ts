@@ -18,6 +18,8 @@ export async function POST(
     }
 
     const supabase = await createServerSupabaseClient();
+
+    // 1. Check if upvote exists
     const { data: existing } = await supabase
       .from('comment_upvotes')
       .select('id')
@@ -26,25 +28,37 @@ export async function POST(
       .maybeSingle();
 
     let hasUpvoted = false;
+    let upvotesCount = 0;
+
     if (existing) {
       await supabase.from('comment_upvotes').delete().eq('id', existing.id);
+      const { data: current } = await supabase
+        .from('comments')
+        .select('upvotes_count')
+        .eq('id', id)
+        .maybeSingle();
+      const nextCount = Math.max(0, (current?.upvotes_count ?? 1) - 1);
+      await supabase
+        .from('comments')
+        .update({ upvotes_count: nextCount })
+        .eq('id', id);
+      upvotesCount = nextCount;
       hasUpvoted = false;
     } else {
       await supabase.from('comment_upvotes').insert({ comment_id: id, user_id: userId });
+      const { data: current } = await supabase
+        .from('comments')
+        .select('upvotes_count')
+        .eq('id', id)
+        .maybeSingle();
+      const nextCount = (current?.upvotes_count ?? 0) + 1;
+      await supabase
+        .from('comments')
+        .update({ upvotes_count: nextCount })
+        .eq('id', id);
+      upvotesCount = nextCount;
       hasUpvoted = true;
     }
-
-    const { count } = await supabase
-      .from('comment_upvotes')
-      .select('id', { count: 'exact', head: true })
-      .eq('comment_id', id);
-
-    const upvotesCount = count || 0;
-
-    await supabase
-      .from('comments')
-      .update({ upvotes_count: upvotesCount })
-      .eq('id', id);
 
     return apiSuccessSecure({
       success: true,

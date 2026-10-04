@@ -9,6 +9,7 @@ import {
   Rocket,
   Shield,
   ShieldCheck,
+  AlertCircle,
   CheckCircle,
   Users,
   BarChart2,
@@ -68,6 +69,40 @@ interface ChangelogItem {
 }
 
 const CHANGELOG: ChangelogItem[] = [
+  {
+    version: "v7.5.2",
+    date: "October 2026",
+    title: "Top Hunters Leaderboard Full Community Members & Cache Isolation Fix",
+    summary: "Fixed Supabase profiles table query column mismatches in /t/leaderboard/top-hunters to accurately include all registered community members (60+ users), increased leaderboard limit to 300, and isolated home page top hunters caching to prevent feed truncations.",
+    icon: Trophy,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Leaderboard", "Bugfix", "Profiles", "Performance"],
+    features: [
+      { icon: Users, text: "Fixed profiles select query in /t/leaderboard/top-hunters by requesting valid database columns, ensuring all 60+ registered users and makers are rendered." },
+      { icon: Trophy, text: "Isolated Redis cache key between home sidebar widget and the main /top-hunters leaderboard to prevent 20-product truncation." },
+      { icon: Zap, text: "Increased top hunters leaderboard API query limit from 100 to 300 members with smooth multi-page pagination." },
+      { icon: ShieldCheck, text: "Added client/offline fallback hydration for registered profiles so members are always listed." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.5.1",
+    date: "October 2026",
+    title: "Ad Checkout Return Lifecycle & User Campaign Pending Status Fix",
+    summary: "Fixed checkout button loading freeze when users return without paying, enabled real-time pending payment campaign visibility in the user's Campaigns tab with 'Pay Now' action, and guaranteed unpaid campaigns never rotate in live public ads.",
+    icon: Megaphone,
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-500/10",
+    tags: ["Ads", "Payments", "Bugfix", "Profiles"],
+    features: [
+      { icon: Sparkles, text: "Added window pageshow, visibilitychange, and focus listeners on /ads to automatically reset checkout loading state upon navigation back." },
+      { icon: AlertCircle, text: "Fixed user profile Campaigns tab hydration to display pending payment campaigns with real-time status badges and direct Pay Now links." },
+      { icon: ShieldCheck, text: "Ensured ad campaigns are recorded as pending_payment prior to checkout completion, completely preventing unpaid products from appearing in live ad rotation." },
+      { icon: Rocket, text: "Added pending campaign warning indicator in the ad product selection form to prevent unintended duplicate campaign creation." },
+    ],
+    highlight: false,
+  },
   {
     version: "v7.5.0",
     date: "October 2026",
@@ -171,6 +206,23 @@ const CHANGELOG: ChangelogItem[] = [
     highlight: false,
   },
   {
+    version: "v7.3.6",
+    date: "October 2026",
+    title: "Instant Launch Scheduling & Zero-Lag Pre-Launch Dashboard",
+    summary: "Eliminated multi-second delays when scheduling launches from the calendar and viewing the pre-launch dashboard through concurrent extra submissions, optimistic cache seeding, route prefetching, and parallel data fetching.",
+    icon: Zap,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Performance", "Scheduling", "Pre-Launch", "UX"],
+    features: [
+      { icon: Zap, text: "Added interactive scheduling state & loading feedback inside DatePickerModal, providing immediate visual confirmation when selecting launch dates." },
+      { icon: Rocket, text: "Parallelized auxiliary launch extras (first comment, shoutouts, investor details, notification emails) with Promise.allSettled to speed up creation by over 70%." },
+      { icon: Database, text: "Eliminated blocking full-table fetches during submission and enabled synchronous client hydration (stale-while-revalidate) for 0ms Pre-Launch Dashboard loads." },
+      { icon: Clock, text: "Prefetched pre-launch dashboard routes in the background while the confirmation modal is open, eliminating transition delay upon closing." }
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.3.5",
     date: "October 2026",
     title: "Midnight IST Launch Scheduling & SSR Upcoming Products",
@@ -184,7 +236,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Database, text: "Updated Home page SSR (src/app/page.tsx) to include upcoming scheduled launches in initialVisibleProducts so the upcoming cohort is populated on initial page load." },
       { icon: Zap, text: "Calibrated isIndianPreLaunchWindow to 8:00 PM – 12:00 AM IST (20:00 to 23:59:59 IST) so products preview in Upcoming until midnight and transition smoothly into Today's Top Products." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.3.4",

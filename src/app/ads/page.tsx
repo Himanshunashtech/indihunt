@@ -10,6 +10,7 @@ import {
   getUserProducts, 
   getCachedProducts, 
   getProducts,
+  getAdCampaigns,
   Product 
 } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
@@ -54,6 +55,32 @@ function AdsContent() {
   const [previewPlacement, setPreviewPlacement] = useState<"feed" | "sidebar">("feed");
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userCampaigns, setUserCampaigns] = useState<any[]>([]);
+
+  // Automatically reset submitting state if user navigates back (via browser back button or bfcache)
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      setIsSubmitting(false);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setIsSubmitting(false);
+      }
+    };
+    const handleFocus = () => {
+      setIsSubmitting(false);
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -83,6 +110,14 @@ function AdsContent() {
 
         setUserId(currentUser.id);
         setUserEmail(currentUser.email || null);
+
+        // Fetch user's existing campaigns to check pending status
+        try {
+          const camps = await getAdCampaigns(currentUser.id);
+          setUserCampaigns(camps || []);
+        } catch (e) {
+          console.warn("Error loading user campaigns:", e);
+        }
 
         // Fetch user's products with multiple layers of fallback
         let userProds: any[] = [];
@@ -182,6 +217,9 @@ function AdsContent() {
   };
 
   const selectedProduct = products.find((p) => p.id === campProductId);
+  const selectedProductPendingCamp = userCampaigns.find(
+    (c) => c.product_id === campProductId && (c.status === "pending_payment" || c.status === "draft")
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +246,7 @@ function AdsContent() {
         destination_url: destinationUrl.trim() || selectedProduct?.website_url || `/products/${campProductId}`,
       };
 
-      // Save to sessionStorage and localStorage before redirecting so return verification is guaranteed
+      // Save to sessionStorage and localStorage before redirecting with status: "pending_payment"
       if (typeof window !== "undefined") {
         sessionStorage.setItem("ih_pending_ad_campaign", JSON.stringify(payload));
         
@@ -224,7 +262,7 @@ function AdsContent() {
             description: payload.description,
             cta_text: payload.cta_text,
             destination_url: payload.destination_url,
-            status: "active",
+            status: "pending_payment",
             total_budget: payload.amount,
             target_impressions: payload.target_impressions,
             delivered_impressions: 0,
@@ -234,8 +272,9 @@ function AdsContent() {
             daily_limit: payload.daily_limit,
             created_at: new Date().toISOString()
           };
-          list.unshift(campObj);
-          localStorage.setItem("indihunt_ad_campaigns", JSON.stringify(list));
+          const nextList = [campObj, ...list.filter((c: any) => c.id !== generatedCampaignId)];
+          localStorage.setItem("indihunt_ad_campaigns", JSON.stringify(nextList));
+          setUserCampaigns(nextList.filter((c: any) => c.user_id === userId));
         } catch { }
       }
 
@@ -440,6 +479,18 @@ function AdsContent() {
                           <span className="text-[10px] font-semibold bg-orange-500/10 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full flex-shrink-0">
                             Selected
                           </span>
+                        </div>
+                      )}
+
+                      {selectedProductPendingCamp && (
+                        <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <span className="font-semibold block">Unpaid Campaign Pending</span>
+                            <span className="text-[11px] text-muted-foreground block mt-0.5">
+                              This product already has a pending campaign (&quot;{selectedProductPendingCamp.name}&quot;). You can complete checkout below to re-initialize payment, or manage it in your profile campaigns tab.
+                            </span>
+                          </div>
                         </div>
                       )}
                     </div>

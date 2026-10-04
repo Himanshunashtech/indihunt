@@ -2,9 +2,28 @@ import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
-import { checkContentViolation } from '@/lib/supabase';
+import { checkContentViolation, getProductSlug } from '@/lib/supabase';
+import { revalidateTag } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+
+async function resolveCommentProductId(key: string, supabase: any): Promise<string | null> {
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+  if (isUUID) return key;
+
+  const decoded = decodeURIComponent(key).toLowerCase().trim();
+  const slugMap = await getCachedData<Record<string, string>>('product_slug_map');
+  if (slugMap && slugMap[decoded]) return slugMap[decoded];
+
+  const { data: prod } = await supabase
+    .from('products')
+    .select('id')
+    .ilike('name', decoded.replace(/-/g, ' '))
+    .limit(1)
+    .maybeSingle();
+
+  return prod?.id || null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,13 +39,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
 
     if (productId) {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
-      if (!isUUID) {
-        const { data: prod } = await supabase.from('products').select('id').ilike('name', productId.replace(/-/g, ' ')).maybeSingle();
-        if (prod?.id) {
-          targetProductId = prod.id;
-        }
-      }
+      targetProductId = await resolveCommentProductId(productId, supabase) || productId;
     }
 
     const cacheKey = targetProductId ? `comments:product:${targetProductId}` : `comments:thread:${threadId}`;
@@ -83,13 +96,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
 
     if (pId) {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pId);
-      if (!isUUID) {
-        const { data: prod } = await supabase.from('products').select('id').ilike('name', pId.replace(/-/g, ' ')).maybeSingle();
-        if (prod?.id) {
-          pId = prod.id;
-        }
-      }
+      pId = await resolveCommentProductId(pId, supabase) || pId;
     }
 
     const { data: newComment, error } = await supabase
@@ -112,21 +119,16 @@ export async function POST(request: NextRequest) {
       const { data: prod } = await supabase.from('products').select('id, name, comments_count').eq('id', pId).maybeSingle();
       if (prod) {
         await supabase.from('products').update({ comments_count: (prod.comments_count || 0) + 1 }).eq('id', pId);
-        await invalidateCache(`comments:product:${pId}`);
-        const { getProductSlug } = await import('@/lib/supabase');
-        const { revalidateTag } = await import('next/cache');
         const slug = getProductSlug(prod.name);
-        if (slug) {
-          await invalidateCache(`comments:product:${slug}`);
-          try { (revalidateTag as any)(`comments-${slug}`, 'max'); } catch {}
-        }
+        await Promise.allSettled([
+          invalidateCache(`comments:product:${pId}`),
+          slug ? invalidateCache(`comments:product:${slug}`) : Promise.resolve(),
+        ]);
+        try { if (slug) (revalidateTag as any)(`comments-${slug}`, 'max'); } catch {}
         try { (revalidateTag as any)(`comments-${pId}`, 'max'); } catch {}
       } else {
         await invalidateCache(`comments:product:${pId}`);
-        try {
-          const { revalidateTag } = await import('next/cache');
-          (revalidateTag as any)(`comments-${pId}`, 'max');
-        } catch {}
+        try { (revalidateTag as any)(`comments-${pId}`, 'max'); } catch {}
       }
     } else if (tId) {
       const { data: thr } = await supabase.from('threads').select('comments_count').eq('id', tId).maybeSingle();
@@ -134,10 +136,7 @@ export async function POST(request: NextRequest) {
         await supabase.from('threads').update({ comments_count: (thr.comments_count || 0) + 1 }).eq('id', tId);
       }
       await invalidateCache(`comments:thread:${tId}`);
-      try {
-        const { revalidateTag } = await import('next/cache');
-        (revalidateTag as any)(`comments-${tId}`, 'max');
-      } catch {}
+      try { (revalidateTag as any)(`comments-${tId}`, 'max'); } catch {}
     }
 
     // Fire-and-forget: notify the maker/thread author about the new comment

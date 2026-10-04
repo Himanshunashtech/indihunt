@@ -50,7 +50,14 @@ const timed = async <T,>(label: string, p: Promise<T>): Promise<T> => {
 
 export default async function ProductDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const product = await timed("product", getProductCached(id));
+
+  // Fetch product + full product list in PARALLEL (Product Hunt technique)
+  // Previously sequential: product → allProducts (2x latency)
+  // Now parallel: both fire simultaneously
+  const [product, allProducts] = await Promise.all([
+    timed("product", getProductCached(id)),
+    timed("allProducts", getProducts().catch(() => [] as Product[])),
+  ]);
 
   if (!product) notFound();
 
@@ -61,8 +68,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   const initialComments: any[] = [];
   const initialReviews: any[] = [];
-
-  const allProducts = await timed("allProducts", getProducts().catch(() => [] as Product[]));
 
   const rankDetails = calculateProductRank(
     product,

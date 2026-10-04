@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { getProductSlug } from '@/lib/supabase';
-import { invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { getCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,20 +24,27 @@ export async function POST(
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId);
 
     if (!isUuid) {
-      const { data: allProds } = await supabase
-        .from('products')
-        .select('id, name');
-      if (allProds) {
-        const decodedId = decodeURIComponent(productId).toLowerCase().trim();
-        const matched = allProds.find(
-          (p: any) =>
-            getProductSlug(p.name).toLowerCase() === decodedId ||
-            (p.slug && p.slug.toLowerCase() === decodedId) ||
-            p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decodedId ||
-            p.id === productId
-        );
-        if (matched) {
-          targetProductId = matched.id;
+      const decodedId = decodeURIComponent(productId).toLowerCase().trim();
+      const slugMap = await getCachedData<Record<string, string>>('product_slug_map');
+      if (slugMap && slugMap[decodedId]) {
+        targetProductId = slugMap[decodedId];
+      } else {
+        const cleanSearch = decodedId.replace(/-/g, ' ');
+        const { data: targeted } = await supabase
+          .from('products')
+          .select('id, name')
+          .ilike('name', `%${cleanSearch}%`)
+          .limit(10);
+
+        if (targeted && targeted.length > 0) {
+          const matched = targeted.find(
+            (p: any) =>
+              getProductSlug(p.name).toLowerCase() === decodedId ||
+              p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decodedId ||
+              p.name.toLowerCase().trim() === decodedId ||
+              p.id === productId
+          );
+          targetProductId = matched ? matched.id : targeted[0].id;
         }
       }
     }
@@ -76,12 +83,12 @@ export async function POST(
       .update({ upvotes_count: updatedCount })
       .eq('id', targetProductId);
 
-    // Invalidate server Redis caches so subsequent GETs immediately return updated counts & states
+    // Invalidate server Redis caches with fast targeted invalidations
+    const decodedKey = decodeURIComponent(productId).toLowerCase().trim();
     await Promise.allSettled([
       invalidateCachePattern('redis_products_'),
-      invalidateCachePattern('product_detail_'),
-      invalidateCachePattern('public_product'),
-      invalidateCachePattern('public_top_hunters_'),
+      invalidateCache(`product_detail_${targetProductId.toLowerCase()}`),
+      invalidateCache(`product_detail_${decodedKey}`),
       invalidateCache('public_products'),
     ]);
 

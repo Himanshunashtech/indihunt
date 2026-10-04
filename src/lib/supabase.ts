@@ -340,9 +340,16 @@ export function normalizeProductUrl(rawUrl: string): string {
   if (!rawUrl) return "";
   try {
     let url = rawUrl.trim().toLowerCase();
+    // Strip protocol
     url = url.replace(/^https?:\/\//i, '');
+    url = url.replace(/^\/\//, '');
+    // Strip leading www.
     url = url.replace(/^www\./i, '');
-    url = url.split('?')[0].split('#')[0];
+    // Strip query parameters and hash fragments
+    url = url.split('?')[0].split('#')[0].trim();
+    // Collapse multiple consecutive slashes (e.g. indihunt.in//ram -> indihunt.in/ram)
+    url = url.replace(/\/+/g, '/');
+    // Strip trailing slashes (e.g. indihunt.in/ -> indihunt.in)
     url = url.replace(/\/+$/, '');
     return url;
   } catch {
@@ -374,14 +381,14 @@ export async function checkProductUrlExists(
 
   // 1. API route check
   try {
-    const res = await secureApiFetch<Product[]>(`/t/products?check_url=${encodeURIComponent(normalizedInput)}&limit=20`);
+    const res = await secureApiFetch<Product[]>(`/t/products?check_url=${encodeURIComponent(normalizedInput)}&full=true&limit=50`);
     if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
       const match = res.data.find(p => {
         if (excludeProductId && (p.id === excludeProductId || getProductSlug(p.name) === excludeProductId)) {
           return false;
         }
         if (p.is_deleted) return false;
-        const normExisting = normalizeProductUrl(p.website_url);
+        const normExisting = normalizeProductUrl(p.website_url || '');
         return normExisting === normalizedInput;
       });
 
@@ -395,7 +402,38 @@ export async function checkProductUrlExists(
     }
   } catch (err) { }
 
-  // 2. Fallback: check local storage & mock products
+  // 2. Direct Supabase check fallback
+  if (supabase) {
+    try {
+      const { data: dbProds } = await supabase
+        .from('products')
+        .select('id, name, website_url, is_deleted')
+        .eq('is_deleted', false)
+        .ilike('website_url', `%${normalizedInput}%`)
+        .limit(50);
+
+      if (dbProds && dbProds.length > 0) {
+        const match = dbProds.find(p => {
+          if (excludeProductId && (p.id === excludeProductId || getProductSlug(p.name) === excludeProductId)) {
+            return false;
+          }
+          if (p.is_deleted) return false;
+          const normExisting = normalizeProductUrl(p.website_url || '');
+          return normExisting === normalizedInput;
+        });
+
+        if (match) {
+          return {
+            exists: true,
+            product: match as Product,
+            message: `This product (${match.name}) has already been launched on IndiHunt!`
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Fallback: check local storage & mock products
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem('indihunt_products');
@@ -1112,13 +1150,19 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
     if (res && res.success && res.data) {
       const prodData = res.data;
       if (typeof window !== 'undefined') {
-        const products = await getProducts();
-        const nextProducts = [prodData, ...products];
-        localStorage.setItem('indihunt_products', JSON.stringify(nextProducts));
-        if (prodData.has_upvoted) {
-          const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
-          localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, prodData.id]));
-        }
+        try {
+          const raw = localStorage.getItem('indihunt_products');
+          const products: Product[] = raw ? JSON.parse(raw) : getCachedProducts();
+          const nextProducts = [prodData, ...products.filter(p => p.id !== prodData.id)];
+          localStorage.setItem('indihunt_products', JSON.stringify(nextProducts));
+          localStorage.setItem('ih_prelaunch_seed', JSON.stringify(prodData));
+          if (prodData.has_upvoted) {
+            const votes: string[] = JSON.parse(localStorage.getItem('indihunt_upvotes') || '[]');
+            if (!votes.includes(prodData.id)) {
+              localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, prodData.id]));
+            }
+          }
+        } catch {}
       }
       return prodData;
     } else if (res && !res.success) {
@@ -2843,7 +2887,6 @@ export async function getProductShoutoutsGiven(productId: string): Promise<Produ
     // fallback
   }
 
-
   if (typeof window !== 'undefined') {
     const shoutouts: any[] = JSON.parse(localStorage.getItem('indihunt_shoutouts') || '[]');
     const localFiltered = shoutouts.filter(s => s.product_id === productId);
@@ -2856,48 +2899,48 @@ export async function getProductShoutoutsGiven(productId: string): Promise<Produ
     }
   }
 
-  const allProducts = await getProducts();
-
-  const targetProduct = await getProductById(productId);
-
-  if (dbShoutouts.length > 0) {
-    const resolved: ProductShoutout[] = dbShoutouts.map((s, idx) => {
-      const matched = s.shouted_product || allProducts.find(p => p.id === s.shouted_product_id || (s.shouted_product_name && p.name.toLowerCase() === s.shouted_product_name.toLowerCase()) || (s.name && p.name.toLowerCase() === s.name.toLowerCase()));
-      const displayName = s.shouted_product_name || s.name || matched?.name || `Product ${idx + 1}`;
-      const logoUrl = s.logo_url || s.shouted_product_logo || matched?.logo_url || targetProduct?.shoutout_logos?.[displayName] || `https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?auto=format&fit=crop&w=120&q=80`;
-
-      const resolvedProduct: Product = matched ? {
-        ...matched,
-        logo_url: matched.logo_url || logoUrl
-      } : {
-        id: s.shouted_product_id || `synth-${idx}`,
-        name: displayName,
-        tagline: `${displayName} software tool & integration`,
-        description: `Tool used by product founder`,
-        website_url: `https://www.google.com/search?q=${encodeURIComponent(displayName)}`,
-        logo_url: logoUrl,
-        screenshots: [],
-        maker_id: 'synth',
-        upvotes_count: 42,
-        comments_count: 3,
-        created_at: new Date().toISOString()
-      };
-
-      return {
-        id: s.id || `shout-${idx}`,
-        product_id: productId,
-        shouted_product_id: s.shouted_product_id || `synth-${idx}`,
-        note: s.note || `Used ${displayName} for product development & workflow.`,
-        logo_url: logoUrl,
-        created_at: s.created_at || new Date().toISOString(),
-        shouted_product: resolvedProduct
-      };
-    });
-
-    if (resolved.length > 0) return resolved;
+  // Early return if no shoutouts exist - prevents 2 redundant network roundtrips
+  if (dbShoutouts.length === 0) {
+    return [];
   }
 
-  return [];
+  const allProducts = getCachedProducts();
+  const targetProduct = allProducts.find(p => p.id === productId);
+
+  const resolved: ProductShoutout[] = dbShoutouts.map((s, idx) => {
+    const matched = s.shouted_product || allProducts.find(p => p.id === s.shouted_product_id || (s.shouted_product_name && p.name.toLowerCase() === s.shouted_product_name.toLowerCase()) || (s.name && p.name.toLowerCase() === s.name.toLowerCase()));
+    const displayName = s.shouted_product_name || s.name || matched?.name || `Product ${idx + 1}`;
+    const logoUrl = s.logo_url || s.shouted_product_logo || matched?.logo_url || targetProduct?.shoutout_logos?.[displayName] || `https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?auto=format&fit=crop&w=120&q=80`;
+
+    const resolvedProduct: Product = matched ? {
+      ...matched,
+      logo_url: matched.logo_url || logoUrl
+    } : {
+      id: s.shouted_product_id || `synth-${idx}`,
+      name: displayName,
+      tagline: `${displayName} software tool & integration`,
+      description: `Tool used by product founder`,
+      website_url: `https://www.google.com/search?q=${encodeURIComponent(displayName)}`,
+      logo_url: logoUrl,
+      screenshots: [],
+      maker_id: 'synth',
+      upvotes_count: 42,
+      comments_count: 3,
+      created_at: new Date().toISOString()
+    };
+
+    return {
+      id: s.id || `shout-${idx}`,
+      product_id: productId,
+      shouted_product_id: s.shouted_product_id || `synth-${idx}`,
+      note: s.note || `Used ${displayName} for product development & workflow.`,
+      logo_url: logoUrl,
+      created_at: s.created_at || new Date().toISOString(),
+      shouted_product: resolvedProduct
+    };
+  });
+
+  return resolved;
 }
 
 export async function rescheduleProductLaunch(productId: string, date: string): Promise<boolean> {
@@ -4513,6 +4556,14 @@ export async function getAdCampaigns(userId: string): Promise<AdCampaign[]> {
   try {
     const res = await secureApiFetch<AdCampaign[]>(`/t/ads/campaigns?userId=${encodeURIComponent(userId)}`);
     if (res && res.success && Array.isArray(res.data)) {
+      if (typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem('indihunt_ad_campaigns') || '[]';
+          const list: AdCampaign[] = JSON.parse(cached);
+          const otherCamps = list.filter(c => c.user_id !== userId);
+          localStorage.setItem('indihunt_ad_campaigns', JSON.stringify([...res.data, ...otherCamps]));
+        } catch { }
+      }
       return res.data;
     }
   } catch (err) { }
@@ -6124,7 +6175,8 @@ export async function getAllAdCampaignsAllUsers(): Promise<AdCampaign[]> {
 }
 
 export async function getTopHuntersData(timeframe: string = "all_time", existingProducts?: Product[]): Promise<Hunter[]> {
-  const cacheKey = `public_top_hunters_${timeframe}_v2`;
+  const isWidgetMode = Boolean(existingProducts && existingProducts.length > 0);
+  const cacheKey = isWidgetMode ? `home_top_hunters_${timeframe}_v3` : `public_top_hunters_${timeframe}_full_v3`;
   const cachedHunters = await getRedisCache<Hunter[]>(cacheKey);
   if (cachedHunters && Array.isArray(cachedHunters) && cachedHunters.length > 0) {
     return cachedHunters;
@@ -6137,7 +6189,7 @@ export async function getTopHuntersData(timeframe: string = "all_time", existing
   else if (timeframe === 'yearly' || timeframe === 'last_year') timeLimitMs = 365 * 86400000;
 
   // === OPTIMIZATION: If products already provided, compute directly without DB query ===
-  if (existingProducts && existingProducts.length > 0) {
+  if (isWidgetMode && existingProducts) {
     let prods = existingProducts;
     if (timeLimitMs > 0) {
       prods = prods.filter(p => p.created_at && (now - new Date(p.created_at).getTime()) <= timeLimitMs);
@@ -6178,16 +6230,16 @@ export async function getTopHuntersData(timeframe: string = "all_time", existing
     }
   }
 
-  // Client-side or server-cache-miss fallback via API
+  // Client-side or server-cache-miss fetch via dedicated leaderboard API
   try {
-    const res = await secureApiFetch<Hunter[]>(`/t/leaderboard/top-hunters?timeRange=${encodeURIComponent(timeframe)}&limit=100`);
+    const res = await secureApiFetch<Hunter[]>(`/t/leaderboard/top-hunters?timeRange=${encodeURIComponent(timeframe)}&limit=300`);
     if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
       setRedisCache(cacheKey, res.data, 300).catch(() => { });
       return res.data;
     }
   } catch { }
 
-  // Load products to accurately calculate per-maker statistics
+  // Fallback: load products and profiles to accurately calculate per-maker statistics
   let products = getCachedProducts();
   if (!products || products.length === 0) {
     try {
@@ -6232,6 +6284,38 @@ export async function getTopHuntersData(timeframe: string = "all_time", existing
       }
     }
   });
+
+  // Also include profiles from local cache/storage if available
+  if (typeof window !== "undefined") {
+    try {
+      const rawProfiles = localStorage.getItem("indihunt_profiles");
+      if (rawProfiles) {
+        const parsedProfiles: Profile[] = JSON.parse(rawProfiles);
+        if (Array.isArray(parsedProfiles)) {
+          parsedProfiles.forEach(prof => {
+            if (!prof || !prof.username || prof.username === 'anon') return;
+            const key = (prof.username || prof.id || '').toLowerCase();
+            if (key && !hunterMap.has(key)) {
+              hunterMap.set(key, {
+                id: prof.id || key,
+                name: prof.full_name || prof.username || 'Indie Maker',
+                username: prof.username || key,
+                avatar_url: prof.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+                bio: prof.headline || prof.bio || 'IndiHunt Creator',
+                hunts_count: 0,
+                upvotes_count: (prof.karma_points || 0) * 2,
+                comments_count: 0,
+                first_places_count: 0,
+                avg_upvotes: (prof.karma_points || 0) * 2,
+                avg_comments: 0,
+                is_verified: !!prof.is_verified
+              });
+            }
+          });
+        }
+      }
+    } catch { }
+  }
 
   const realHuntersList = Array.from(hunterMap.values());
   realHuntersList.forEach(h => {

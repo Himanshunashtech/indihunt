@@ -37,6 +37,7 @@ function SearchContent() {
   const initialQuery = searchParams.get("q") || "";
 
   const [query, setQuery] = useState(initialQuery);
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
   const [activeTab, setActiveTab] = useState<"all" | "products" | "launches" | "users">("all");
 
   const [searchResults, setSearchResults] = useState<MultiEntitySearchResults>({
@@ -49,19 +50,28 @@ function SearchContent() {
 
   useEffect(() => {
     setQuery(initialQuery);
+    setDebouncedQuery(initialQuery);
   }, [initialQuery]);
+
+  // Debounce: update debouncedQuery 300ms after the user stops typing
+  // This gives Algolia-style instant search without hammering the API on every keystroke
+  useEffect(() => {
+    if (query === debouncedQuery) return;
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query, debouncedQuery]);
 
   useEffect(() => {
     let isMounted = true;
     const runSearch = async () => {
-      if (!initialQuery.trim()) {
+      if (!debouncedQuery.trim()) {
         setSearchResults({ products: [], threads: [], users: [], all: [] });
         setLoading(false);
         return;
       }
       setLoading(true);
       try {
-        const results = await performVectorSearch(initialQuery.trim());
+        const results = await performVectorSearch(debouncedQuery.trim());
         if (isMounted) {
           setSearchResults(results);
         }
@@ -77,7 +87,7 @@ function SearchContent() {
     return () => {
       isMounted = false;
     };
-  }, [initialQuery]);
+  }, [debouncedQuery]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
