@@ -71,6 +71,22 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.5.8",
+    date: "October 2026",
+    title: "Isolated Cloudflare Turnstile & Streamlined Google/GitHub Auth",
+    summary: "Configured Cloudflare Turnstile bot challenge widget to execute specifically inside the Login modal (AuthModal) on demand and streamlined the auth options exclusively to Google and GitHub authentication.",
+    icon: ShieldCheck,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Security", "Improvement", "Bugfix"],
+    features: [
+      { icon: CheckCircle, text: "Embedded Turnstile explicitly into AuthModal.tsx with lazy script loading only when modal opens." },
+      { icon: CheckCircle, text: "Streamlined login modal to only display active Google and GitHub one-click authentication." },
+      { icon: ShieldCheck, text: "Protected authentication actions without impeding general browsing for normal visitors across the website." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.5.7",
     date: "October 2026",
     title: "Fix Promoted Product Display in Yesterday Section & Eliminate Blank Spacing",
