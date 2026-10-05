@@ -17,7 +17,16 @@ import {
   Award
 } from "lucide-react";
 import { Github, Facebook, Linkedin, Twitter } from "@/components/icons";
-import { Product, Profile, toggleFollowProduct, getProductFollowers, getProductSlug } from "@/lib/supabase";
+import {
+  Product,
+  Profile,
+  toggleFollowProduct,
+  getProductFollowers,
+  getProductSlug,
+  calculateQualityScore,
+  calculateEngagementScore,
+  evaluateFeaturing,
+} from "@/lib/supabase";
 import { useAppDispatch } from "@/lib/store";
 import { setAuthModalOpen } from "@/lib/store";
 import { HexagonAwardBadge } from "@/components/AwardBadge";
@@ -109,6 +118,18 @@ export default function SidebarPanel({
   const launchDay = !isNaN(launchDate.getTime()) ? launchDate.getDate() : new Date().getDate();
   const launchInsightsUrl = `/launch-insights/${launchYear}/${launchMonth}/${launchDay}`;
 
+  const qualityScore = (typeof product.quality_score === 'number' && product.quality_score > 0)
+    ? product.quality_score
+    : calculateQualityScore(product, product.maker);
+
+  const commentsCount = (product as any).comments_count || 0;
+  const engagementScore = (typeof (product as any).engagement_score === 'number' && (product as any).engagement_score > 0)
+    ? (product as any).engagement_score
+    : calculateEngagementScore(product, commentsCount);
+
+  const featureEval = evaluateFeaturing(product, commentsCount, product.maker);
+  const isFeatured = !!(product.featured || featureEval.featured);
+
   return (
     <div className="lg:col-span-3 space-y-6">
       {/* Launch rank & Upvote section (Desktop only, mobile uses fixed bottom bar) */}
@@ -181,22 +202,22 @@ export default function SidebarPanel({
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-muted/30 p-3 rounded-xl border border-border/60 text-center">
-            <span className="text-2xl font-extrabold text-blue-500 block">{product.quality_score ?? 0}</span>
+            <span className="text-2xl font-extrabold text-blue-500 block">{qualityScore}</span>
             <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Quality Score</span>
           </div>
           <div className="bg-muted/30 p-3 rounded-xl border border-border/60 text-center">
-            <span className="text-2xl font-extrabold text-pink-500 block">{product.engagement_score ?? 0}</span>
+            <span className="text-2xl font-extrabold text-pink-500 block">{engagementScore}</span>
             <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Engagement</span>
           </div>
         </div>
 
         <div className="flex items-center justify-between text-xs sm:text-sm pt-1">
           <span className="font-semibold text-muted-foreground">Featured Status:</span>
-          <span className={`font-semibold uppercase text-xs px-2.5 py-1 rounded-full ${product.featured
+          <span className={`font-semibold uppercase text-xs px-2.5 py-1 rounded-full ${isFeatured
             ? 'bg-orange-500/10 text-orange-500 border border-orange-500/15'
             : 'bg-muted text-muted-foreground border border-border'
             }`}>
-            {product.featured ? '⭐ Featured' : 'Not Featured'}
+            {isFeatured ? '⭐ Featured' : 'Not Featured'}
           </span>
         </div>
       </Link>
