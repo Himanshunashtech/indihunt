@@ -143,9 +143,12 @@ export default function DiscussionSection({
 
     // 1. Listen for new comments/replies
     const handleCommentAdded = (newComment: Comment) => {
-      // Update query cache for both UUID and slug
+      // Update query cache strictly for this product
       const updateTree = (old: Comment[] | undefined) => addCommentToTree(old || [], newComment);
-      queryClient.setQueriesData({ queryKey: ["comments"] }, updateTree);
+      queryClient.setQueriesData({ queryKey: ["comments", product.id] }, updateTree);
+      if (slug && slug !== product.id) {
+        queryClient.setQueriesData({ queryKey: ["comments", slug] }, updateTree);
+      }
 
       // Update product comments count
       queryClient.setQueriesData({ queryKey: ["product", product.id] }, (old: any) => {
@@ -165,14 +168,18 @@ export default function DiscussionSection({
 
     // 2. Listen for comment upvotes
     const unsubCommentUpvoted = subscribe(room, "comment_upvoted", (data: { commentId: string; upvotes_count: number }) => {
-      // Update comments tree cache
-      queryClient.setQueriesData({ queryKey: ["comments"] }, (old: Comment[] | undefined) => {
+      // Update comments tree cache specifically for this product
+      const updateUpvote = (old: Comment[] | undefined) => {
         if (!old) return old;
         return updateCommentInTree(old, data.commentId, (c) => ({
           ...c,
           upvotes_count: data.upvotes_count
         }));
-      });
+      };
+      queryClient.setQueriesData({ queryKey: ["comments", product.id] }, updateUpvote);
+      if (slug && slug !== product.id) {
+        queryClient.setQueriesData({ queryKey: ["comments", slug] }, updateUpvote);
+      }
 
       // Also update the local state for commentUpvotes if it exists
       setCommentUpvotes(prev => ({
@@ -186,21 +193,29 @@ export default function DiscussionSection({
 
     // 3. Listen for comment edits
     const unsubCommentEdited = subscribe(room, "comment_edited", (data: { commentId: string; body: string }) => {
-      queryClient.setQueriesData({ queryKey: ["comments"] }, (old: Comment[] | undefined) => {
+      const updateEdit = (old: Comment[] | undefined) => {
         if (!old) return old;
         return updateCommentInTree(old, data.commentId, (c) => ({
           ...c,
           body: data.body
         }));
-      });
+      };
+      queryClient.setQueriesData({ queryKey: ["comments", product.id] }, updateEdit);
+      if (slug && slug !== product.id) {
+        queryClient.setQueriesData({ queryKey: ["comments", slug] }, updateEdit);
+      }
     });
 
     // 4. Listen for comment deletions
     const unsubCommentDeleted = subscribe(room, "comment_deleted", (data: { commentId: string }) => {
-      queryClient.setQueriesData({ queryKey: ["comments"] }, (old: Comment[] | undefined) => {
+      const updateDelete = (old: Comment[] | undefined) => {
         if (!old) return old;
         return removeCommentFromTree(old, data.commentId);
-      });
+      };
+      queryClient.setQueriesData({ queryKey: ["comments", product.id] }, updateDelete);
+      if (slug && slug !== product.id) {
+        queryClient.setQueriesData({ queryKey: ["comments", slug] }, updateDelete);
+      }
       // Decrement product comments count
       queryClient.setQueriesData({ queryKey: ["product", product.id] }, (old: any) => {
         if (!old) return old;
@@ -323,10 +338,13 @@ export default function DiscussionSection({
         if (newComment) {
           // Instantly update local comments tree cache for immediate realtime UI display
           const updateTree = (old: Comment[] | undefined) => addCommentToTree(old || [], newComment);
-          queryClient.setQueriesData({ queryKey: ["comments"] }, updateTree);
+          queryClient.setQueriesData({ queryKey: ["comments", product.id] }, updateTree);
+          const slug = getProductSlug(product.name);
+          if (slug && slug !== product.id) {
+            queryClient.setQueriesData({ queryKey: ["comments", slug] }, updateTree);
+          }
 
           publish(`product:${product.id}`, "comment_added", newComment);
-          const slug = getProductSlug(product.name);
           if (slug && slug !== product.id) {
             publish(`product:${slug}`, "comment_added", newComment);
           }
@@ -347,6 +365,10 @@ export default function DiscussionSection({
       setEditingCommentId(null);
       setEditingCommentBody("");
       queryClient.invalidateQueries({ queryKey: ["comments", product.id] });
+      const slug = getProductSlug(product.name);
+      if (slug && slug !== product.id) {
+        queryClient.invalidateQueries({ queryKey: ["comments", slug] });
+      }
       // Publish edit event
       publish(`product:${product.id}`, "comment_edited", { commentId, body: editingCommentBody });
     }
@@ -358,6 +380,10 @@ export default function DiscussionSection({
     const ok = await deleteComment(commentId, user.id);
     if (ok) {
       queryClient.invalidateQueries({ queryKey: ["comments", product.id] });
+      const slug = getProductSlug(product.name);
+      if (slug && slug !== product.id) {
+        queryClient.invalidateQueries({ queryKey: ["comments", slug] });
+      }
       // Publish delete event
       publish(`product:${product.id}`, "comment_deleted", { commentId });
     }

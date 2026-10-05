@@ -12,17 +12,28 @@ async function resolveCommentProductId(key: string, supabase: any): Promise<stri
   if (isUUID) return key;
 
   const decoded = decodeURIComponent(key).toLowerCase().trim();
-  const slugMap = await getCachedData<Record<string, string>>('product_slug_map');
+  let slugMap = await getCachedData<Record<string, string>>('product_slug_map');
   if (slugMap && slugMap[decoded]) return slugMap[decoded];
 
-  const { data: prod } = await supabase
-    .from('products')
-    .select('id')
-    .ilike('name', decoded.replace(/-/g, ' '))
-    .limit(1)
-    .maybeSingle();
-
-  return prod?.id || null;
+  try {
+    const { data } = await supabase.from('products').select('id, name').limit(3000);
+    const newMap: Record<string, string> = {};
+    (data || []).forEach((p: any) => {
+      if (p.name) {
+        newMap[getProductSlug(p.name).toLowerCase()] = p.id;
+        newMap[p.name.toLowerCase().trim()] = p.id;
+        newMap[p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')] = p.id;
+        newMap[p.name.toLowerCase().replace(/[^a-z0-9]+/g, '')] = p.id;
+      }
+      if (p.id) {
+        newMap[p.id.toLowerCase()] = p.id;
+      }
+    });
+    await setCachedData('product_slug_map', newMap, 3600);
+    return newMap[decoded] || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(request: NextRequest) {
