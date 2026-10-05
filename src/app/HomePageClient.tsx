@@ -914,9 +914,10 @@ export default function HomePageClient({
         : sortByUpvotes(today).slice(0, 20),
       currentPromotedProducts
     );
-    const sortedYesterday = today.length === 0
-      ? interleavePromoted(sortByUpvotes(yesterday).slice(0, 5), currentPromotedProducts)
-      : sortByUpvotes(yesterday).slice(0, 5);
+    const sortedYesterday = interleavePromoted(
+      sortByUpvotes(yesterday).slice(0, 5),
+      currentPromotedProducts
+    );
     const sortedLastWeek = sortByUpvotes(lastWeek).slice(0, 5);
     const sortedLastMonth = sortByUpvotes(lastMonth).slice(0, 5);
 

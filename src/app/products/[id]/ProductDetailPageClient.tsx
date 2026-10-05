@@ -230,11 +230,7 @@ function ProductDetailsContent({
         if (isVoted !== !!target.has_upvoted) {
           setLocalProduct((prev: any) => {
             if (!prev) return prev;
-            const currentCount = prev.upvotes_count ?? target.upvotes_count ?? 0;
-            const adjustedCount = isVoted
-              ? (!target.has_upvoted ? currentCount + 1 : currentCount)
-              : (target.has_upvoted ? Math.max(0, currentCount - 1) : currentCount);
-            return { ...prev, has_upvoted: isVoted, upvotes_count: adjustedCount };
+            return { ...prev, has_upvoted: isVoted };
           });
         }
       }

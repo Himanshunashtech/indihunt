@@ -32,14 +32,9 @@ function syncProductUpvoteWithLocalStorage(p: Product, currentUserId?: string): 
     const votedSet = new Set<string>(JSON.parse(raw));
     const slug = getProductSlug(p.name);
     const isVoted = votedSet.has(p.id) || (slug ? votedSet.has(slug) : false);
-    const wasVoted = !!p.has_upvoted;
-    if (isVoted === wasVoted) return p;
     return {
       ...p,
       has_upvoted: isVoted,
-      upvotes_count: isVoted
-        ? (p.upvotes_count || 0) + 1
-        : Math.max(0, (p.upvotes_count || 1) - 1),
     };
   } catch (e) {
     return p;

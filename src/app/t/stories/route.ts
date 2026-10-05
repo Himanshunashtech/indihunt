@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
+import { getCachedData, setCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { checkContentViolation, DEFAULT_STORIES } from '@/lib/supabase';
 
@@ -37,14 +37,23 @@ export async function GET(request: NextRequest) {
       query = query.ilike('title', `%${search}%`);
     }
 
-    const { data: stories } = await query;
+    const { data: stories, error: dbErr } = await query;
     const dbStories = (stories && stories.length > 0) ? stories : [];
 
     // Merge: Real DB user stories first + Mock DEFAULT_STORIES
     const mergedMap = new Map<string, any>();
     dbStories.forEach(s => {
-      if (s?.id) mergedMap.set(s.id, s);
+      if (s?.id) {
+        const userObj = s.user || {
+          id: s.user_id,
+          username: 'maker',
+          full_name: 'Maker',
+          avatar_url: `https://avatar.vercel.sh/${s.user_id || 'maker'}`
+        };
+        mergedMap.set(s.id, { ...s, user: userObj });
+      }
     });
+
     DEFAULT_STORIES.forEach(s => {
       if (s?.id && !mergedMap.has(s.id)) {
         mergedMap.set(s.id, s);
@@ -61,8 +70,11 @@ export async function GET(request: NextRequest) {
       list = list.filter(s => s.title?.toLowerCase().includes(q) || (s.excerpt ? s.excerpt.toLowerCase().includes(q) : false));
     }
 
+    // Sort by publication date descending (newest user stories first)
+    list.sort((a, b) => new Date(b.published_at || b.created_at || 0).getTime() - new Date(a.published_at || a.created_at || 0).getTime());
+
     if (!search && list.length > 0) {
-      await setCachedData(cacheKey, list, 300);
+      await setCachedData(cacheKey, list, 120);
     }
 
     return apiSuccessSecure(list);
@@ -103,15 +115,15 @@ export async function POST(request: NextRequest) {
         excerpt: excerpt || content.slice(0, 150),
         published_at: new Date().toISOString(),
       })
-      .select('*, user:profiles(*)')
+      .select('*, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
       .single();
 
     if (error) {
       return apiFailure(error.message, 500);
     }
 
+    await invalidateCachePattern('stories_');
     await invalidateCache('stories_all_50');
-    if (category) await invalidateCache(`stories_${category}_50`);
 
     return apiSuccessSecure(story, 201);
   } catch (error: any) {

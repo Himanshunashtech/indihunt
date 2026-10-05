@@ -81,21 +81,33 @@ export default function StoryDetailPage() {
     const loadStoryData = async () => {
       setIsLoading(true);
       try {
-        const targetSlug = storyId.toLowerCase();
+        const targetSlug = decodeURIComponent(storyId).toLowerCase();
         const allStories = await getStories();
 
         let found = allStories.find(
           s => s.id === storyId ||
                getProductSlug(s.title).toLowerCase() === targetSlug ||
-               s.title.toLowerCase().includes(targetSlug)
+               s.title.toLowerCase() === targetSlug ||
+               s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === targetSlug
         );
 
         if (!found) {
           found = DEFAULT_STORIES.find(
             s => s.id === storyId ||
                  getProductSlug(s.title).toLowerCase() === targetSlug ||
-                 s.title.toLowerCase().includes(targetSlug)
+                 s.title.toLowerCase() === targetSlug ||
+                 s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === targetSlug
           );
+        }
+
+        if (!found) {
+          try {
+            const res = await fetch(`/t/stories/${encodeURIComponent(storyId)}`);
+            const data = await res.json();
+            if (data && data.success && data.data) {
+              found = data.data;
+            }
+          } catch (e) {}
         }
 
         if (found) {

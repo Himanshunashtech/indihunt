@@ -30,6 +30,7 @@ import {
   LayoutGrid,
   Bell,
   Settings,
+  Tag,
 } from "lucide-react";
 
 const TAG_STYLES: Record<string, string> = {
@@ -69,6 +70,69 @@ interface ChangelogItem {
 }
 
 const CHANGELOG: ChangelogItem[] = [
+  {
+    version: "v7.5.7",
+    date: "October 2026",
+    title: "Fix Promoted Product Display in Yesterday Section & Eliminate Blank Spacing",
+    summary: "Fixed an issue where the Yesterday section had an empty blank gap due to artificial min-h constraint and skipped promoted product interleaving. Removed artificial minimum height and enabled seamless promoted product interleaving across Yesterday's cohort.",
+    icon: Sparkles,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Bugfix", "Improvement", "Design"],
+    features: [
+      { icon: CheckCircle, text: "Removed artificial min-h-[200px] container constraint in FeedSection to eliminate blank gaps." },
+      { icon: Sparkles, text: "Enabled interleavePromoted across Yesterday's section to show active promoted/sponsored products seamlessly." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.5.6",
+    date: "October 2026",
+    title: "Fix Client-Side Hydration Upvote Double-Count on Page Refresh",
+    summary: "Fixed an issue where refreshing the page artificially incremented upvotes_count by +1. Root cause: syncProductUpvoteWithLocalStorage in useDb.ts and ProductDetailPageClient.tsx was calculating upvotes_count = count + 1 during client hydration when syncing has_upvoted from localStorage. Fixed to only sync the boolean status without modifying stored counts.",
+    icon: CheckCircle,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Bugfix", "Improvement"],
+    features: [
+      { icon: CheckCircle, text: "Fixed syncProductUpvoteWithLocalStorage in useDb.ts to preserve the authentic database upvotes_count." },
+      { icon: CheckCircle, text: "Fixed ProductDetailPageClient hydration sync to prevent artificial +1 calculation on page reload." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.5.5",
+    date: "October 2026",
+    title: "Maker Stories Live User Feed & Direct Story Creation",
+    summary: "Integrated real user stories from Supabase database with demo stories across /stories and profile pages, added instant 'Write a Story' modal directly on /stories, category filters, and slug/UUID resolution.",
+    icon: Sparkles,
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-500/10",
+    tags: ["New Feature", "Community", "Improvement"],
+    features: [
+      { icon: CheckCircle, text: "Seamlessly combined real user-published stories from Supabase with curated guide and playbook stories." },
+      { icon: Sparkles, text: "Added dedicated 'Write a Story' creator modal directly on /stories with cover image uploads and content moderation." },
+      { icon: Tag, text: "Introduced interactive category chips (Makers, Guides, Playbooks, Interviews, Tech) on /stories page." },
+      { icon: Database, text: "Enhanced /t/stories API route with automatic pattern cache invalidation and author fallback profiles." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.5.4",
+    date: "October 2026",
+    title: "Fix Upvote Double-Counting Bug",
+    summary: "Fixed a bug where upvoting a product showed 1 but refreshing the page showed 2. Root cause: redundant database triggers (trg_upvote_insert/trg_upvote_delete from migration 100) were incrementing upvotes_count alongside the API route's exact count update. Dropped the triggers and recalculated all product upvote counts.",
+    icon: Database,
+    iconColor: "text-cyan-400",
+    iconBg: "bg-cyan-500/10",
+    tags: ["Bugfix", "Database"],
+    features: [
+      { icon: CheckCircle, text: "Dropped redundant trg_upvote_insert and trg_upvote_delete triggers that caused double-counting of product upvotes." },
+      { icon: Database, text: "Recalculated upvotes_count for all products to match actual upvote records in the database." },
+      { icon: Users, text: "Recalculated karma_points for all maker profiles based on corrected upvote counts." },
+    ],
+    highlight: true,
+  },
   {
     version: "v7.5.3",
     date: "October 2026",

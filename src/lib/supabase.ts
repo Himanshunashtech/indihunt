@@ -4033,7 +4033,12 @@ async function getStoriesRaw(search?: string): Promise<Story[]> {
 
   const mergedMap = new Map<string, Story>();
 
-  // 1. Read local user stories from localStorage
+  // 1. Add API/DB stories FIRST (these are real from database)
+  apiStories.forEach(s => {
+    if (s && s.id) mergedMap.set(s.id, s);
+  });
+
+  // 2. Read local user stories from localStorage
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem('indihunt_stories');
@@ -4041,19 +4046,14 @@ async function getStoriesRaw(search?: string): Promise<Story[]> {
         const localList: Story[] = JSON.parse(cached);
         if (Array.isArray(localList)) {
           localList.forEach(s => {
-            if (s && s.id) mergedMap.set(s.id, s);
+            if (s && s.id && !mergedMap.has(s.id)) mergedMap.set(s.id, s);
           });
         }
       }
     } catch {}
   }
 
-  // 2. Add API/DB stories
-  apiStories.forEach(s => {
-    if (s && s.id) mergedMap.set(s.id, s);
-  });
-
-  // 3. Add Mock DEFAULT_STORIES
+  // 3. Add Mock DEFAULT_STORIES if not already present
   DEFAULT_STORIES.forEach(s => {
     if (s && s.id && !mergedMap.has(s.id)) {
       mergedMap.set(s.id, s);
@@ -4061,6 +4061,7 @@ async function getStoriesRaw(search?: string): Promise<Story[]> {
   });
 
   let result = Array.from(mergedMap.values());
+  result.sort((a, b) => new Date(b.published_at || b.created_at || 0).getTime() - new Date(a.published_at || a.created_at || 0).getTime());
 
   if (search) {
     const q = search.toLowerCase();
@@ -4098,7 +4099,14 @@ export async function createStory(storyData: Partial<Story>): Promise<Story | nu
     });
 
     if (res && res.success && res.data) {
-      return res.data;
+      const createdStory = res.data;
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem('indihunt_stories') || '[]';
+        const list: Story[] = JSON.parse(cached);
+        const filtered = list.filter(s => s.id !== createdStory.id);
+        localStorage.setItem('indihunt_stories', JSON.stringify([createdStory, ...filtered]));
+      }
+      return createdStory;
     }
   } catch (err) {
     // fallback

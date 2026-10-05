@@ -91,7 +91,7 @@ export default function FeedSection({
           )}
         </div>
       ) : (
-        <div className="space-y-3 min-h-[200px]">
+        <div className="space-y-3">
           {section.items.map((p, idx) => (
             <React.Fragment key={`${section.id}-${p.id}-${idx}`}>
               <ProductItem product={p} idx={idx} onVote={onVote} />
