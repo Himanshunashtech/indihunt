@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  supabase,
   getProducts,
   getProductById,
   getCachedProduct,
@@ -26,19 +28,85 @@ import {
 
 function syncProductUpvoteWithLocalStorage(p: Product, currentUserId?: string): Product {
   if (typeof window === 'undefined' || !p) return p;
+  if (typeof p.has_upvoted === 'boolean') {
+    return p;
+  }
   try {
     const raw = (currentUserId ? localStorage.getItem(`indihunt_upvotes_${currentUserId}`) : null) || localStorage.getItem('indihunt_upvotes');
-    if (!raw) return p;
-    const votedSet = new Set<string>(JSON.parse(raw));
+    const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
     const slug = getProductSlug(p.name);
     const isVoted = votedSet.has(p.id) || (slug ? votedSet.has(slug) : false);
+
     return {
       ...p,
       has_upvoted: isVoted,
+      upvotes_count: p.upvotes_count ?? 0,
     };
   } catch (e) {
     return p;
   }
+}
+
+/**
+ * Supabase Realtime synchronization hook for products, threads, and upvotes.
+ * Keeps React Query cache in sync automatically across tabs and users in real time.
+ */
+export function useRealtimeSync(currentUserId?: string) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channel = supabase
+      .channel("public-db-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        (payload: any) => {
+          if (payload.eventType === "UPDATE" && payload.new) {
+            const updated = payload.new as Product;
+            queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
+              if (!Array.isArray(old)) return old;
+              return old.map((p: Product) =>
+                p.id === updated.id
+                  ? { ...p, upvotes_count: updated.upvotes_count, comments_count: updated.comments_count, quality_score: updated.quality_score, featured: updated.featured }
+                  : p
+              );
+            });
+            queryClient.setQueriesData({ queryKey: ["product", updated.id] }, (old: unknown) => {
+              if (!old || typeof old !== "object") return old;
+              return { ...(old as Product), upvotes_count: updated.upvotes_count, comments_count: updated.comments_count };
+            });
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "threads" },
+        (payload: any) => {
+          if (payload.eventType === "UPDATE" && payload.new) {
+            const updated = payload.new as Thread;
+            queryClient.setQueriesData({ queryKey: ["threads"] }, (old: unknown) => {
+              if (!Array.isArray(old)) return old;
+              return old.map((t: Thread) =>
+                t.id === updated.id
+                  ? { ...t, upvotes_count: updated.upvotes_count, comments_count: updated.comments_count }
+                  : t
+              );
+            });
+            queryClient.setQueriesData({ queryKey: ["thread", updated.id] }, (old: unknown) => {
+              if (!old || typeof old !== "object") return old;
+              return { ...(old as Thread), upvotes_count: updated.upvotes_count, comments_count: updated.comments_count };
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
+  }, [queryClient, currentUserId]);
 }
 
 // 1. Fetch all products
@@ -48,7 +116,7 @@ export function useProducts(currentUserId?: string, initialData?: Product[], ena
     queryKey: ["products", currentUserId || "guest"],
     queryFn: () => getProducts(currentUserId || undefined),
     enabled,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
     initialData: initialData && initialData.length > 0
       ? () => {
@@ -67,7 +135,7 @@ export function useProducts(currentUserId?: string, initialData?: Product[], ena
           }
           return undefined;
         },
-    initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
+    initialDataUpdatedAt: 0,
     placeholderData: (previousData) => {
       if (previousData && previousData.length > 0) {
         if (typeof window !== 'undefined') {
@@ -92,7 +160,7 @@ export function usePromotedProducts(existingProducts?: Product[], initialData?: 
   return useQuery({
     queryKey: ["promoted_products"],
     queryFn: () => getPromotedProducts(existingProducts),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
     initialData: initialData && initialData.length > 0
       ? () => {
@@ -102,7 +170,7 @@ export function usePromotedProducts(existingProducts?: Product[], initialData?: 
           return initialData;
         }
       : undefined,
-    initialDataUpdatedAt: initialData && initialData.length > 0 ? Date.now() : undefined,
+    initialDataUpdatedAt: 0,
     placeholderData: (previousData) => {
       if (previousData && previousData.length > 0) {
         if (typeof window !== 'undefined') {
@@ -136,7 +204,7 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
     queryKey: ["product", productId, currentUserId || "guest"],
     queryFn: () => getProductById(productId, currentUserId || undefined),
     enabled: !!productId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
     initialData: initialData
       ? () => {
@@ -155,7 +223,7 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
           }
           return undefined;
         },
-    initialDataUpdatedAt: initialData ? Date.now() : undefined,
+    initialDataUpdatedAt: 0,
     placeholderData: (previousData) => {
       if (previousData) {
         if (typeof window !== 'undefined') {
@@ -396,24 +464,19 @@ export function useToggleUpvoteMutation() {
   return useMutation({
     mutationFn: ({ productId, userId }: { productId: string; userId: string }) =>
       toggleUpvote(productId, userId),
-    // Optimistic update: toggle immediately in the cache before server responds
     onMutate: async ({ productId }) => {
-      // Cancel any outgoing refetches so they don't overwrite optimistic update
       await queryClient.cancelQueries({ queryKey: ["products"] });
       await queryClient.cancelQueries({ queryKey: ["promoted_products"] });
-      await queryClient.cancelQueries({ queryKey: ["product"] });
+      await queryClient.cancelQueries({ queryKey: ["product", productId] });
 
-      // Snapshot previous value for rollback
       const previousProducts = queryClient.getQueriesData({ queryKey: ["products"] });
       const previousPromoted = queryClient.getQueriesData({ queryKey: ["promoted_products"] });
-      const previousProduct = queryClient.getQueriesData({ queryKey: ["product"] });
+      const previousProduct = queryClient.getQueriesData({ queryKey: ["product", productId] });
 
       const matchesTarget = (p: Product) =>
         p.id === productId ||
-        getProductSlug(p.name).toLowerCase() === productId.toLowerCase() ||
-        ((p as any).slug && (p as any).slug.toLowerCase() === productId.toLowerCase());
+        getProductSlug(p.name).toLowerCase() === productId.toLowerCase();
 
-      // Optimistic update: toggle has_upvoted and adjust count in all product list caches
       queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
         if (!Array.isArray(old)) return old;
         return old.map((p: Product) => {
@@ -448,10 +511,9 @@ export function useToggleUpvoteMutation() {
         });
       });
 
-      queryClient.setQueriesData({ queryKey: ["product"] }, (old: unknown) => {
-        if (!old || typeof old !== "object" || Array.isArray(old)) return old;
+      queryClient.setQueriesData({ queryKey: ["product", productId] }, (old: unknown) => {
+        if (!old || typeof old !== "object") return old;
         const p = old as Product;
-        if (!matchesTarget(p)) return old;
         const wasUpvoted = !!p.has_upvoted;
         return {
           ...p,
@@ -465,7 +527,6 @@ export function useToggleUpvoteMutation() {
       return { previousProducts, previousPromoted, previousProduct };
     },
     onError: (_err, _variables, context) => {
-      // Rollback on error
       if (context?.previousProducts) {
         context.previousProducts.forEach(([key, data]: [unknown, unknown]) => {
           queryClient.setQueryData(key as string[], data);
@@ -484,55 +545,37 @@ export function useToggleUpvoteMutation() {
     },
     onSuccess: (data, variables) => {
       if (data && typeof data.upvotes_count === 'number') {
-        const resolvedId = data.productId || variables.productId;
-        const hasUpvoted = typeof data.has_upvoted === 'boolean' ? data.has_upvoted : undefined;
-
+        const targetId = data.productId || variables.productId;
         const matchesTarget = (p: Product) =>
-          p.id === resolvedId ||
+          p.id === targetId ||
           p.id === variables.productId ||
-          getProductSlug(p.name).toLowerCase() === variables.productId.toLowerCase() ||
-          getProductSlug(p.name).toLowerCase() === resolvedId.toLowerCase() ||
-          ((p as any).slug && (
-            (p as any).slug.toLowerCase() === variables.productId.toLowerCase() ||
-            (p as any).slug.toLowerCase() === resolvedId.toLowerCase()
-          ));
+          getProductSlug(p.name).toLowerCase() === variables.productId.toLowerCase();
 
         queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
           if (!Array.isArray(old)) return old;
           return old.map((p: Product) =>
-            matchesTarget(p)
-              ? {
-                  ...p,
-                  upvotes_count: data.upvotes_count,
-                  ...(hasUpvoted !== undefined ? { has_upvoted: hasUpvoted } : {}),
-                }
-              : p
+            matchesTarget(p) ? { ...p, upvotes_count: data.upvotes_count } : p
           );
         });
 
         queryClient.setQueriesData({ queryKey: ["promoted_products"] }, (old: unknown) => {
           if (!Array.isArray(old)) return old;
           return old.map((p: Product) =>
-            matchesTarget(p)
-              ? {
-                  ...p,
-                  upvotes_count: data.upvotes_count,
-                  ...(hasUpvoted !== undefined ? { has_upvoted: hasUpvoted } : {}),
-                }
-              : p
+            matchesTarget(p) ? { ...p, upvotes_count: data.upvotes_count } : p
           );
         });
 
-        queryClient.setQueriesData({ queryKey: ["product"] }, (old: unknown) => {
-          if (!old || typeof old !== "object" || Array.isArray(old)) return old;
-          const p = old as Product;
-          if (!matchesTarget(p)) return old;
-          return {
-            ...p,
-            upvotes_count: data.upvotes_count,
-            ...(hasUpvoted !== undefined ? { has_upvoted: hasUpvoted } : {}),
-          };
+        queryClient.setQueriesData({ queryKey: ["product", variables.productId] }, (old: unknown) => {
+          if (!old || typeof old !== "object") return old;
+          return { ...(old as Product), upvotes_count: data.upvotes_count };
         });
+
+        if (targetId && targetId !== variables.productId) {
+          queryClient.setQueriesData({ queryKey: ["product", targetId] }, (old: unknown) => {
+            if (!old || typeof old !== "object") return old;
+            return { ...(old as Product), upvotes_count: data.upvotes_count };
+          });
+        }
       }
     },
   });

@@ -44,53 +44,40 @@ export async function GET(request: NextRequest) {
     let limit = Math.min(Number.isFinite(requested) ? requested : 100, MAX_LIMIT);
     if (queryStr || checkUrl) limit = Math.min(limit, 50);
 
-    const cacheKey = `redis_products_${category || 'all'}_${limit}_${cursor || 'none'}_${full ? 'full' : 'lite'}`;
-    const canUsePublicCache = !queryStr && !checkUrl && !makerId;
+    const supabase = await createServerSupabaseClient();
 
-    let supabase: Awaited<ReturnType<typeof createServerSupabaseClient>> | null = null;
-    const db = async () => (supabase ??= await createServerSupabaseClient());
+    const selectCols = checkUrl ? 'id, name, website_url, is_deleted' : (full ? FULL_COLS : LIST_COLS);
+    let query = supabase
+      .from('products')
+      .select(selectCols)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-    let products: any[] = [];
-    if (canUsePublicCache) {
-      const cached = await getCachedData<any[]>(cacheKey);
-      if (Array.isArray(cached) && cached.length > 0) products = cached;
+    if (cursor) query = query.lt('created_at', cursor);
+    if (makerId) query = query.eq('maker_id', makerId);
+    if (category) query = query.contains('tags', [category]);
+    if (checkUrl) {
+      query = query.or(`website_url.ilike.%${normalizeUrl(checkUrl)}%`);
+    } else if (queryStr) {
+      const q = queryStr.replace(/[%,()]/g, ' ').trim();
+      query = query.or(`name.ilike.%${q}%,tagline.ilike.%${q}%,description.ilike.%${q}%`);
     }
 
-    if (products.length === 0) {
-      const selectCols = checkUrl ? 'id, name, website_url, is_deleted' : (full ? FULL_COLS : LIST_COLS);
-      let query = (await db())
-        .from('products')
-        .select(selectCols)
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (cursor) query = query.lt('created_at', cursor);
-      if (makerId) query = query.eq('maker_id', makerId);
-      if (category) query = query.contains('tags', [category]);
-      if (checkUrl) {
-        query = query.or(`website_url.ilike.%${normalizeUrl(checkUrl)}%`);
-      } else if (queryStr) {
-        const q = queryStr.replace(/[%,()]/g, ' ').trim();
-        query = query.or(`name.ilike.%${q}%,tagline.ilike.%${q}%,description.ilike.%${q}%`);
-      }
-
-      const { data, error } = await query;
-      if (error) {
-        console.error('[GET /t/products]', error.message);
-        return apiFailure(error.message, 500);
-      }
-      const now = new Date();
-      products = (data || []).map((p: any) =>
-        p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
-          ? { ...p, status: 'live' }
-          : p
-      );
-      if (canUsePublicCache && products.length > 0) await setCachedData(cacheKey, products, 300);
+    const { data, error } = await query;
+    if (error) {
+      console.error('[GET /t/products]', error.message);
+      return apiFailure(error.message, 500);
     }
+    const now = new Date();
+    let products: any[] = (data || []).map((p: any) =>
+      p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+        ? { ...p, status: 'live' }
+        : p
+    );
 
     if (userId && products.length > 0) {
-      const { data: upvotes } = await (await db())
+      const { data: upvotes } = await supabase
         .from('upvotes')
         .select('product_id')
         .eq('user_id', userId)
@@ -99,7 +86,7 @@ export async function GET(request: NextRequest) {
       products = products.map((p: any) => ({ ...p, has_upvoted: set.has(p.id) }));
     }
 
-    return apiSuccessSecure(products, 200, userId ? undefined : PUBLIC_CACHE_HEADERS);
+    return apiSuccessSecure(products, 200);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch products', 500);
   }

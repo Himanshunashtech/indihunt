@@ -17,7 +17,7 @@ const SITE_URL = "https://indihunt.in";
 
 export default async function Home() {
   // 1. Direct DB service layer calls wrapped in Promise.all (zero HTTP self-fetch)
-  const productsPromise = getHomeProductsDirect(30).catch(() => [] as Product[]);
+  const productsPromise = getHomeProductsDirect(300).catch(() => [] as Product[]);
   const threadsPromise = getHomeThreadsDirect(10).catch(() => []);
 
   const [products, threads] = await Promise.all([
@@ -213,9 +213,9 @@ export default async function Home() {
       </div>
 
       <HomePageClient
-        initialProducts={initialVisibleProducts}
-        initialThreads={initialVisibleThreads}
-        initialTopHunters={initialVisibleTopHunters}
+        initialProducts={products}
+        initialThreads={threads}
+        initialTopHunters={topHunters}
         initialBillboardAds={billboardAds}
         initialPromotedProducts={promotedProductsResolved}
         initialPulseStats={initialPulseStats}

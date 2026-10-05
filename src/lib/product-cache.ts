@@ -1,20 +1,9 @@
 import { cache } from "react";
-import { unstable_cache } from "next/cache";
 import { getProductById } from "@/lib/supabase";
 
-// dedupes within a request + caches across requests
-export const getProductCached = cache((id: string) => {
+// Request-level deduplication so multiple server components / helpers don't refetch the same product in a single render
+export const getProductCached = cache(async (id: string) => {
   const cleanId = (id || "").toLowerCase().trim();
-  return unstable_cache(
-    async () => {
-      const prod = await getProductById(cleanId);
-      return prod;
-    },
-    ["product_v3", cleanId],
-    {
-      revalidate: 60,
-      tags: [`product-${cleanId}`],
-    }
-  )();
+  return getProductById(cleanId);
 });
 

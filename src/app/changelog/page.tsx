@@ -71,6 +71,22 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.5.9",
+    date: "October 2026",
+    title: "Direct Database Upvote Sync & Supabase Realtime Stream",
+    summary: "Eliminated stale in-memory and Redis caches on upvote/unvote pathways, ensuring all upvote counts and user vote statuses query directly from PostgreSQL. Added Supabase Realtime subscriptions to dynamically stream product updates to all clients.",
+    icon: Database,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Database", "Realtime", "Bugfix"],
+    features: [
+      { icon: CheckCircle, text: "Removed clientMemoryCache layer from secureApiFetch so queries always receive live DB data." },
+      { icon: Zap, text: "Configured Supabase Realtime to stream Postgres changes on products and threads directly into React Query." },
+      { icon: ShieldCheck, text: "Aligned product upvote handling and Postgres SECURITY DEFINER triggers with the exact discussion threads pattern." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.5.8",
     date: "October 2026",
     title: "Isolated Cloudflare Turnstile & Streamlined Google/GitHub Auth",

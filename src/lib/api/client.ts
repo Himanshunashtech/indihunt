@@ -7,26 +7,11 @@ function getBaseUrl(): string {
   return `http://127.0.0.1:${port}`;
 }
 
-// Client-side L1 Memory Cache & In-Flight Request Deduplication Map
-interface ClientCacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-const clientMemoryCache = new Map<string, ClientCacheEntry<any>>();
+// Request Deduplication Map for in-flight requests only
 const inFlightRequests = new Map<string, Promise<any>>();
-const CLIENT_CACHE_TTL_MS = 45 * 1000; // 45 seconds instant cache
 
-export function clearClientApiCache(filterPattern?: string) {
-  if (!filterPattern) {
-    clientMemoryCache.clear();
-    return;
-  }
-  for (const key of clientMemoryCache.keys()) {
-    if (key.includes(filterPattern)) {
-      clientMemoryCache.delete(key);
-    }
-  }
+export function clearClientApiCache(_filterPattern?: string) {
+  inFlightRequests.clear();
 }
 
 export async function secureApiFetch<T = any>(
@@ -36,26 +21,8 @@ export async function secureApiFetch<T = any>(
   const method = (options?.method || 'GET').toUpperCase();
   const isGet = method === 'GET';
 
-  // If mutation, invalidate matching cache
-  if (!isGet) {
-    const basePath = url.split('?')[0];
-    clearClientApiCache(basePath);
-    if (basePath.includes('/upvote')) {
-      clearClientApiCache('/t/products');
-      clearClientApiCache('/t/threads');
-      clearClientApiCache('/t/comments');
-      clearClientApiCache('/t/upvotes');
-    }
-  }
-
-  // Check client memory cache for GET requests in browser
+  // Request coalescing for identical in-flight GET requests
   if (isGet && typeof window !== 'undefined') {
-    const cached = clientMemoryCache.get(url);
-    if (cached && (Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS)) {
-      return cached.data;
-    }
-
-    // Request coalescing for in-flight requests
     if (inFlightRequests.has(url)) {
       return inFlightRequests.get(url)!;
     }
@@ -104,14 +71,6 @@ export async function secureApiFetch<T = any>(
           success: json.success ?? true,
           data: decodedData as T,
         };
-      }
-
-      // Store in client memory cache if successful GET
-      if (isGet && typeof window !== 'undefined' && finalResult.success !== false) {
-        clientMemoryCache.set(url, {
-          data: finalResult,
-          timestamp: Date.now()
-        });
       }
 
       return finalResult;

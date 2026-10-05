@@ -51,32 +51,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const userId = new URL(request.url).searchParams.get('userId');
     const key = decodeURIComponent(id).toLowerCase().trim();
 
-    let supabase: Awaited<ReturnType<typeof createServerSupabaseClient>> | null = null;
-    const db = async () => (supabase ??= await createServerSupabaseClient());
+    const supabase = await createServerSupabaseClient();
+    const pid = await resolveProductId(key, async () => supabase);
+    if (!pid) return apiFailure('Product not found', 404);
 
-    let product = await getCachedData<any>(`product_detail_${key}`);
-    if (!product?.id) {
-      const pid = await resolveProductId(key, db);
-      if (!pid) return apiFailure('Product not found', 404);
+    const { data: product, error: prodErr } = await supabase
+      .from('products')
+      .select(DETAIL_COLUMNS)
+      .eq('id', pid)
+      .maybeSingle();
 
-      const { data } = await (await db())
-        .from('products').select(DETAIL_COLUMNS).eq('id', pid).maybeSingle();
-      if (!data || data.is_deleted) return apiFailure('Product not found', 404);
-      product = data;
-      await Promise.all([
-        setCachedData(`product_detail_${key}`, product, 300),
-        setCachedData(`product_detail_${product.id}`, product, 300),
-      ]);
+    if (prodErr || !product || product.is_deleted) {
+      return apiFailure('Product not found', 404);
     }
 
     let hasUpvoted = false;
     if (userId) {
-      const { data: upvote } = await (await db())
-        .from('upvotes').select('id').eq('product_id', product.id).eq('user_id', userId).maybeSingle();
+      const { data: upvote } = await supabase
+        .from('upvotes')
+        .select('id')
+        .eq('product_id', product.id)
+        .eq('user_id', userId)
+        .maybeSingle();
       hasUpvoted = !!upvote;
     }
 
-    return apiSuccessSecure({ ...product, has_upvoted: hasUpvoted }, 200, userId ? undefined : PUBLIC_CACHE_HEADERS);
+    return apiSuccessSecure({ ...product, has_upvoted: hasUpvoted }, 200);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch product', 500);
   }

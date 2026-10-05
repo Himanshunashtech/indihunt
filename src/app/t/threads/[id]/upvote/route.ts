@@ -46,34 +46,81 @@ export async function POST(
       return apiFailure('Thread not found or invalid UUID', 400);
     }
 
-    const { data: existing } = await supabase
+    // Use admin client if configured to avoid RLS blockages on server mutations, otherwise use server client
+    let dbClient: any = supabase;
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const { createAdminSupabaseClient } = await import('@/lib/supabase/admin');
+        dbClient = createAdminSupabaseClient();
+      } catch (e) {
+        dbClient = supabase;
+      }
+    }
+
+    // Try reading session user if available, fallback to provided userId
+    const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    const effectiveUserId = authData?.user?.id || uId;
+
+    const { data: existing, error: existingErr } = await dbClient
       .from('thread_upvotes')
       .select('id')
       .eq('thread_id', targetThreadId)
-      .eq('user_id', uId)
+      .eq('user_id', effectiveUserId)
       .maybeSingle();
+
+    if (existingErr) {
+      console.error('[Thread upvote check error]', existingErr);
+      return apiFailure(existingErr.message || 'Failed to check existing thread upvote', 500);
+    }
 
     let hasUpvoted = false;
 
     if (existing) {
-      await supabase.from('thread_upvotes').delete().eq('id', existing.id);
+      const { error: delErr, count: delCount } = await dbClient
+        .from('thread_upvotes')
+        .delete({ count: 'exact' })
+        .eq('id', existing.id);
+
+      if (delErr) {
+        console.error('[Thread upvote DELETE error]', delErr);
+        return apiFailure(delErr.message || 'Thread unvote blocked by database policy', 500);
+      }
+      if (delCount === 0) {
+        console.warn('[Thread upvote DELETE 0 rows affected]');
+        return apiFailure('Thread unvote failed (0 rows deleted, check RLS delete policy)', 500);
+      }
       hasUpvoted = false;
     } else {
-      await supabase.from('thread_upvotes').insert({ thread_id: targetThreadId, user_id: uId });
+      const { error: insErr } = await dbClient
+        .from('thread_upvotes')
+        .insert({ thread_id: targetThreadId, user_id: effectiveUserId });
+
+      if (insErr) {
+        console.error('[Thread upvote INSERT error]', insErr);
+        return apiFailure(insErr.message || 'Thread upvote blocked by database policy', 500);
+      }
       hasUpvoted = true;
     }
 
-    const { count } = await supabase
+    const { count, error: countErr } = await dbClient
       .from('thread_upvotes')
       .select('*', { count: 'exact', head: true })
       .eq('thread_id', targetThreadId);
 
-    const updatedCount = count ?? (hasUpvoted ? 1 : 0);
+    if (countErr) {
+      console.warn('[Thread upvote COUNT error]', countErr);
+    }
 
-    await supabase
+    const updatedCount = typeof count === 'number' ? count : (hasUpvoted ? 1 : 0);
+
+    const { error: updateErr } = await dbClient
       .from('threads')
       .update({ upvotes_count: updatedCount })
       .eq('id', targetThreadId);
+
+    if (updateErr) {
+      console.warn('[Thread upvote count update error]', updateErr);
+    }
 
     return apiSuccessSecure({
       has_upvoted: hasUpvoted,

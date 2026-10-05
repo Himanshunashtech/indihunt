@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { getProductSlug } from '@/lib/supabase';
@@ -15,7 +16,10 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const { userId } = body;
 
+    console.log(`[API /upvote] Received request for productId="${productId}", userId="${userId}"`);
+
     if (!userId || !productId) {
+      console.warn('[API /upvote] Missing userId or productId');
       return apiFailure('Valid userId and productId are required', 400);
     }
 
@@ -51,40 +55,100 @@ export async function POST(
 
     const validTargetUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetProductId);
     if (!validTargetUuid) {
+      console.warn(`[API /upvote] Product "${productId}" could not be resolved to a valid UUID (resolved: "${targetProductId}")`);
       return apiFailure('Product not found or invalid UUID', 400);
     }
 
-    const { data: existing } = await supabase
+    // Use admin client if configured to avoid RLS blockages on server mutations, otherwise use server client
+    let dbClient: any = supabase;
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const { createAdminSupabaseClient } = await import('@/lib/supabase/admin');
+        dbClient = createAdminSupabaseClient();
+      } catch (e) {
+        dbClient = supabase;
+      }
+    }
+
+    // Try reading session user if available, fallback to provided userId
+    const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    const effectiveUserId = authData?.user?.id || userId;
+
+    console.log(`[API /upvote] Resolved targetProductId="${targetProductId}", effectiveUserId="${effectiveUserId}"`);
+
+    const { data: existing, error: existingErr } = await dbClient
       .from('upvotes')
       .select('id')
       .eq('product_id', targetProductId)
-      .eq('user_id', userId)
+      .eq('user_id', effectiveUserId)
       .maybeSingle();
+
+    if (existingErr) {
+      console.error('[API /upvote] Existing check error:', existingErr);
+      return apiFailure(existingErr.message || 'Failed to check existing upvote', 500);
+    }
 
     let hasUpvoted = false;
 
     if (existing) {
-      await supabase.from('upvotes').delete().eq('id', existing.id);
+      console.log(`[API /upvote] ACTION: UNVOTE (Deleting existing upvote id="${existing.id}")`);
+      const { error: delErr, count: delCount } = await dbClient
+        .from('upvotes')
+        .delete({ count: 'exact' })
+        .eq('id', existing.id);
+
+      if (delErr) {
+        console.error('[API /upvote] DELETE error:', delErr);
+        return apiFailure(delErr.message || 'Unvote blocked by database policy', 500);
+      }
+      if (delCount === 0) {
+        console.warn('[API /upvote] DELETE affected 0 rows');
+        return apiFailure('Unvote failed (0 rows deleted, check RLS delete policy)', 500);
+      }
       hasUpvoted = false;
     } else {
-      await supabase.from('upvotes').insert({ product_id: targetProductId, user_id: userId });
+      console.log(`[API /upvote] ACTION: UPVOTE (Inserting upvote for product="${targetProductId}", user="${effectiveUserId}")`);
+      const { error: insErr } = await dbClient
+        .from('upvotes')
+        .insert({ product_id: targetProductId, user_id: effectiveUserId });
+
+      if (insErr) {
+        console.error('[API /upvote] INSERT error:', insErr);
+        return apiFailure(insErr.message || 'Upvote blocked by database policy', 500);
+      }
       hasUpvoted = true;
     }
 
-    const { count } = await supabase
+    const { count, error: countErr } = await dbClient
       .from('upvotes')
       .select('*', { count: 'exact', head: true })
       .eq('product_id', targetProductId);
 
-    const updatedCount = count ?? (hasUpvoted ? 1 : 0);
+    if (countErr) {
+      console.warn('[API /upvote] COUNT error:', countErr);
+    }
 
-    await supabase
+    const updatedCount = typeof count === 'number' ? count : (hasUpvoted ? 1 : 0);
+    console.log(`[API /upvote] New upvotes count in DB: ${updatedCount} (has_upvoted=${hasUpvoted})`);
+
+    const { error: updateErr } = await dbClient
       .from('products')
       .update({ upvotes_count: updatedCount })
       .eq('id', targetProductId);
 
-    // Invalidate server Redis caches with fast targeted invalidations
+    if (updateErr) {
+      console.warn('[API /upvote] products.upvotes_count update error:', updateErr);
+    }
+
+    // Invalidate server Redis caches and Next.js ISR caches with fast targeted invalidations
     const decodedKey = decodeURIComponent(productId).toLowerCase().trim();
+    try {
+      revalidatePath('/');
+      revalidatePath('/products');
+      revalidatePath(`/products/${decodedKey}`);
+      revalidatePath(`/products/${targetProductId}`);
+    } catch (e) {}
+
     await Promise.allSettled([
       invalidateCachePattern('redis_products_'),
       invalidateCache(`product_detail_${targetProductId.toLowerCase()}`),

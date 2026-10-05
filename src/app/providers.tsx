@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Provider } from "react-redux";
 import { store, useAppDispatch, setUser, setProfile } from "@/lib/store";
-import { supabase, updateUserStreak, clearCache, getCachedProducts, getUserProfile, getUserUpvotedProductIds } from "@/lib/supabase";
+import { supabase, updateUserStreak, clearCache, getUserProfile, getUserUpvotedProductIds } from "@/lib/supabase";
 import { queryClient } from "@/lib/queryClient";
 import { dataOrchestrator } from "@/lib/dataOrchestrator";
+import { useRealtimeSync } from "@/hooks/useDb";
 
 import { WebSocketProvider } from "@/components/WebSocketProvider";
 
@@ -22,7 +23,10 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
   const streakUpdated = useRef(false);
   const currentUserRef = useRef<any>(initialUser);
 
-  // Initial client hydration for profile and cached products on mount
+  // Enable Supabase Realtime synchronization across tabs and users
+  useRealtimeSync(currentUser?.id);
+
+  // Initial client hydration for profile on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
@@ -38,14 +42,6 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
           }
         } catch (e) { }
       }
-
-      try {
-        const cachedProducts = getCachedProducts();
-        if (cachedProducts && cachedProducts.length > 0) {
-          queryClient.setQueryData(['products', 'guest'], cachedProducts);
-          queryClient.setQueryData(['products', undefined], cachedProducts);
-        }
-      } catch (e) { }
     }
   }, [dispatch, initialUser]);
 

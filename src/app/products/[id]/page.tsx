@@ -5,7 +5,7 @@ import {
   getSimilarProducts,
   calculateProductRank,
   getCachedProducts,
-  getProducts,
+  getHomeProductsDirect,
   type Product,
 } from "@/lib/supabase";
 import { getProductCached } from "@/lib/product-cache";
@@ -21,7 +21,7 @@ interface PageProps {
 // pre-render top products at build so first visit is instant
 export async function generateStaticParams() {
   try {
-    let list = await getProducts().catch(() => [] as Product[]);
+    let list = await getHomeProductsDirect(50).catch(() => [] as Product[]);
     if (!list.length && supabase) {
       const { data } = await supabase
         .from("products")
@@ -51,12 +51,10 @@ const timed = async <T,>(label: string, p: Promise<T>): Promise<T> => {
 export default async function ProductDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  // Fetch product + full product list in PARALLEL (Product Hunt technique)
-  // Previously sequential: product → allProducts (2x latency)
-  // Now parallel: both fire simultaneously
+  // Direct database querying for both target product and platform products in parallel
   const [product, allProducts] = await Promise.all([
     timed("product", getProductCached(id)),
-    timed("allProducts", getProducts().catch(() => [] as Product[])),
+    timed("allProducts", getHomeProductsDirect(300).catch(() => [] as Product[])),
   ]);
 
   if (!product) notFound();
@@ -75,13 +73,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
   );
   const similarProducts = getSimilarProducts(product, allProducts, 3);
 
-  const relevantProducts = allProducts.filter(
-    (p) =>
-      p.id === product.id ||
-      (product.maker_id && p.maker_id === product.maker_id) ||
-      similarProducts.some((s) => s.id === p.id)
-  );
-
   return (
     <ProductDetailPageClient
       id={id}
@@ -90,12 +81,13 @@ export default async function ProductDetailPage({ params }: PageProps) {
       initialComments={initialComments}
       initialReviews={initialReviews}
       initialAlternatives={[]}
-      initialAllProducts={relevantProducts}
+      initialAllProducts={allProducts}
       initialRank={rankDetails.rank}
       initialRankLabel={rankDetails.rankLabel}
       initialIsTopHunt={rankDetails.isTopHunt}
       initialPrevProd={rankDetails.prevProd}
       initialNextProd={rankDetails.nextProd}
+      initialCohortProducts={rankDetails.cohortProducts}
     />
   );
 }

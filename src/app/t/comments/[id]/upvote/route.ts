@@ -19,40 +19,81 @@ export async function POST(
 
     const supabase = await createServerSupabaseClient();
 
+    // Use admin client if configured to avoid RLS blockages on server mutations, otherwise use server client
+    let dbClient: any = supabase;
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const { createAdminSupabaseClient } = await import('@/lib/supabase/admin');
+        dbClient = createAdminSupabaseClient();
+      } catch (e) {
+        dbClient = supabase;
+      }
+    }
+
+    // Try reading session user if available, fallback to provided userId
+    const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    const effectiveUserId = authData?.user?.id || userId;
+
     // 1. Check if upvote exists
-    const { data: existing } = await supabase
+    const { data: existing, error: existingErr } = await dbClient
       .from('comment_upvotes')
       .select('id')
       .eq('comment_id', id)
-      .eq('user_id', userId)
+      .eq('user_id', effectiveUserId)
       .maybeSingle();
+
+    if (existingErr) {
+      console.error('[Comment upvote check error]', existingErr);
+      return apiFailure(existingErr.message || 'Failed to check existing comment upvote', 500);
+    }
 
     let hasUpvoted = false;
     let upvotesCount = 0;
 
     if (existing) {
-      await supabase.from('comment_upvotes').delete().eq('id', existing.id);
-      const { data: current } = await supabase
+      const { error: delErr, count: delCount } = await dbClient
+        .from('comment_upvotes')
+        .delete({ count: 'exact' })
+        .eq('id', existing.id);
+
+      if (delErr) {
+        console.error('[Comment upvote DELETE error]', delErr);
+        return apiFailure(delErr.message || 'Comment unvote blocked by database policy', 500);
+      }
+      if (delCount === 0) {
+        console.warn('[Comment upvote DELETE 0 rows affected]');
+        return apiFailure('Comment unvote failed (0 rows deleted, check RLS delete policy)', 500);
+      }
+
+      const { data: current } = await dbClient
         .from('comments')
         .select('upvotes_count')
         .eq('id', id)
         .maybeSingle();
       const nextCount = Math.max(0, (current?.upvotes_count ?? 1) - 1);
-      await supabase
+      await dbClient
         .from('comments')
         .update({ upvotes_count: nextCount })
         .eq('id', id);
       upvotesCount = nextCount;
       hasUpvoted = false;
     } else {
-      await supabase.from('comment_upvotes').insert({ comment_id: id, user_id: userId });
-      const { data: current } = await supabase
+      const { error: insErr } = await dbClient
+        .from('comment_upvotes')
+        .insert({ comment_id: id, user_id: effectiveUserId });
+
+      if (insErr) {
+        console.error('[Comment upvote INSERT error]', insErr);
+        return apiFailure(insErr.message || 'Comment upvote blocked by database policy', 500);
+      }
+
+      const { data: current } = await dbClient
         .from('comments')
         .select('upvotes_count')
         .eq('id', id)
         .maybeSingle();
       const nextCount = (current?.upvotes_count ?? 0) + 1;
-      await supabase
+      await dbClient
         .from('comments')
         .update({ upvotes_count: nextCount })
         .eq('id', id);

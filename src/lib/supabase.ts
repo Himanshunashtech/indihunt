@@ -741,21 +741,10 @@ export async function syncScheduledProducts(): Promise<void> {
 
 // Helper to interact with Local Storage or API
 async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
-  // 1. High-speed cache check for public/guest SSR (< 1ms)
-  if (!currentUserId) {
-    const cachedPublic = await getRedisCache<Product[]>('public_products');
-    if (cachedPublic && Array.isArray(cachedPublic) && cachedPublic.length > 0) {
-      return cachedPublic;
-    }
-  }
-
   try {
     const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}&limit=300` : '?limit=300';
     const res = await secureApiFetch<Product[]>(`/t/products${query}`);
     if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-      if (!currentUserId) {
-        setRedisCache('public_products', res.data, 300).catch(() => { });
-      }
       return res.data;
     }
   } catch { }
@@ -766,7 +755,7 @@ async function getProductsRaw(currentUserId?: string): Promise<Product[]> {
 export const getProducts = getProductsRaw;
 
 export async function toggleUpvote(productId: string, userId: string): Promise<{ success: boolean; has_upvoted: boolean; upvotes_count: number; productId: string }> {
-  clearCache();
+  clearCache('products');
 
   try {
     const res = await secureApiFetch<{ success: boolean; has_upvoted: boolean; upvotes_count: number; productId?: string }>(
@@ -786,8 +775,8 @@ export async function toggleUpvote(productId: string, userId: string): Promise<{
       const resolvedId = String(data?.productId || res?.productId || productId);
 
       if (typeof window !== 'undefined') {
-        const rawUserVotes = (userId ? localStorage.getItem(`indihunt_upvotes_${userId}`) : null) || localStorage.getItem('indihunt_upvotes');
-        const votes: string[] = JSON.parse(rawUserVotes || '[]');
+        const rawVotes = (userId ? localStorage.getItem(`indihunt_upvotes_${userId}`) : null) || localStorage.getItem('indihunt_upvotes');
+        const votes: string[] = JSON.parse(rawVotes || '[]');
         let nextVotes: string[];
         if (hasUpvoted) {
           nextVotes = Array.from(new Set([...votes, resolvedId, productId]));
@@ -798,48 +787,25 @@ export async function toggleUpvote(productId: string, userId: string): Promise<{
         if (userId) {
           localStorage.setItem(`indihunt_upvotes_${userId}`, JSON.stringify(nextVotes));
         }
-
-        // Keep indihunt_products in localStorage updated as well
-        try {
-          const rawProds = localStorage.getItem('indihunt_products');
-          if (rawProds) {
-            const prods = JSON.parse(rawProds);
-            if (Array.isArray(prods)) {
-              const updated = prods.map(p => {
-                if (p.id === resolvedId || p.id === productId) {
-                  return { ...p, upvotes_count: upvotesCount, has_upvoted: hasUpvoted };
-                }
-                return p;
-              });
-              localStorage.setItem('indihunt_products', JSON.stringify(updated));
-            }
-          }
-        } catch {}
       }
       return { success: true, has_upvoted: hasUpvoted, upvotes_count: upvotesCount, productId: resolvedId };
     }
   } catch (err) {
-    // fallback to local storage
+    // fallback
   }
 
-  // Fallback state
+  // Fallback state for offline / local mode
   if (typeof window !== 'undefined') {
     const products = await getProducts();
-    const targetProduct = products.find(p => p.id === productId || getProductSlug(p.name) === productId);
-    if (targetProduct && targetProduct.status === 'scheduled' && targetProduct.scheduled_for && new Date(targetProduct.scheduled_for) > new Date()) {
-      return { success: false, has_upvoted: false, upvotes_count: targetProduct.upvotes_count || 0, productId };
-    }
-
     const rawVotes = (userId && localStorage.getItem(`indihunt_upvotes_${userId}`)) || localStorage.getItem('indihunt_upvotes') || '[]';
     const votes: string[] = JSON.parse(rawVotes);
-    const resolvedId = targetProduct?.id || productId;
-    const isVoted = votes.includes(resolvedId) || votes.includes(productId);
+    const isVoted = votes.includes(productId);
 
     let nextVotes: string[];
     if (isVoted) {
-      nextVotes = votes.filter(id => id !== resolvedId && id !== productId);
+      nextVotes = votes.filter(id => id !== productId);
     } else {
-      nextVotes = Array.from(new Set([...votes, resolvedId, productId]));
+      nextVotes = [...votes, productId];
     }
     localStorage.setItem('indihunt_upvotes', JSON.stringify(nextVotes));
     if (userId) {
@@ -847,7 +813,7 @@ export async function toggleUpvote(productId: string, userId: string): Promise<{
     }
 
     const updatedProducts = products.map(p => {
-      if (p.id === resolvedId || p.id === productId) {
+      if (p.id === productId) {
         const diff = isVoted ? -1 : 1;
         return { ...p, upvotes_count: Math.max(0, (p.upvotes_count || 0) + diff), has_upvoted: !isVoted };
       }
@@ -855,8 +821,8 @@ export async function toggleUpvote(productId: string, userId: string): Promise<{
     });
     localStorage.setItem('indihunt_products', JSON.stringify(updatedProducts));
 
-    const count = updatedProducts.find(p => p.id === resolvedId || p.id === productId)?.upvotes_count || 0;
-    return { success: true, has_upvoted: !isVoted, upvotes_count: count, productId: resolvedId };
+    const count = updatedProducts.find(p => p.id === productId)?.upvotes_count || 0;
+    return { success: true, has_upvoted: !isVoted, upvotes_count: count, productId };
   }
 
   return { success: false, has_upvoted: false, upvotes_count: 0, productId };
@@ -1544,13 +1510,7 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
   if (!id) return null;
   const normalizedKey = id.toLowerCase().trim();
 
-  // 1. High-speed cache check for public/guest SSR (< 1ms)
-  if (!currentUserId) {
-    const cachedItem = await getRedisCache<Product>(`public_product_${normalizedKey}`);
-    if (cachedItem) return cachedItem;
-  }
-
-  // 2. Direct Supabase Query when running on server (avoids SSR self-fetch network loops)
+  // 1. Direct Supabase Query when running on server (avoids SSR self-fetch network loops)
   if (supabase && typeof window === 'undefined') {
     try {
       if (UUID_REGEX.test(id)) {
@@ -1561,12 +1521,7 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
           .eq('is_deleted', false)
           .maybeSingle();
         if (data) {
-          const prod = data as Product;
-          if (!currentUserId) {
-            setRedisCache(`public_product_${normalizedKey}`, prod, 300).catch(() => {});
-            setRedisCache(`public_product_${prod.id}`, prod, 300).catch(() => {});
-          }
-          return prod;
+          return data as Product;
         }
       }
 
@@ -1588,16 +1543,7 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
           ((p as any).slug && (p as any).slug.toLowerCase() === normalizedKey)
         );
         if (found) {
-          const prod = found as Product;
-          if (!currentUserId) {
-            const productSlug = getProductSlug(prod.name);
-            setRedisCache(`public_product_${normalizedKey}`, prod, 300).catch(() => {});
-            setRedisCache(`public_product_${prod.id}`, prod, 300).catch(() => {});
-            if (productSlug !== normalizedKey) {
-              setRedisCache(`public_product_${productSlug}`, prod, 300).catch(() => {});
-            }
-          }
-          return prod;
+          return found as Product;
         }
       }
     } catch (e) {
@@ -1605,19 +1551,11 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
     }
   }
 
-  // 3. Try secureApiFetch (client-side or server fallback)
+  // 2. Try secureApiFetch (client-side or server fallback)
   try {
     const query = currentUserId ? `?userId=${encodeURIComponent(currentUserId)}` : '';
     const res = await secureApiFetch<Product>(`/t/products/${encodeURIComponent(id)}${query}`);
     if (res && res.data && res.data.id) {
-      if (!currentUserId) {
-        const productSlug = getProductSlug(res.data.name);
-        setRedisCache(`public_product_${normalizedKey}`, res.data, 300).catch(() => { });
-        setRedisCache(`public_product_${res.data.id}`, res.data, 300).catch(() => { });
-        if (productSlug !== normalizedKey) {
-          setRedisCache(`public_product_${productSlug}`, res.data, 300).catch(() => { });
-        }
-      }
       return res.data;
     }
   } catch { }
@@ -7846,60 +7784,52 @@ export function getCompanyLaunches(
   return Array.from(launchesMap.values());
 }
 
-export const getHomeProductsDirect = unstable_cache(
-  async (limit: number = 30): Promise<Product[]> => {
-    if (!supabase) return getCachedProducts();
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)')
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+export const getHomeProductsDirect = async (limit: number = 30): Promise<Product[]> => {
+  if (!supabase) return getCachedProducts();
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)')
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-      if (error || !data || data.length === 0) {
-        return getCachedProducts();
-      }
-
-      const now = new Date();
-      return data.map((p: any) =>
-        p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
-          ? { ...p, status: 'live' }
-          : p
-      ) as Product[];
-    } catch {
+    if (error || !data || data.length === 0) {
       return getCachedProducts();
     }
-  },
-  ['home_direct_products'],
-  { revalidate: 60, tags: ['products', 'home_products'] }
-);
 
-export const getHomeThreadsDirect = unstable_cache(
-  async (limit: number = 10): Promise<Thread[]> => {
-    if (!supabase) return getCachedThreads();
-    try {
-      const { data, error } = await supabase
-        .from('threads')
-        .select('id,title,body,user_id,upvotes_count,comments_count,category,tags,created_at,product_id,user:profiles!user_id(id,username,full_name,avatar_url,is_maker,is_verified)')
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    const now = new Date();
+    return data.map((p: any) =>
+      p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+        ? { ...p, status: 'live' }
+        : p
+    ) as Product[];
+  } catch {
+    return getCachedProducts();
+  }
+};
 
-      if (error || !data || data.length === 0) {
-        return getCachedThreads();
-      }
+export const getHomeThreadsDirect = async (limit: number = 10): Promise<Thread[]> => {
+  if (!supabase) return getCachedThreads();
+  try {
+    const { data, error } = await supabase
+      .from('threads')
+      .select('id,title,body,user_id,upvotes_count,comments_count,category,tags,created_at,product_id,user:profiles!user_id(id,username,full_name,avatar_url,is_maker,is_verified)')
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-      return data.map((t: any) => ({
-        ...t,
-        user: Array.isArray(t.user) ? t.user[0] : t.user,
-      })) as Thread[];
-    } catch {
+    if (error || !data || data.length === 0) {
       return getCachedThreads();
     }
-  },
-  ['home_direct_threads'],
-  { revalidate: 60, tags: ['threads', 'home_threads'] }
-);
+
+    return data.map((t: any) => ({
+      ...t,
+      user: Array.isArray(t.user) ? t.user[0] : t.user,
+    })) as Thread[];
+  } catch {
+    return getCachedThreads();
+  }
+};
 
 
 
