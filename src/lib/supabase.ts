@@ -1525,26 +1525,54 @@ async function getProductByIdRaw(id: string, currentUserId?: string): Promise<Pr
         }
       }
 
-      // If not UUID or not found by ID, query by slug/name directly
-      const { data: prods } = await supabase
-        .from('products')
-        .select(DETAIL_QUERY_COLUMNS)
-        .eq('is_deleted', false)
-        .limit(500);
+      // If not UUID or not found by ID, query by name directly with targeted search
+      const cleanSearch = normalizedKey.replace(/[-_.]+/g, ' ').trim();
+      const words = normalizedKey.split(/[-_.\s]+/).filter(Boolean);
+      const searchPatterns = [
+        cleanSearch,
+        words.length > 1 ? words.join('%') : null,
+        normalizedKey.length >= 3 ? normalizedKey.slice(0, 4) : null,
+      ].filter(Boolean) as string[];
+
+      let prods: any[] = [];
+      for (const pattern of searchPatterns) {
+        const { data: matched } = await supabase
+          .from('products')
+          .select(DETAIL_QUERY_COLUMNS)
+          .eq('is_deleted', false)
+          .ilike('name', `%${pattern}%`)
+          .limit(20);
+        if (matched && matched.length > 0) {
+          prods = matched;
+          break;
+        }
+      }
+
+      if (!prods.length) {
+        const { data: recent } = await supabase
+          .from('products')
+          .select(DETAIL_QUERY_COLUMNS)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        prods = recent || [];
+      }
 
       if (prods && prods.length > 0) {
+        const alphanumeric = normalizedKey.replace(/[^a-z0-9]/g, '');
         const found = prods.find((p: any) =>
           p.id === id ||
           p.id?.toLowerCase() === normalizedKey ||
           getProductSlug(p.name).toLowerCase() === normalizedKey ||
           p.name?.toLowerCase().trim() === normalizedKey ||
           p.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-') === normalizedKey ||
-          p.name?.toLowerCase().replace(/[^a-z0-9]+/g, '') === normalizedKey.replace(/[^a-z0-9]+/g, '') ||
+          p.name?.toLowerCase().replace(/[^a-z0-9]+/g, '') === alphanumeric ||
           ((p as any).slug && (p as any).slug.toLowerCase() === normalizedKey)
         );
         if (found) {
           return found as Product;
         }
+        return prods[0] as Product;
       }
     } catch (e) {
       console.error('Direct Supabase fetch error in getProductByIdRaw:', e);
@@ -3827,10 +3855,19 @@ export async function getForumFollowersCount(forumId: string): Promise<number> {
 }
 
 export async function recordView(itemId: string, itemType: 'product' | 'thread' | 'comment' | 'review', userId?: string): Promise<boolean> {
+  const payload = { itemId, itemType, userId };
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/t/views', blob);
+      return true;
+    } catch { }
+  }
+
   try {
     const res = await secureApiFetch<{ success: boolean }>('/t/views', {
       method: 'POST',
-      body: JSON.stringify({ itemId, itemType, userId }),
+      body: JSON.stringify(payload),
     });
     if (res && res.success) return true;
   } catch (err) { }
@@ -6479,10 +6516,19 @@ function updateLocalBillboardsCache(ad: BillboardAd, action: 'create' | 'update'
 // ==========================================
 
 export async function incrementProductClicks(productId: string): Promise<void> {
+  const payload = { itemId: productId, type: 'click' };
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    try {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/t/views', blob);
+      return;
+    } catch { }
+  }
+
   try {
     await secureApiFetch<{ success: boolean }>('/t/views', {
       method: 'POST',
-      body: JSON.stringify({ itemId: productId, type: 'click' }),
+      body: JSON.stringify(payload),
     });
   } catch (err) { }
 
@@ -7831,7 +7877,34 @@ export const getHomeThreadsDirect = async (limit: number = 10): Promise<Thread[]
   }
 };
 
+export interface UserBootstrapData {
+  profile: Profile | null;
+  upvoteIds: string[];
+  notifCount: number;
+}
 
+export async function getUserBootstrap(userId: string): Promise<UserBootstrapData> {
+  if (!userId) {
+    return { profile: null, upvoteIds: [], notifCount: 0 };
+  }
+  try {
+    const res = await secureApiFetch<UserBootstrapData>(`/t/bootstrap?userId=${encodeURIComponent(userId)}`);
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+  } catch (err) {
+    console.warn('[getUserBootstrap] API call failed:', err);
+  }
 
+  // Fallback to local state / individual cached queries
+  const [profile, upvoteIds] = await Promise.all([
+    getUserProfile(userId),
+    getUserUpvotedProductIds(userId),
+  ]);
 
-
+  return {
+    profile: profile || null,
+    upvoteIds: upvoteIds || [],
+    notifCount: 0,
+  };
+}

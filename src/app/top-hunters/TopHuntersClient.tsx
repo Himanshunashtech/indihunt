@@ -554,6 +554,7 @@ export default function TopHuntersClient({
               <Link
                 key={`top-${product.id}-${idx}`}
                 href={`/products/${product.id}`}
+                prefetch={false}
                 className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl shrink-0 overflow-hidden flex items-center justify-center transition-all group bg-card border border-border shadow-xs hover:border-orange-500 hover:shadow-md hover:scale-105"
                 title={product.name}
               >
@@ -622,6 +623,7 @@ export default function TopHuntersClient({
               <Link
                 key={`bottom-${product.id}-${idx}`}
                 href={`/products/${product.id}`}
+                prefetch={false}
                 className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl shrink-0 overflow-hidden flex items-center justify-center transition-all group bg-card border border-border shadow-xs hover:border-orange-500 hover:shadow-md hover:scale-105"
                 title={product.name}
               >

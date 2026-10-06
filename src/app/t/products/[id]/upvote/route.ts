@@ -1,9 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, after } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { getProductSlug } from '@/lib/supabase';
 import { getCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { bumpFeedVersion } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,11 +155,15 @@ export async function POST(
       invalidateCache(`product_detail_${targetProductId.toLowerCase()}`),
       invalidateCache(`product_detail_${decodedKey}`),
       invalidateCache('public_products'),
+      invalidateCache(`upvotes:user:${effectiveUserId}`),
+      invalidateCache(`upvotes_full:user:${effectiveUserId}`),
+      invalidateCache(`bootstrap:${effectiveUserId}`),
+      bumpFeedVersion(),
     ]);
 
-    // Fire-and-forget: notify the product maker when someone upvotes their product
+    // Fire-and-forget safely via after(): notify the product maker when someone upvotes their product
     if (hasUpvoted) {
-      (async () => {
+      after(async () => {
         try {
           const { data: product } = await supabase
             .from('products')
@@ -195,7 +200,7 @@ export async function POST(
         } catch {
           // Non-blocking — ignore notification errors
         }
-      })();
+      });
     }
 
     return apiSuccessSecure({

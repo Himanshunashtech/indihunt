@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
@@ -16,9 +17,14 @@ export async function GET(request: NextRequest) {
 
     const countOnly = searchParams.get('count_only') === 'true' || searchParams.get('unread_count') === 'true';
 
-    const supabase = await createServerSupabaseClient();
-
     if (countOnly) {
+      const cacheKey = `notif_count:${userId}`;
+      const cachedCount = await getCachedData<{ count: number }>(cacheKey);
+      if (cachedCount) {
+        return apiSuccessSecure(cachedCount);
+      }
+
+      const supabase = await createServerSupabaseClient();
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
@@ -28,8 +34,12 @@ export async function GET(request: NextRequest) {
       if (error) {
         return apiFailure(error.message, 500);
       }
-      return apiSuccessSecure({ count: count || 0 });
+      const result = { count: count || 0 };
+      await setCachedData(cacheKey, result, 30);
+      return apiSuccessSecure(result);
     }
+
+    const supabase = await createServerSupabaseClient();
 
     let notifs: any[] = [];
 
@@ -102,6 +112,11 @@ export async function POST(request: NextRequest) {
       return apiFailure(error.message, 500);
     }
 
+    await Promise.allSettled([
+      invalidateCache(`notif_count:${targetUserId}`),
+      invalidateCache(`bootstrap:${targetUserId}`),
+    ]);
+
     return apiSuccessSecure(newNotif, 201);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to create notification', 500);
@@ -124,6 +139,11 @@ export async function PUT(request: NextRequest) {
         .eq('user_id', targetUserId);
 
       if (error) return apiFailure(error.message, 500);
+
+      await Promise.allSettled([
+        invalidateCache(`notif_count:${targetUserId}`),
+        invalidateCache(`bootstrap:${targetUserId}`),
+      ]);
       return apiSuccessSecure({ success: true, allRead: true });
     }
 
@@ -134,6 +154,13 @@ export async function PUT(request: NextRequest) {
         .eq('id', notifId);
 
       if (error) return apiFailure(error.message, 500);
+
+      if (targetUserId) {
+        await Promise.allSettled([
+          invalidateCache(`notif_count:${targetUserId}`),
+          invalidateCache(`bootstrap:${targetUserId}`),
+        ]);
+      }
       return apiSuccessSecure({ success: true, id: notifId, read: true });
     }
 
@@ -159,6 +186,11 @@ export async function DELETE(request: NextRequest) {
         .eq('user_id', userId);
 
       if (error) return apiFailure(error.message, 500);
+
+      await Promise.allSettled([
+        invalidateCache(`notif_count:${userId}`),
+        invalidateCache(`bootstrap:${userId}`),
+      ]);
       return apiSuccessSecure({ cleared: true });
     }
 
@@ -169,6 +201,13 @@ export async function DELETE(request: NextRequest) {
         .eq('id', notificationId);
 
       if (error) return apiFailure(error.message, 500);
+
+      if (userId) {
+        await Promise.allSettled([
+          invalidateCache(`notif_count:${userId}`),
+          invalidateCache(`bootstrap:${userId}`),
+        ]);
+      }
       return apiSuccessSecure({ deleted: true, id: notificationId });
     }
 

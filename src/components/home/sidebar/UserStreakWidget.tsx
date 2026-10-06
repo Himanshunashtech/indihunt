@@ -109,6 +109,7 @@ export default function UserStreakWidget({
 
         <Link
           href="/profile/streak"
+          prefetch={false}
           className="text-[11px] font-semibold text-[#ff5733] hover:text-[#ff5733] transition-colors block"
         >
           View visit streak ranking
@@ -133,6 +134,7 @@ export default function UserStreakWidget({
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Link
                     href={`/products/${getProductSlug(p.name)}`}
+                    prefetch={false}
                     className="w-11 h-11 rounded-2xl overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center border border-border/80"
                   >
                     <Favicon
@@ -146,6 +148,7 @@ export default function UserStreakWidget({
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/products/${getProductSlug(p.name)}`}
+                      prefetch={false}
                       className="text-base font-semibold text-foreground hover:text-[#ff5733] transition-colors truncate block leading-snug"
                     >
                       {p.name}

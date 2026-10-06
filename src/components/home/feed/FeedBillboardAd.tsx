@@ -45,14 +45,22 @@ export default function FeedBillboardAd({
       if (typeof window !== "undefined") {
         sid = sessionStorage.getItem("ih_ad_sid") || "";
       }
+      const payload = {
+        billboardId: ad.id,
+        eventType: "click",
+        sessionId: sid,
+      };
+      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+        try {
+          const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+          navigator.sendBeacon("/t/billboards/event", blob);
+          return;
+        } catch {}
+      }
       fetch("/t/billboards/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          billboardId: ad.id,
-          eventType: "click",
-          sessionId: sid,
-        }),
+        body: JSON.stringify(payload),
       }).catch((err) =>
         console.error("Error logging billboard click:", err)
       );

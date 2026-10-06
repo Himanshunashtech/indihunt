@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { cached, bumpFeedVersion, getFeedVersion } from '@/lib/cache';
 import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// Feed list columns — only what ProductItem card actually renders
 // Feed list columns — only what ProductItem card actually renders
 const LIST_COLS =
   'id,name,tagline,logo_url,website_url,scheduled_for,tags,status,created_at,upvotes_count,comments_count,quality_score,featured,country,pricing_type,is_open_source,is_student_project,is_deleted,maker_id,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)';
@@ -29,6 +29,30 @@ function normalizeUrl(raw: string): string {
     .replace(/\/+$/, '');
 }
 
+async function fetchFeed({ category, makerId, cursor, limit }: { category?: string | null; makerId?: string | null; cursor?: string | null; limit: number }) {
+  const supabase = await createServerSupabaseClient();
+  let query = supabase
+    .from('products')
+    .select(LIST_COLS)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (cursor) query = query.lt('created_at', cursor);
+  if (makerId) query = query.eq('maker_id', makerId);
+  if (category) query = query.contains('tags', [category]);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const now = new Date();
+  return (data || []).map((p: any) =>
+    p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+      ? { ...p, status: 'live' }
+      : p
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -44,8 +68,37 @@ export async function GET(request: NextRequest) {
     let limit = Math.min(Number.isFinite(requested) ? requested : 100, MAX_LIMIT);
     if (queryStr || checkUrl) limit = Math.min(limit, 50);
 
-    const supabase = await createServerSupabaseClient();
+    // 1. Shared Public Feed (fast path with versioned caching)
+    const isPublicFeed = !queryStr && !checkUrl && !full;
+    if (isPublicFeed) {
+      const v = await getFeedVersion();
+      const cacheKey = `feed:v${v}:cat:${category ?? 'all'}:maker:${makerId ?? 'all'}:cursor:${cursor ?? '0'}:lim:${limit}`;
+      const products = await cached<any[]>(cacheKey, 60, () => fetchFeed({ category, makerId, cursor, limit }));
 
+      if (!userId) {
+        return apiSuccessSecure(products, 200, PUBLIC_CACHE_HEADERS);
+      }
+
+      // If authenticated user requested feed, augment with cached user upvotes
+      const upvotesKey = `upvotes:user:${userId}`;
+      let upvoteIds = await getCachedData<string[]>(upvotesKey);
+      if (!upvoteIds) {
+        const supabase = await createServerSupabaseClient();
+        const { data: upvotes } = await supabase
+          .from('upvotes')
+          .select('product_id')
+          .eq('user_id', userId)
+          .limit(2000);
+        upvoteIds = (upvotes || []).map((u: any) => u.product_id);
+        await setCachedData(upvotesKey, upvoteIds, 30);
+      }
+      const set = new Set(upvoteIds);
+      const userProducts = products.map((p: any) => ({ ...p, has_upvoted: set.has(p.id) }));
+      return apiSuccessSecure(userProducts, 200);
+    }
+
+    // 2. Direct search or check_url queries
+    const supabase = await createServerSupabaseClient();
     const selectCols = checkUrl ? 'id, name, website_url, is_deleted' : (full ? FULL_COLS : LIST_COLS);
     let query = supabase
       .from('products')
@@ -77,12 +130,18 @@ export async function GET(request: NextRequest) {
     );
 
     if (userId && products.length > 0) {
-      const { data: upvotes } = await supabase
-        .from('upvotes')
-        .select('product_id')
-        .eq('user_id', userId)
-        .limit(2000);
-      const set = new Set((upvotes || []).map((u: any) => u.product_id));
+      const upvotesKey = `upvotes:user:${userId}`;
+      let upvoteIds = await getCachedData<string[]>(upvotesKey);
+      if (!upvoteIds) {
+        const { data: upvotes } = await supabase
+          .from('upvotes')
+          .select('product_id')
+          .eq('user_id', userId)
+          .limit(2000);
+        upvoteIds = (upvotes || []).map((u: any) => u.product_id);
+        await setCachedData(upvotesKey, upvoteIds, 30);
+      }
+      const set = new Set(upvoteIds);
       products = products.map((p: any) => ({ ...p, has_upvoted: set.has(p.id) }));
     }
 
@@ -206,6 +265,7 @@ export async function POST(request: NextRequest) {
       invalidateCachePattern('redis_products_'),
       invalidateCache('public_products'),
       invalidateCache('product_slug_map'),
+      bumpFeedVersion(),
     ]);
 
     return apiSuccessSecure({ ...newProduct, has_upvoted: !isScheduled }, 201);

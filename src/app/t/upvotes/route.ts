@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getCachedData, setCachedData } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +13,12 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       return apiFailure('userId is required', 400);
+    }
+
+    const cacheKey = withProducts ? `upvotes_full:user:${userId}` : `upvotes:user:${userId}`;
+    const cached = await getCachedData<any[]>(cacheKey);
+    if (cached) {
+      return apiSuccessSecure(cached);
     }
 
     const supabase = await createServerSupabaseClient();
@@ -29,6 +36,7 @@ export async function GET(request: NextRequest) {
       }
 
       const prods = (upvotes || []).map((u: any) => u.product).filter(Boolean);
+      await setCachedData(cacheKey, prods, 30);
       return apiSuccessSecure(prods);
     }
 
@@ -42,7 +50,9 @@ export async function GET(request: NextRequest) {
       return apiFailure(error.message, 500);
     }
 
-    return apiSuccessSecure(upvotes || []);
+    const result = upvotes || [];
+    await setCachedData(cacheKey, result, 30);
+    return apiSuccessSecure(result);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch upvotes', 500);
   }

@@ -158,12 +158,23 @@ export default function ThreadDetailPageClient({
   const reduxUser = useAppSelector((state) => state.auth.user);
   const effectiveUserId = reduxUser?.id || user?.id;
 
-  const { data: fetchedThread, isLoading: isThreadLoading } = useThread(threadId, effectiveUserId || undefined);
-  const { data: fetchedComments = initialComments } = useComments(undefined, threadId);
-  const toggleThreadUpvoteMutation = useToggleThreadUpvoteMutation();
+  const { data: fetchedThread, isLoading: isThreadLoading } = useThread(
+    threadId,
+    effectiveUserId || undefined,
+    initialThread
+  );
 
   const thread = fetchedThread || initialThread || null;
+  const activeThreadId = thread?.id || threadId;
+
+  const { data: fetchedComments = initialComments } = useComments(
+    undefined,
+    activeThreadId,
+    true,
+    initialComments
+  );
   const comments = fetchedComments.length > 0 ? fetchedComments : initialComments;
+  const toggleThreadUpvoteMutation = useToggleThreadUpvoteMutation();
 
   // Check auth
   useEffect(() => {
@@ -243,8 +254,10 @@ export default function ThreadDetailPageClient({
       } else {
         setNewCommentBody("");
       }
+      queryClient.invalidateQueries({ queryKey: ["comments", "", activeThreadId] });
+      queryClient.invalidateQueries({ queryKey: ["comments", "", threadId] });
       queryClient.invalidateQueries({ queryKey: ["comments", undefined, threadId] });
-      queryClient.setQueryData(["thread", threadId], (prev: Thread | undefined) => prev ? {
+      queryClient.setQueryData(["thread", threadId, effectiveUserId || "guest"], (prev: Thread | undefined) => prev ? {
         ...prev,
         comments_count: prev.comments_count + 1
       } : undefined);
@@ -288,6 +301,8 @@ export default function ThreadDetailPageClient({
     if (ok) {
       setEditingCommentId(null);
       setEditingCommentBody("");
+      queryClient.invalidateQueries({ queryKey: ["comments", "", activeThreadId] });
+      queryClient.invalidateQueries({ queryKey: ["comments", "", threadId] });
       queryClient.invalidateQueries({ queryKey: ["comments", undefined, threadId] });
     }
   };
@@ -297,8 +312,10 @@ export default function ThreadDetailPageClient({
     if (!confirm("Are you sure you want to delete this comment?")) return;
     const ok = await deleteComment(commentId, user.id);
     if (ok) {
+      queryClient.invalidateQueries({ queryKey: ["comments", "", activeThreadId] });
+      queryClient.invalidateQueries({ queryKey: ["comments", "", threadId] });
       queryClient.invalidateQueries({ queryKey: ["comments", undefined, threadId] });
-      queryClient.setQueryData(["thread", threadId], (prev: Thread | undefined) => prev ? {
+      queryClient.setQueryData(["thread", threadId, effectiveUserId || "guest"], (prev: Thread | undefined) => prev ? {
         ...prev,
         comments_count: Math.max(0, prev.comments_count - 1)
       } : undefined);

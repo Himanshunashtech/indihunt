@@ -63,6 +63,7 @@ export default function FeedSection({
           {section.seeAllHref && section.id !== "today" ? (
             <Link
               href={section.seeAllHref}
+              prefetch={false}
               className="hidden sm:flex group/link text-xs sm:text-sm font-semibold text-muted-foreground hover:text-[#ff5733] transition-colors items-center gap-1 cursor-pointer"
             >
               <span>{section.subtitle || "View archive"}</span>
@@ -151,6 +152,7 @@ export default function FeedSection({
           <div className="pt-2 pb-4">
             <Link
               href={section.seeAllHref}
+              prefetch={false}
               className="w-full py-3 px-6 rounded-full border border-slate-200 dark:border-slate-800 bg-card hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center justify-center text-base font-medium text-foreground/85 hover:text-[#ff5733] transition-all group shadow-2xs"
             >
               <span>{section.seeAllText}</span>

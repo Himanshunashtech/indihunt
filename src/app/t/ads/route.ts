@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/supabase/admin';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { redis, getCachedData, setCachedData } from '@/lib/redis';
+import { cached } from '@/lib/cache';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,35 @@ const DEFAULT_SPONSORED_ADS: any[] = [
   }
 ];
 
+async function fetchActiveAdPool(): Promise<any[]> {
+  try {
+    let supabase: any;
+    try {
+      supabase = createAdminSupabaseClient();
+    } catch {
+      supabase = await createServerSupabaseClient();
+    }
+
+    const { data, error } = await supabase
+      .from('ad_campaigns')
+      .select('*, products:product_id(id, name, tagline, logo_url, website_url), user:profiles!user_id(username, full_name)')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      return data.filter((c: any) => {
+        if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) {
+          return false;
+        }
+        return true;
+      });
+    }
+  } catch (e) {
+    console.error('Error fetching ad campaigns from DB in /t/ads:', e);
+  }
+  return [];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -63,41 +93,7 @@ export async function GET(request: NextRequest) {
     const sessionId = searchParams.get('sessionId');
     const seenRaw = searchParams.get('seenAdIds');
 
-    let dbAds: any[] = [];
-    const cacheKey = 'active_ad_campaigns';
-    const cachedAds = await getCachedData<any[]>(cacheKey);
-
-    if (cachedAds && Array.isArray(cachedAds)) {
-      dbAds = cachedAds;
-    } else {
-      try {
-        let supabase: any;
-        try {
-          supabase = createAdminSupabaseClient();
-        } catch {
-          supabase = await createServerSupabaseClient();
-        }
-
-        let query = supabase
-          .from('ad_campaigns')
-          .select('*, products:product_id(id, name, tagline, logo_url, website_url), user:profiles!user_id(username, full_name)')
-          .eq('status', 'active')
-          .order('created_at', { ascending: false });
-
-        const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          dbAds = data.filter((c: any) => {
-            if (c.target_impressions && (c.delivered_impressions || 0) >= c.target_impressions) {
-              return false;
-            }
-            return true;
-          });
-          await setCachedData(cacheKey, dbAds, 180);
-        }
-      } catch (e) {
-        console.error('Error fetching ad campaigns from DB in /t/ads:', e);
-      }
-    }
+    let dbAds = (await cached<any[]>('active_ad_campaigns', 300, fetchActiveAdPool)) || [];
 
     if (excludeProductId && dbAds.length > 0) {
       dbAds = dbAds.filter((c: any) => c.product_id !== excludeProductId);

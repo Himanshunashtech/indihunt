@@ -25,6 +25,7 @@ export default function TrendingThreadsWidget({
           <Link
               key={thread.id}
               href={`/threads/${getProductSlug(thread.title)}`}
+              prefetch={false}
               className={`block transition-all group ${
                 idx === 0
                   ? "p-4 bg-muted/40 border border-border/60 rounded-2xl hover:bg-muted/80"
@@ -74,12 +75,14 @@ export default function TrendingThreadsWidget({
       <div className="space-y-2.5 pt-2">
         <Link
           href="/discussions"
+          prefetch={false}
           className="w-full py-3 px-5 rounded-full border border-border bg-card hover:bg-muted flex items-center justify-center text-base font-semibold text-foreground/85 hover:text-[#ff5733] transition-all group shadow-2xs"
         >
           <span>View all</span>
         </Link>
         <Link
           href="/discussions?new=true"
+          prefetch={false}
           className="w-full py-3 px-5 rounded-full border border-border bg-card hover:bg-muted flex items-center justify-center gap-2 text-base font-semibold text-foreground/85 hover:text-[#ff5733] transition-all group shadow-2xs"
         >
           <MessageSquarePlus className="w-4 h-4 text-foreground/75 group-hover:text-[#ff5733] transition-colors" />

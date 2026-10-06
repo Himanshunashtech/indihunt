@@ -1,4 +1,4 @@
-import React from "react";
+import React, { cache } from "react";
 import { getThreadById, getComments, getProductById, Thread, Comment, Product } from "@/lib/supabase";
 import ThreadDetailPageClient from "./ThreadDetailPageClient";
 
@@ -10,9 +10,7 @@ interface PageProps {
   }>;
 }
 
-export default async function ThreadPage({ params }: PageProps) {
-  const { id } = await params;
-
+const getThreadPageData = cache(async (id: string) => {
   let initialThread: Thread | null = null;
   let initialComments: Comment[] = [];
   let initialProduct: Product | null = null;
@@ -31,6 +29,13 @@ export default async function ThreadPage({ params }: PageProps) {
     // Client fallback will load via hooks
   }
 
+  return { initialThread, initialComments, initialProduct };
+});
+
+export default async function ThreadPage({ params }: PageProps) {
+  const { id } = await params;
+  const { initialThread, initialComments, initialProduct } = await getThreadPageData(id);
+
   return (
     <ThreadDetailPageClient
       initialThread={initialThread}
@@ -40,3 +45,4 @@ export default async function ThreadPage({ params }: PageProps) {
     />
   );
 }
+

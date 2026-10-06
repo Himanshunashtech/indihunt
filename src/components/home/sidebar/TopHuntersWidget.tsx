@@ -19,6 +19,7 @@ export default function TopHuntersWidget({ hunters }: TopHuntersWidgetProps) {
         </div>
         <Link
           href="/top-hunters"
+          prefetch={false}
           className="text-base font-semibold text-[#ff5733] hover:underline flex items-center gap-1 transition-colors"
         >
           Show all
@@ -32,6 +33,7 @@ export default function TopHuntersWidget({ hunters }: TopHuntersWidgetProps) {
             <Link
               key={hunter.id}
               href="/top-hunters"
+              prefetch={false}
               className="flex items-center justify-between p-2 rounded-xl hover:bg-muted/60 transition-all group"
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -88,6 +90,7 @@ export default function TopHuntersWidget({ hunters }: TopHuntersWidgetProps) {
 
       <Link
         href="/top-hunters"
+        prefetch={false}
         className="w-full py-2.5 px-4 rounded-full border border-border bg-card hover:bg-muted flex items-center justify-center text-base font-semibold text-foreground/85 hover:text-[#ff5733] transition-all group shadow-2xs"
       >
         <span>Show all Top Hunters</span>

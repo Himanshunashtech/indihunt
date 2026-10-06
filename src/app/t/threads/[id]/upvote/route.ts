@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { getCachedData, invalidateCache } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { getProductSlug } from '@/lib/supabase';
 
@@ -24,20 +25,34 @@ export async function POST(
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId);
 
     if (!isUuid) {
-      const { data: allThreads } = await supabase
-        .from('threads')
-        .select('id, title');
-      if (allThreads) {
-        const decoded = decodeURIComponent(threadId).toLowerCase().trim();
-        const matched = allThreads.find(
-          (t: any) =>
-            getProductSlug(t.title).toLowerCase() === decoded ||
-            t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decoded ||
-            t.id === threadId
-        );
-        if (matched) {
-          targetThreadId = matched.id;
-        }
+      const decoded = decodeURIComponent(threadId).toLowerCase().trim();
+      const words = decoded.split(/[-_]+/).filter((w) => w.length > 2);
+      let candidates: any[] = [];
+      if (words.length > 0) {
+        const keywordPattern = `%${words.slice(0, 3).join('%')}%`;
+        const { data } = await supabase
+          .from('threads')
+          .select('id, title')
+          .ilike('title', keywordPattern)
+          .limit(15);
+        candidates = data || [];
+      }
+      if (!candidates.length) {
+        const { data } = await supabase
+          .from('threads')
+          .select('id, title')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        candidates = data || [];
+      }
+      const matched = candidates.find(
+        (t: any) =>
+          getProductSlug(t.title).toLowerCase() === decoded ||
+          t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decoded ||
+          t.id === threadId
+      );
+      if (matched) {
+        targetThreadId = matched.id;
       }
     }
 
@@ -121,6 +136,12 @@ export async function POST(
     if (updateErr) {
       console.warn('[Thread upvote count update error]', updateErr);
     }
+
+    await Promise.allSettled([
+      invalidateCache(`thread_detail_${threadId.toLowerCase()}`),
+      invalidateCache(`thread_detail_${targetThreadId}`),
+      invalidateCache('threads_all_50'),
+    ]);
 
     return apiSuccessSecure({
       has_upvoted: hasUpvoted,

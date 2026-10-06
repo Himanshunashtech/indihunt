@@ -468,6 +468,7 @@ export default function AwardsPage() {
                   <div className="pt-4 border-t border-border/60 space-y-3">
                     <Link
                       href={`/products/${award.productId}`}
+                      prefetch={false}
                       className="flex items-center gap-3 group/link p-2 rounded-xl hover:bg-muted/60 transition-colors"
                     >
                       <Image

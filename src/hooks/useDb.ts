@@ -297,12 +297,14 @@ export function useThreads(currentUserId?: string, initialData?: Thread[]) {
 }
 
 // 4. Fetch a single thread by ID (with instant placeholder cache lookup)
-export function useThread(threadId: string, currentUserId?: string) {
+export function useThread(threadId: string, currentUserId?: string, initialData?: Thread | null) {
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["thread", threadId, currentUserId || "guest"],
     queryFn: () => getThreadById(threadId, currentUserId || undefined),
     enabled: !!threadId,
+    initialData: initialData || undefined,
+    initialDataUpdatedAt: initialData ? Date.now() : undefined,
     staleTime: currentUserId ? 60 * 1000 : 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     placeholderData: (previousData) => {

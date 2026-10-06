@@ -684,7 +684,7 @@ export default function DiscussionsClient({
                       </div>
 
                       {/* Title */}
-                      <Link href={`/threads/${getProductSlug(thread.title)}`}>
+                      <Link href={`/threads/${getProductSlug(thread.title)}`} prefetch={false}>
                         <h3 className="text-base font-medium text-foreground/90 transition-all duration-300 group-hover:underline cursor-pointer line-clamp-2">
                           {thread.title}
                         </h3>
@@ -701,6 +701,7 @@ export default function DiscussionsClient({
                       {/* Comment Count Box */}
                       <Link 
                         href={`/threads/${getProductSlug(thread.title)}`}
+                        prefetch={false}
                         className="group/btn flex size-12 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card hover:border-orange-500/60 transition-all cursor-pointer"
                         title="View replies"
                       >

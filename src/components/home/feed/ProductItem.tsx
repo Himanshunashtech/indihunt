@@ -135,6 +135,7 @@ const ProductItem = memo(function ProductItem({
           ) : (
             <Link
               href={`/products/${slug}`}
+              prefetch={false}
               className="hover:underline font-semibold"
             >
               {displayRank}. {product.name}
@@ -173,7 +174,7 @@ const ProductItem = memo(function ProductItem({
             </span>
           )}
           {product.is_open_source && (
-            <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
               🧑‍💻 Open Source
             </span>
           )}
@@ -194,6 +195,7 @@ const ProductItem = memo(function ProductItem({
               <Link
                 key={tag}
                 href={`/categories/${getCategorySlug(tag)}`}
+                prefetch={false}
                 onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline text-base font-medium bg-muted/50 hover:bg-muted px-2 py-0.5 rounded-md transition-colors"
               >
@@ -210,6 +212,7 @@ const ProductItem = memo(function ProductItem({
         {/* Comment Count Box */}
         <Link
           href={`/products/${getProductSlug(product.name)}`}
+          prefetch={false}
           onClick={(e) => e.stopPropagation()}
           className="relative hidden sm:block"
           title="View discussions"

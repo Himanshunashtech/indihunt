@@ -71,6 +71,42 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.6.1",
+    date: "October 2026",
+    title: "Thread Detail & Product Settings Ultra-Fast Zero-Waterfall Engine",
+    summary: "Eliminated full-table scans across slug lookups on threads and products. Implemented React cache() SSR memoization, Redis thread caching, initialData pre-hydration on client hooks, and disabled prefetch waterfalls across discussion threads and category widgets.",
+    icon: Zap,
+    iconColor: "text-amber-400",
+    iconBg: "bg-amber-500/10",
+    tags: ["Performance", "Discussions", "Improvement"],
+    features: [
+      { icon: CheckCircle, text: "Replaced full-table thread scans in /t/threads/[id] and layout.tsx with targeted indexed queries and Redis caching." },
+      { icon: Zap, text: "Memoized Thread SEO and pre-hydration requests with React cache() to prevent duplicate database roundtrips during SSR." },
+      { icon: CheckCircle, text: "Hydrated useThread and useComments client hooks with server initialData, eliminating client loading spinners." },
+      { icon: Database, text: "Added dedicated PostgreSQL indexes for threads, thread categories, thread titles, and thread comments in migration 107." },
+      { icon: Zap, text: "Added prefetch={false} to discussion thread cards to prevent background serverless execution storms." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.6.0",
+    date: "October 2026",
+    title: "High-Performance Edge Architecture & Serverless Latency Eradication",
+    summary: "Comprehensive platform optimization eliminating function bottlenecks: static file middleware exemption (robots.txt, sw.js to <5ms CDN delivery), versioned feed caching with single-flight stampede protection, non-blocking view tracking with Next.js after(), multi-query user bootstrap bundling, and Redis write-through cache invalidation.",
+    icon: Zap,
+    iconColor: "text-violet-400",
+    iconBg: "bg-violet-500/10",
+    tags: ["Performance", "Architecture", "Improvement"],
+    features: [
+      { icon: CheckCircle, text: "Optimized Next.js middleware matcher to exclude static assets, dropping robots.txt and sw.js from 1600ms+ to <5ms edge delivery." },
+      { icon: Zap, text: "Implemented single-flight deduplicated caching and versioned invalidation for /t/products feed, cutting latency by 90%+." },
+      { icon: CheckCircle, text: "Converted /t/views and analytics click tracking into non-blocking Next.js after() background operations (<5ms user response)." },
+      { icon: Database, text: "Added /t/bootstrap bundling endpoint to combine profile, upvotes, and notification count queries in a single parallel roundtrip." },
+      { icon: ShieldCheck, text: "Deployed Redis caching with write-through invalidation on notifications, upvotes, and product follows." },
+    ],
+    highlight: false,
+  },
+  {
     version: "v7.5.9",
     date: "October 2026",
     title: "Direct Database Upvote Sync & Supabase Realtime Stream",
@@ -84,7 +120,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Zap, text: "Configured Supabase Realtime to stream Postgres changes on products and threads directly into React Query." },
       { icon: ShieldCheck, text: "Aligned product upvote handling and Postgres SECURITY DEFINER triggers with the exact discussion threads pattern." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.5.8",

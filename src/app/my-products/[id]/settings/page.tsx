@@ -1,4 +1,4 @@
-import React from "react";
+import React, { cache } from "react";
 import type { Metadata } from "next";
 import { getProductById, Product } from "@/lib/supabase";
 import ProductSettingsClient from "./ProductSettingsClient";
@@ -6,6 +6,10 @@ import ProductSettingsClient from "./ProductSettingsClient";
 export const revalidate = 0; // Dynamic product settings page
 
 const SITE_URL = "https://indihunt.in";
+
+const getCachedProduct = cache(async (id: string) => {
+  return getProductById(id);
+});
 
 interface PageProps {
   params: Promise<{
@@ -17,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { id } = await params;
   let product: Product | null = null;
   try {
-    product = await getProductById(id);
+    product = await getCachedProduct(id);
   } catch {
     // Handled below
   }
@@ -48,7 +52,7 @@ export default async function ProductSettingsPage({ params }: PageProps) {
   let initialProduct: Product | null = null;
 
   try {
-    initialProduct = await getProductById(id);
+    initialProduct = await getCachedProduct(id);
   } catch {
     // Client fallback
   }

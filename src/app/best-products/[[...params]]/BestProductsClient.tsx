@@ -589,7 +589,7 @@ export default function BestProductsCatchAllPage() {
 
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-medium text-foreground transition-all duration-300 sm:flex-nowrap group-hover:sm:text-[#ff5733]">
-                            <Link href={`/products/${getProductSlug(product.name)}`} className="hover:underline">
+                            <Link href={`/products/${getProductSlug(product.name)}`} prefetch={false} className="hover:underline">
                               {(validCurrentPage - 1) * ITEMS_PER_PAGE + idx + 1}. {product.name}
                             </Link>
                             {product.website_url && (
@@ -632,6 +632,7 @@ export default function BestProductsCatchAllPage() {
                             <div className="flex flex-row items-center gap-2">
                               <Link
                                 href={`/categories/${(product.category || "Productivity").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                                prefetch={false}
                                 onClick={(e) => e.stopPropagation()}
                                 className="text-foreground/80 hover:underline hover:text-[#ff5733] text-sm transition-colors"
                               >
@@ -650,6 +651,7 @@ export default function BestProductsCatchAllPage() {
                                   width={16} height={16} />
                                   <Link
                                     href={product.maker.username ? `/@${product.maker.username}` : `/profile?id=${product.maker.id}`}
+                                    prefetch={false}
                                     onClick={(e) => e.stopPropagation()}
                                     className="whitespace-nowrap text-sm font-medium text-foreground/80 hover:text-[#ff5733] transition-colors"
                                   >
@@ -669,6 +671,7 @@ export default function BestProductsCatchAllPage() {
                           {/* Comment Count Box (Hidden on mobile) */}
                           <Link
                             href={`/products/${getProductSlug(product.name)}`}
+                            prefetch={false}
                             onClick={(e) => e.stopPropagation()}
                             className="relative hidden sm:block"
                             title="View discussions"

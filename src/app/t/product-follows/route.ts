@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccess, apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
+import { apiSuccess, apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,9 +11,8 @@ export async function GET(request: NextRequest) {
     const productId = searchParams.get('productId') || searchParams.get('product_id');
     const userId = searchParams.get('userId') || searchParams.get('user_id');
 
-    const supabase = await createServerSupabaseClient();
-
     if (userId) {
+      const supabase = await createServerSupabaseClient();
       const { data, error } = await supabase
         .from('product_follows')
         .select('product:products(*, maker:profiles!maker_id(*))')
@@ -30,6 +30,13 @@ export async function GET(request: NextRequest) {
       return apiFailure('productId or userId is required', 400);
     }
 
+    const cacheKey = `product_followers:${productId}`;
+    const cachedFollowers = await getCachedData<any[]>(cacheKey);
+    if (cachedFollowers) {
+      return apiSuccessSecure(cachedFollowers, 200, PUBLIC_CACHE_HEADERS);
+    }
+
+    const supabase = await createServerSupabaseClient();
     const { data, error } = await supabase
       .from('product_follows')
       .select('product_id, user_id, created_at, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
@@ -40,7 +47,8 @@ export async function GET(request: NextRequest) {
     }
 
     const followers = (data || []).map((row: any) => row.user || row).filter(Boolean);
-    return apiSuccessSecure(followers);
+    await setCachedData(cacheKey, followers, 120);
+    return apiSuccessSecure(followers, 200, PUBLIC_CACHE_HEADERS);
   } catch (err: any) {
     return apiFailure(err.message || 'Failed to fetch product followers', 500);
   }
@@ -87,6 +95,8 @@ export async function POST(request: NextRequest) {
       if (insErr) return apiFailure(insErr.message, 500);
       isFollowing = true;
     }
+
+    await invalidateCache(`product_followers:${productId}`);
 
     // Get updated follower count
     const { count } = await supabase

@@ -455,15 +455,29 @@ export default function HomePageClient({
 
             // Only record impression for the single top visible billboard
             if (rotated[0]) {
-              fetch("/t/billboards/event", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  billboardId: rotated[0].id,
-                  eventType: "impression",
-                  sessionId: sid,
-                }),
-              }).catch(() => {});
+              const payload = {
+                billboardId: rotated[0].id,
+                eventType: "impression",
+                sessionId: sid,
+              };
+              if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+                try {
+                  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+                  navigator.sendBeacon("/t/billboards/event", blob);
+                } catch {
+                  fetch("/t/billboards/event", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                  }).catch(() => {});
+                }
+              } else {
+                fetch("/t/billboards/event", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                }).catch(() => {});
+              }
             }
           }
         })

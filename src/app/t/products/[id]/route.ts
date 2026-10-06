@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { cached, bumpFeedVersion } from '@/lib/cache';
 import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation, getProductSlug } from '@/lib/supabase';
 
@@ -19,30 +20,77 @@ const ALLOWED = [
   'shoutout_names', 'shoutout_notes', 'shoutout_logos'
 ];
 
-async function resolveProductId(key: string, getDb: () => Promise<any>): Promise<string | null> {
-  if (UUID_RE.test(key)) return key;
-  let map = await getCachedData<Record<string, string>>('product_slug_map');
-  if (map && map[key]) return map[key];
+async function fetchProductByKey(key: string) {
+  const supabase = await createServerSupabaseClient();
+  const isUuid = UUID_RE.test(key);
 
-  try {
-    const { data } = await (await getDb()).from('products').select('id, name').limit(3000);
-    const newMap: Record<string, string> = {};
-    (data || []).forEach((p: any) => {
-      if (p.name) {
-        newMap[getProductSlug(p.name).toLowerCase()] = p.id;
-        newMap[p.name.toLowerCase().trim()] = p.id;
-        newMap[p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')] = p.id;
-        newMap[p.name.toLowerCase().replace(/[^a-z0-9]+/g, '')] = p.id;
-      }
-      if (p.id) {
-        newMap[p.id.toLowerCase()] = p.id;
-      }
-    });
-    await setCachedData('product_slug_map', newMap, 3600);
-    return newMap[key] || null;
-  } catch {
-    return null;
+  if (isUuid) {
+    const { data } = await supabase
+      .from('products')
+      .select(DETAIL_COLUMNS)
+      .eq('id', key)
+      .eq('is_deleted', false)
+      .maybeSingle();
+    return data || null;
   }
+
+  const decodedKey = decodeURIComponent(key).toLowerCase().trim();
+  const normalizedKey = decodedKey.replace(/[^a-z0-9]/g, '');
+  const cleanSearch = decodedKey.replace(/[-_.]+/g, ' ').trim();
+
+  let candidates: any[] = [];
+
+  // Stage 1: Try direct substring or word pattern
+  const words = decodedKey.split(/[-_.\s]+/).filter(Boolean);
+  const searchPatterns = [
+    cleanSearch,
+    words.length > 1 ? words.join('%') : null,
+    decodedKey.length >= 3 ? decodedKey.slice(0, 4) : null,
+  ].filter(Boolean) as string[];
+
+  for (const pattern of searchPatterns) {
+    const { data: matched } = await supabase
+      .from('products')
+      .select(DETAIL_COLUMNS)
+      .eq('is_deleted', false)
+      .ilike('name', `%${pattern}%`)
+      .limit(20);
+
+    if (matched && matched.length > 0) {
+      candidates = matched;
+      break;
+    }
+  }
+
+  // Stage 2: Fallback to recent 50 active products
+  if (!candidates.length) {
+    const { data: recent } = await supabase
+      .from('products')
+      .select(DETAIL_COLUMNS)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    candidates = recent || [];
+  }
+
+  // Exact matching against candidates
+  const exact = candidates.find((p: any) => {
+    const slug = getProductSlug(p.name || '').toLowerCase();
+    const raw = (p.name || '').toLowerCase().trim();
+    const alphanumeric = raw.replace(/[^a-z0-9]/g, '');
+    const customSlug = ((p as any).slug || '').toLowerCase();
+
+    return (
+      p.id === key ||
+      slug === decodedKey ||
+      raw === decodedKey ||
+      customSlug === decodedKey ||
+      alphanumeric === normalizedKey ||
+      slug.replace(/-/g, '') === normalizedKey
+    );
+  });
+
+  return exact || (candidates.length > 0 && cleanSearch.length > 3 ? candidates[0] : null);
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -51,32 +99,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const userId = new URL(request.url).searchParams.get('userId');
     const key = decodeURIComponent(id).toLowerCase().trim();
 
-    const supabase = await createServerSupabaseClient();
-    const pid = await resolveProductId(key, async () => supabase);
-    if (!pid) return apiFailure('Product not found', 404);
+    const cacheKey = `product_detail_${key}`;
+    const product = await cached<any | null>(cacheKey, 60, () => fetchProductByKey(key));
 
-    const { data: product, error: prodErr } = await supabase
-      .from('products')
-      .select(DETAIL_COLUMNS)
-      .eq('id', pid)
-      .maybeSingle();
-
-    if (prodErr || !product || product.is_deleted) {
+    if (!product || product.is_deleted) {
       return apiFailure('Product not found', 404);
     }
 
     let hasUpvoted = false;
     if (userId) {
-      const { data: upvote } = await supabase
-        .from('upvotes')
-        .select('id')
-        .eq('product_id', product.id)
-        .eq('user_id', userId)
-        .maybeSingle();
-      hasUpvoted = !!upvote;
+      const upvotesKey = `upvotes:user:${userId}`;
+      let upvoteIds = await getCachedData<string[]>(upvotesKey);
+      if (!upvoteIds) {
+        const supabase = await createServerSupabaseClient();
+        const { data: upvotes } = await supabase
+          .from('upvotes')
+          .select('product_id')
+          .eq('user_id', userId)
+          .limit(2000);
+        upvoteIds = (upvotes || []).map((u: any) => u.product_id);
+        await setCachedData(upvotesKey, upvoteIds, 30);
+      }
+      hasUpvoted = new Set(upvoteIds).has(product.id);
     }
 
-    return apiSuccessSecure({ ...product, has_upvoted: hasUpvoted }, 200);
+    return apiSuccessSecure({ ...product, has_upvoted: hasUpvoted }, 200, PUBLIC_CACHE_HEADERS);
   } catch (error: any) {
     return apiFailure(error?.message || 'Failed to fetch product', 500);
   }
@@ -138,6 +185,7 @@ async function handleUpdate(
       invalidateCache(`product_detail_${id.toLowerCase()}`),
       updated?.id ? invalidateCache(`product_detail_${updated.id.toLowerCase()}`) : Promise.resolve(),
       updated?.name ? invalidateCache(`product_detail_${getProductSlug(updated.name).toLowerCase()}`) : Promise.resolve(),
+      bumpFeedVersion(),
     ]);
 
     return apiSuccessSecure(updated);
@@ -169,6 +217,7 @@ export async function DELETE(
       invalidateCache('public_products'),
       invalidateCache('product_slug_map'),
       invalidateCache(`product_detail_${id.toLowerCase()}`),
+      bumpFeedVersion(),
     ]);
 
     return apiSuccessSecure({ deleted: true }, 200);

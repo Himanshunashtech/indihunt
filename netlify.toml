@@ -34,42 +34,71 @@
 
 # ── 4. Public API GET Endpoints (Edge Cached with Stale-While-Revalidate) ──
 [[headers]]
-  for = "/api/products*"
+  for = "/t/products*"
   [headers.values]
     Cache-Control = "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
     Netlify-CDN-Cache-Control = "public, max-age=60, stale-while-revalidate=300"
 
 [[headers]]
-  for = "/api/stories*"
+  for = "/t/comments*"
   [headers.values]
     Cache-Control = "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
     Netlify-CDN-Cache-Control = "public, max-age=60, stale-while-revalidate=300"
 
 [[headers]]
-  for = "/api/leaderboard*"
+  for = "/t/reviews*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, s-maxage=300, stale-while-revalidate=1800"
+    Netlify-CDN-Cache-Control = "public, max-age=300, stale-while-revalidate=1800"
+
+[[headers]]
+  for = "/t/stories*"
   [headers.values]
     Cache-Control = "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
     Netlify-CDN-Cache-Control = "public, max-age=60, stale-while-revalidate=300"
 
 [[headers]]
-  for = "/api/billboards*"
+  for = "/t/leaderboard*"
   [headers.values]
     Cache-Control = "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
     Netlify-CDN-Cache-Control = "public, max-age=60, stale-while-revalidate=300"
 
 [[headers]]
-  for = "/api/ads*"
-  [headers.values]
-    Cache-Control = "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
-    Netlify-CDN-Cache-Control = "public, max-age=60, stale-while-revalidate=300"
-
-[[headers]]
-  for = "/api/faq*"
+  for = "/t/faq*"
   [headers.values]
     Cache-Control = "public, max-age=0, s-maxage=300, stale-while-revalidate=86400"
     Netlify-CDN-Cache-Control = "public, max-age=300, stale-while-revalidate=86400"
 
-# ── 5. HTML Pages & Global Security Headers ──
+# ── 5. Product & Content Pages — ISR via CDN ──
+[[headers]]
+  for = "/products/*"
+  [headers.values]
+    Netlify-CDN-Cache-Control = "public, max-age=60, stale-while-revalidate=300"
+
+[[headers]]
+  for = "/categories/*"
+  [headers.values]
+    Netlify-CDN-Cache-Control = "public, max-age=120, stale-while-revalidate=600"
+
+# ── 6. Static files in public/ ──
+[[headers]]
+  for = "/robots.txt"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+    Netlify-CDN-Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+    Netlify-CDN-Cache-Control = "public, max-age=86400"
+
+# ── 7. HTML Pages & Global Security Headers ──
 [[headers]]
   for = "/*"
   [headers.values]
@@ -77,3 +106,10 @@
     X-Frame-Options = "SAMEORIGIN"
     X-XSS-Protection = "1; mode=block"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# ── 8. Direct 404 for invalid IPFS asset paths ──
+[[redirects]]
+  from = "/ipfs/*"
+  to = "/404.html"
+  status = 404
+  force = true

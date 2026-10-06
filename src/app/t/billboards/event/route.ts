@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, after } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/supabase/admin';
 import { getCachedData, setCachedData } from '@/lib/redis';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
@@ -50,13 +50,18 @@ export async function POST(request: NextRequest) {
       return apiSuccessSecure({ success: true, mocked: true });
     }
 
-    try {
-      const adminSupabase = createAdminSupabaseClient();
-      await adminSupabase.rpc('log_billboard_event', {
-        billboard_uuid: billboardId,
-        is_click: eventType === 'click',
-      });
-    } catch (e) {}
+    // Execute Postgres RPC non-blockingly after response is sent
+    after(async () => {
+      try {
+        const adminSupabase = createAdminSupabaseClient();
+        await adminSupabase.rpc('log_billboard_event', {
+          billboard_uuid: billboardId,
+          is_click: eventType === 'click',
+        });
+      } catch (e) {
+        console.warn('[Billboard Event] Failed to log event in background:', e);
+      }
+    });
 
     return apiSuccessSecure({ success: true });
   } catch (err: any) {

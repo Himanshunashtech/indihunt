@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { getProductSlug } from "@/lib/supabase";
 import Script from "next/script";
+import { cache } from "react";
 
 const baseUrl = "https://indihunt.in";
 
@@ -12,36 +13,60 @@ function getServiceSupabase() {
   return createClient(url, key);
 }
 
-async function fetchThreadForSeo(idOrSlug: string) {
+const fetchThreadForSeo = cache(async (idOrSlug: string) => {
   try {
     const supabase = getServiceSupabase();
-    if (supabase) {
-      // 1. Direct ID lookup
-      let { data: thread } = await supabase
+    if (!supabase) return null;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+
+    // 1. Direct ID lookup
+    if (isUuid) {
+      const { data: thread } = await supabase
         .from("threads")
         .select("*, user:profiles(*), product:products(*)")
         .eq("id", idOrSlug)
         .maybeSingle();
-
-      // 2. Slug lookup if direct ID lookup fails
-      if (!thread) {
-        const { data: allThreads } = await supabase
-          .from("threads")
-          .select("*, user:profiles(*), product:products(*)");
-        if (allThreads) {
-          thread = allThreads.find(
-            (t: any) => (t.title && getProductSlug(t.title) === idOrSlug.toLowerCase()) || t.id === idOrSlug
-          ) || null;
-        }
-      }
-
       if (thread) return thread;
     }
+
+    // 2. Targeted slug search
+    const decoded = decodeURIComponent(idOrSlug).toLowerCase().trim();
+    const words = decoded.split(/[-_]+/).filter((w) => w.length > 2);
+    let candidates: any[] = [];
+
+    if (words.length > 0) {
+      const keywordPattern = `%${words.slice(0, 3).join('%')}%`;
+      const { data } = await supabase
+        .from("threads")
+        .select("*, user:profiles(*), product:products(*)")
+        .ilike("title", keywordPattern)
+        .limit(10);
+      candidates = data || [];
+    }
+
+    if (!candidates.length) {
+      const { data } = await supabase
+        .from("threads")
+        .select("*, user:profiles(*), product:products(*)")
+        .order("created_at", { ascending: false })
+        .limit(30);
+      candidates = data || [];
+    }
+
+    const matched = candidates.find(
+      (t: any) =>
+        (t.title && getProductSlug(t.title).toLowerCase() === decoded) ||
+        (t.title && t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decoded) ||
+        t.id === idOrSlug
+    );
+
+    return matched || null;
   } catch (e) {
     console.error("Error fetching SEO thread:", e);
+    return null;
   }
-  return null;
-}
+});
 
 export async function generateMetadata({
   params,

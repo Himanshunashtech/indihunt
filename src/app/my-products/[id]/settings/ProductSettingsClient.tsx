@@ -242,95 +242,88 @@ export default function ProductSettingsClient({
   }, [productId, router]);
 
   const loadProductData = async (userId: string) => {
-    setIsLoading(true);
     try {
-      const prod = await getProductById(productId);
-      if (prod) {
-        // Fetch user profile to check for admin role
-        let isAdmin = false;
-        try {
-          const profile = await getUserProfile(userId);
-          isAdmin = (profile as any)?.role === 'admin';
-        } catch (e) { }
+      // Use initialProduct if available to avoid redundant roundtrip
+      const prod = initialProduct && (initialProduct.id === productId || getProductSlug(initialProduct.name) === productId)
+        ? initialProduct
+        : await getProductById(productId);
 
-        // Only allow owner/maker, member, or admin to view settings
-        if (prod.maker_id !== userId && !isAdmin) {
-          // Check if user is in members list
-          const productMembers = await getProductMembers(prod.id);
-          const isMember = productMembers.some(m => m.id === userId);
-          if (!isMember) {
-            router.push("/my-products");
-            return;
-          }
-          setMembers(productMembers);
-        } else {
-          const productMembers = await getProductMembers(prod.id);
-          setMembers(productMembers);
+      if (!prod) {
+        router.push("/my-products");
+        return;
+      }
+
+      // Fast-path: if current user is the maker, unlock settings immediately
+      const isMaker = prod.maker_id === userId;
+      if (isMaker) {
+        setIsLoading(false);
+      }
+
+      setProduct(prod);
+      const slug = getProductSlug(prod.name);
+      if (productId !== slug && !productId.includes('-')) {
+        router.replace(`/my-products/${slug}/settings`);
+      }
+
+      setName(prod.name || "");
+      setTagline(prod.tagline || "");
+      const existingTags = prod.tags && Array.isArray(prod.tags) && prod.tags.length > 0
+        ? prod.tags
+        : (prod.category ? [prod.category] : []);
+      setTags(existingTags);
+      setLogoUrl(prod.logo_url || "");
+      setGalleryImages(prod.screenshots || []);
+      setUrl(prod.website_url || "");
+      setDescription(prod.description || "");
+      setTwitter(prod.twitter_url || "");
+      setFacebook(prod.facebook_url || "");
+      setInstagram(prod.instagram_url || "");
+      setLinkedin(prod.linkedin_url || "");
+      setMedium(prod.medium_url || "");
+      setGithubUrl(prod.github_url || "");
+      setVideoUrl(prod.video_url || "");
+      setShowPreLaunch(prod.show_pre_launch || false);
+      setWorkedOnLaunch(prod.worked_on_launch !== false);
+      setFundingType(prod.funding_type || "bootstrapped");
+
+      // Parallel background fetch for team members, shoutouts, and ad campaigns
+      const [membersRes, profileRes, shoutoutsRes, campsRes] = await Promise.allSettled([
+        getProductMembers(prod.id),
+        !isMaker ? getUserProfile(userId) : Promise.resolve(null),
+        getProductShoutoutsGiven(prod.id),
+        getAdCampaigns(userId),
+      ]);
+
+      const productMembers = membersRes.status === 'fulfilled' ? membersRes.value : [];
+      setMembers(productMembers);
+
+      if (!isMaker) {
+        const userProfile = profileRes.status === 'fulfilled' ? profileRes.value : null;
+        const isAdmin = (userProfile as any)?.role === 'admin';
+        const isMember = productMembers.some(m => m.id === userId);
+        if (!isAdmin && !isMember) {
+          router.push("/my-products");
+          return;
         }
+        setIsLoading(false);
+      }
 
-        setProduct(prod);
-        const slug = getProductSlug(prod.name);
-        if (productId !== slug) {
-          router.replace(`/my-products/${slug}/settings`);
-        }
-        setName(prod.name || "");
-        setTagline(prod.tagline || "");
-        const existingTags = prod.tags && Array.isArray(prod.tags) && prod.tags.length > 0
-          ? prod.tags
-          : (prod.category ? [prod.category] : []);
-        setTags(existingTags);
-        setLogoUrl(prod.logo_url || "");
-        setGalleryImages(prod.screenshots || []);
-        setUrl(prod.website_url || "");
-        setDescription(prod.description || "");
-        setTwitter(prod.twitter_url || "");
-        setFacebook(prod.facebook_url || "");
-        setInstagram(prod.instagram_url || "");
-        setLinkedin(prod.linkedin_url || "");
-        setMedium(prod.medium_url || "");
-        setGithubUrl(prod.github_url || "");
-        setVideoUrl(prod.video_url || "");
-        setShowPreLaunch(prod.show_pre_launch || false);
-        setWorkedOnLaunch(prod.worked_on_launch !== false);
-        setFundingType(prod.funding_type || "bootstrapped");
-
-        // Load shoutouts and other products
-        const shoutoutsGiven = await getProductShoutoutsGiven(prod.id);
-
-        let productsList: Product[] = [];
-        try {
-          productsList = await getProducts();
-        } catch (e) {
-          console.error(e);
-        }
-
-        const filtered = productsList.filter(p => p.id !== prod.id);
-        const merged: any[] = [...filtered];
-        DEV_COMPANIES.forEach((comp) => {
-          if (!merged.some(p => p.name.toLowerCase() === comp.name.toLowerCase())) {
-            merged.push(comp);
-          }
-        });
-        setAllProducts(merged);
+      if (shoutoutsRes.status === 'fulfilled') {
+        const shoutoutsGiven = shoutoutsRes.value;
         setShoutouts(shoutoutsGiven.map(s => ({
           id: s.id,
           shouted_product_id: s.shouted_product_id,
           shouted_product_name: s.shouted_product?.name || "",
           note: s.note
         })));
+      }
 
-        // Load advertising campaigns for this product
-        try {
-          const allCamps = await getAdCampaigns(userId);
-          const prodCamps = allCamps.filter(c => c.product_id === prod.id);
-          setProductCampaigns(prodCamps);
-        } catch { }
-
-      } else {
-        router.push("/my-products");
+      if (campsRes.status === 'fulfilled') {
+        const allCamps = campsRes.value;
+        setProductCampaigns(allCamps.filter(c => c.product_id === prod.id));
       }
     } catch (err) {
-      console.error(err);
+      console.error('[ProductSettings] Load error:', err);
       router.push("/my-products");
     } finally {
       setIsLoading(false);

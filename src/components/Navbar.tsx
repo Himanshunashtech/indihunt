@@ -501,6 +501,7 @@ export default function Navbar({
                             <DropdownMenu.Item asChild key={cat}>
                               <Link
                                 href={`/categories/${getCategorySlug(cat)}`}
+                                prefetch={false}
                                 className="text-xs font-normal text-foreground/80 hover:text-orange-500 hover:bg-muted/70 px-2.5 py-1.5 rounded-lg transition-colors block truncate"
                               >
                                 {cat}
@@ -510,7 +511,7 @@ export default function Navbar({
                         </div>
                         <div className="border-t border-border/80 mt-3 pt-3 flex justify-end">
                           <DropdownMenu.Item asChild>
-                            <Link href="/categories" className="text-xs font-normal uppercase tracking-wider text-orange-500 hover:underline flex items-center gap-1">
+                            <Link href="/categories" prefetch={false} className="text-xs font-normal uppercase tracking-wider text-orange-500 hover:underline flex items-center gap-1">
                               Show all categories →
                             </Link>
                           </DropdownMenu.Item>
@@ -555,7 +556,7 @@ export default function Navbar({
                           { href: "/guide", icon: Compass, title: "Launch Guide", sub: "Checklists and pro tips for launching", bg: "bg-indigo-500/10", color: "text-indigo-500" },
                         ].map((item) => (
                           <DropdownMenu.Item asChild key={item.href}>
-                            <Link href={item.href} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-muted rounded-xl transition-colors">
+                            <Link href={item.href} prefetch={false} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-muted rounded-xl transition-colors">
                               <div className={`w-9 h-9 rounded-lg ${item.bg} ${item.color} flex items-center justify-center text-xs flex-shrink-0`}>
                                 <item.icon className="w-4 h-4" />
                               </div>
@@ -606,7 +607,7 @@ export default function Navbar({
                           { href: "/changelog", icon: ClipboardList, title: "Changelog", sub: "New platform features and releases", bg: "bg-emerald-500/10", color: "text-emerald-500" },
                         ].map((item) => (
                           <DropdownMenu.Item asChild key={item.href}>
-                            <Link href={item.href} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-muted rounded-xl transition-colors">
+                            <Link href={item.href} prefetch={false} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-muted rounded-xl transition-colors">
                               <div className={`w-9 h-9 rounded-lg ${item.bg} ${item.color} flex items-center justify-center text-xs flex-shrink-0`}>
                                 <item.icon className="w-4 h-4" />
                               </div>
@@ -657,7 +658,7 @@ export default function Navbar({
                           { href: "/profile/leaderboard", icon: Trophy, title: "Leaderboard", sub: "See top makers on IndiHunt", bg: "bg-amber-500/10", color: "text-amber-500" },
                         ].map((item) => (
                           <DropdownMenu.Item asChild key={item.href}>
-                            <Link href={item.href} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-muted rounded-xl transition-colors">
+                            <Link href={item.href} prefetch={false} className="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-muted rounded-xl transition-colors">
                               <div className={`w-9 h-9 rounded-lg ${item.bg} ${item.color} flex items-center justify-center text-xs flex-shrink-0`}>
                                 <item.icon className="w-4 h-4" />
                               </div>
@@ -677,6 +678,7 @@ export default function Navbar({
               {/* Top Hunters link */}
               <Link
                 href="/top-hunters"
+                prefetch={false}
                 className="text-base font-medium text-foreground/80 hover:text-orange-500 transition-colors cursor-pointer py-2"
               >
                 Top Hunters

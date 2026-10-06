@@ -20,6 +20,7 @@ export default function CategoryExplorerWidget({
         </h4>
         <Link
           href="/categories"
+          prefetch={false}
           className="text-base font-semibold text-[#ff5733] hover:text-[#ff5733] transition-colors"
         >
           View all
@@ -30,6 +31,7 @@ export default function CategoryExplorerWidget({
           <Link
             key={catName}
             href={`/categories/${getCategorySlug(catName)}`}
+            prefetch={false}
             className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer group"
           >
             <span className="text-base font-normal text-muted-foreground group-hover:text-[#ff5733] transition-colors truncate">
