@@ -1099,6 +1099,7 @@ export default function Navbar({
       {/* ── Mobile Drawer ─────────────────────────────────────── */}
       <div
         ref={drawerRef}
+        suppressHydrationWarning
         className={`fixed inset-y-0 left-0 z-[60] h-[100dvh] max-h-[100dvh] w-full max-w-sm sm:max-w-md bg-card border-r border-border shadow-2xl transform transition-all duration-300 ease-in-out xl:hidden flex flex-col ${mobileOpen
           ? "translate-x-0 opacity-100 visible pointer-events-auto"
           : "-translate-x-full opacity-0 invisible pointer-events-none"

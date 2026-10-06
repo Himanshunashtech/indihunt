@@ -22,7 +22,7 @@ async function getFreshProducts(): Promise<any[]> {
       const { data, error } = await dbClient
         .from('products')
         .select(LIST_COLS)
-        .eq('is_deleted', false)
+        .neq('is_deleted', true)
         .order('created_at', { ascending: false })
         .limit(300);
 
@@ -100,8 +100,18 @@ async function handleDailyDigest(req: Request) {
       })
       .sort((a: any, b: any) => (b.upvotes_count || b.upvotes || 0) - (a.upvotes_count || a.upvotes || 0));
 
-    const topToday = todaysLaunches.slice(0, 10);
+    // Fallback: If no products launched today yet, fallback to top trending live products
+    const isTodayLaunchesPresent = todaysLaunches.length > 0;
+    const topToday = isTodayLaunchesPresent
+      ? todaysLaunches.slice(0, 10)
+      : [...liveProds].sort((a: any, b: any) => (b.upvotes_count || b.upvotes || 0) - (a.upvotes_count || a.upvotes || 0)).slice(0, 10);
+
+    const sectionTitle = isTodayLaunchesPresent
+      ? "🔥 Today's Top Products"
+      : "🔥 Trending Top Products on IndiHunt";
+
     const queryLogs: string[] = [];
+    queryLogs.push(`Found ${todaysLaunches.length} products launched today, showing ${topToday.length} products total.`);
 
     // Helper functions for absolute URL formatting in emails
     const ensureAbsoluteUrl = (url?: string, defaultUrl: string = 'https://indihunt.in'): string => {
@@ -123,6 +133,70 @@ async function handleDailyDigest(req: Request) {
       } catch {
         return dest;
       }
+    };
+
+    // Google Cloud Run Banner HTML Component for Daily Digest Email
+    const renderCloudRunBannerHtml = () => {
+      return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 24px; border-radius: 18px; background: linear-gradient(160deg, #5b2fd1 0%, #812fba 42%, #b62f8e 70%, #e63f5a 100%); padding: 5px;">
+        <tr>
+          <td>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #18181b; border-radius: 14px; padding: 20px 18px; color: #ffffff;">
+              <tr>
+                <td>
+                  <!-- Chip -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background-color: #222227; border-radius: 9999px; margin-bottom: 12px;">
+                    <tr>
+                      <td style="padding: 4px 12px; font-size: 11px; font-weight: 600; color: #ffffff;">
+                        🚀 Brought to you by Google Cloud Run
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- Heading -->
+                  <div style="font-size: 20px; line-height: 1.25; font-weight: 700; color: #ffffff; margin-bottom: 8px;">
+                    Build the best thing.<br/>
+                    Let <span style="color: #c58af9;">Cloud Run</span> handle the rest.
+                  </div>
+
+                  <!-- Description -->
+                  <div style="font-size: 13px; line-height: 1.5; color: #d4d4d8; margin-bottom: 14px;">
+                    Build for your first users and your next thousand. Ask Googlers and Google Developer Experts how in today's comments.
+                  </div>
+
+                  <!-- Terminal Box -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background-color: #222227; border: 1px solid #2e2e36; border-radius: 9999px; margin-bottom: 14px; width: 100%; max-width: 420px;">
+                    <tr>
+                      <td valign="middle" style="padding: 5px 12px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 12px; color: #ffffff; white-space: nowrap;">
+                        <span style="color: #9ca3af; margin-right: 4px;">$</span>gcloud run launch
+                      </td>
+                      <td valign="middle" align="right" style="padding: 3px 5px; width: 1%;">
+                        <a href="https://cloud.google.com/run" target="_blank" style="display: inline-block; background-color: #2f86ff; color: #ffffff; font-size: 10px; font-weight: 700; text-decoration: none; padding: 3px 8px; border-radius: 9999px; white-space: nowrap; line-height: 1.3;">
+                          Try it ↵
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- Links -->
+                  <div style="font-size: 12px; color: #a1a1aa; line-height: 1.6;">
+                    Building on Cloud Run? <a href="https://cloud.google.com/run" target="_blank" style="color: #8ab4f8; text-decoration: none; font-weight: 600;">Learn More →</a>
+                    &nbsp;|&nbsp;
+                    <a href="https://indihunt.in/threads/what-do-you-think-about-google-cloud-run" target="_blank" style="color: #8ab4f8; text-decoration: none; font-weight: 600;">Join the forum discussion →</a>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>`;
+    };
+
+    const renderCloudRunBannerText = () => {
+      return `\n--- BROUGHT TO YOU BY GOOGLE CLOUD RUN ---\n` +
+        `Build the best thing. Let Cloud Run handle the rest.\n` +
+        `Run: gcloud run launch\n` +
+        `Learn More: https://cloud.google.com/run\n\n`;
     };
 
     // 1. Fetch active billboard ads from database
@@ -264,6 +338,7 @@ async function handleDailyDigest(req: Request) {
     // Function to generate full HTML content for a specific billboard ad
     const generateHtmlForAd = (ad: any) => {
       const adHtml = renderBillboardAdHtml(ad);
+      const cloudRunHtml = renderCloudRunBannerHtml();
       const productSectionHtml = topToday.length === 0
         ? `${emptyNoticeHtml}${adHtml}`
         : `${firstFiveProductsHtml}${adHtml}${remainingProductsHtml}`;
@@ -280,13 +355,16 @@ async function handleDailyDigest(req: Request) {
       <div style="font-size: 22px; font-weight: 800; color: #ea580c; margin-bottom: 4px;">
         The Leaderboard
       </div>
-      <div style="font-size: 13px; color: #64748b; margin-bottom: 24px;">
+      <div style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
         ${dateFormatted}
       </div>
 
-      <!-- Single Focused Section: Today's Top 10 Products -->
+      <!-- Google Cloud Run Interactive Sponsor Banner at the Top -->
+      ${cloudRunHtml}
+
+      <!-- Single Focused Section: Today's / Trending Top Products -->
       <h3 style="font-size: 16px; font-weight: 700; color: #0f172a; margin: 24px 0 16px 0; border-left: 4px solid #ea580c; padding-left: 10px;">
-        🔥 Today's Top 10 Products
+        ${sectionTitle}
       </h3>
       ${productSectionHtml}
 
@@ -324,8 +402,10 @@ async function handleDailyDigest(req: Request) {
 
     const generateTextForAd = (ad: any) => {
       const adText = renderBillboardAdText(ad);
+      const cloudRunText = renderCloudRunBannerText();
       return `IndiHunt Digest - ${dateFormatted}\n\n` +
-        `--- TODAY'S TOP 10 PRODUCTS ---\n\n${formatProductListText(topToday)}\n\n` +
+        `${cloudRunText}` +
+        `--- ${sectionTitle.toUpperCase()} ---\n\n${formatProductListText(topToday)}\n\n` +
         `View All Products on IndiHunt: https://indihunt.in\n\n` +
         `${adText}` +
         `--- QUICK LINKS ---\n` +
