@@ -39,6 +39,7 @@ import { secureApiFetch } from "@/lib/api/client";
 import {
   PaymentBanner,
   PaymentBannerState,
+  CloudRunInteractiveBanner,
   FeedHeader,
   FeedSection,
   FeedSectionData,
@@ -1157,7 +1158,9 @@ export default function HomePageClient({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Main Feed (Left Column) */}
-          <div className="lg:col-span-9 space-y-2">
+          <div className="lg:col-span-9 space-y-4">
+            <CloudRunInteractiveBanner />
+
             <FeedHeader
               activeFeedTab={activeFeedTab}
               setActiveFeedTab={setActiveFeedTab}

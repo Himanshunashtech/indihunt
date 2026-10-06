@@ -142,7 +142,7 @@ const ProductItem = memo(function ProductItem({
             </Link>
           )}
           {product.is_promoted && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-200/80 dark:bg-slate-700/80 text-slate-700 dark:text-slate-200 px-2 py-0.5 rounded-md transition-colors shadow-2xs">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-secondary text-secondary-foreground border border-border px-2 py-0.5 rounded-md transition-colors shadow-2xs">
               Promoted
             </span>
           )}

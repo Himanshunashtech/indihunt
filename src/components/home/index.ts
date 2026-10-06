@@ -1,5 +1,6 @@
 export { default as PaymentBanner } from "./PaymentBanner";
 export type { PaymentBannerState } from "./PaymentBanner";
+export { default as CloudRunInteractiveBanner } from "./CloudRunInteractiveBanner";
 
 export { default as FeedHeader } from "./feed/FeedHeader";
 export { default as FeedBillboardAd } from "./feed/FeedBillboardAd";

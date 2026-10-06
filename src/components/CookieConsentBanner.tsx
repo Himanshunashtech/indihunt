@@ -148,7 +148,7 @@ export default function CookieConsentBanner() {
       {/* Floating Compact Cookie Settings Popup Card */}
       {isVisible && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-[350px] z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <div className="bg-card dark:bg-slate-900 border border-border rounded-2xl p-4 sm:p-5 shadow-2xl text-foreground relative overflow-hidden">
+          <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-2xl text-foreground relative overflow-hidden">
             {/* Header: Logo & Close Button */}
             <div className="flex items-start justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
@@ -232,7 +232,7 @@ export default function CookieConsentBanner() {
       <Dialog.Root open={isModalOpen} onOpenChange={setIsModalOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 animate-in fade-in duration-200" />
-          <Dialog.Content className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[92vw] max-w-[420px] bg-card dark:bg-slate-900 border border-border rounded-2xl p-4.5 sm:p-5 shadow-2xl z-50 space-y-4 animate-in zoom-in-95 duration-200">
+          <Dialog.Content className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[92vw] max-w-[420px] bg-card border border-border rounded-2xl p-4.5 sm:p-5 shadow-2xl z-50 space-y-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center justify-center p-1 shrink-0 overflow-hidden">

@@ -132,7 +132,7 @@ export function SponsoredAd({ excludeProductId, placement = "product_pages", cat
       target={ad.destination_url?.startsWith("/") ? "_self" : "_blank"}
       rel="noopener noreferrer"
       onClick={handleAdClick}
-      className="relative w-full max-w-full mx-auto bg-slate-100/90 dark:bg-slate-800/60 border border-slate-300/80 dark:border-slate-700/80 rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-5 hover:bg-slate-200/80 dark:hover:bg-slate-800/90 hover:border-orange-500/40 cursor-pointer transition-all duration-300 group animate-in fade-in duration-200 block overflow-hidden box-border shadow-2xs my-4"
+      className="relative w-full max-w-full mx-auto bg-card border border-border rounded-xl sm:rounded-2xl p-3.5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-5 hover:bg-muted/80 hover:border-orange-500/40 cursor-pointer transition-all duration-300 group animate-in fade-in duration-200 block overflow-hidden box-border shadow-2xs my-4"
     >
       <div className="flex items-center gap-3 sm:gap-5 min-w-0 w-full sm:w-auto overflow-hidden">
         <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl overflow-hidden border border-border flex-shrink-0 bg-background flex items-center justify-center p-1">

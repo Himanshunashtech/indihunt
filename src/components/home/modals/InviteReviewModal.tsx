@@ -79,7 +79,7 @@ export default function InviteReviewModal({
               <label className="text-base font-medium text-muted-foreground block">
                 or copy link
               </label>
-              <div className="flex items-center gap-2 p-1.5 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl">
+              <div className="flex items-center gap-2 p-1.5 bg-secondary border border-border rounded-2xl">
                 <input
                   type="text"
                   readOnly

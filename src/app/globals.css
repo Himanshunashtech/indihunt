@@ -99,38 +99,38 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: #0e0e10;
+  --foreground: #f4f4f5;
+  --card: #18181b;
+  --card-foreground: #f4f4f5;
+  --popover: #18181b;
+  --popover-foreground: #f4f4f5;
+  --primary: #ff6154;
+  --primary-foreground: #ffffff;
+  --secondary: #222227;
+  --secondary-foreground: #f4f4f5;
+  --muted: #222227;
+  --muted-foreground: #9ca3af;
+  --accent: #27272e;
+  --accent-foreground: #f4f4f5;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #2e2e36;
+  --input: #27272e;
+  --ring: #ff6154;
+  --chart-1: #ff6154;
+  --chart-2: #8ab4f8;
+  --chart-3: #81c995;
+  --chart-4: #fdd663;
+  --chart-5: #c58af9;
+  --sidebar: #101013;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #ff6154;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #222227;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #2e2e36;
+  --sidebar-ring: #ff6154;
 }
 
 @layer base {
@@ -153,15 +153,15 @@
 
 @layer utilities {
   .card-hover {
-    @apply transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:bg-[#f2f4f8] dark:hover:bg-[#22252e] hover:border-border;
+    @apply transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:bg-[#f2f4f8] dark:hover:bg-[#222227] hover:border-border;
   }
 
   .card-hover-sm {
-    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md hover:bg-[#f2f4f8] dark:hover:bg-[#22252e] hover:border-border;
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md hover:bg-[#f2f4f8] dark:hover:bg-[#222227] hover:border-border;
   }
 
   .upvote-btn {
-    @apply flex flex-col items-center justify-center rounded-lg border border-border bg-secondary px-3 py-1.5 transition-colors hover:border-border hover:bg-[#f2f4f8] dark:hover:bg-[#22252e] hover:text-foreground;
+    @apply flex flex-col items-center justify-center rounded-lg border border-border bg-secondary px-3 py-1.5 transition-colors hover:border-border hover:bg-[#f2f4f8] dark:hover:bg-[#222227] hover:text-foreground;
   }
 }
 
@@ -171,7 +171,7 @@
 }
 
 .dark .group:hover:not(.indie-page-card):not(.no-hover-bg) {
-  background-color: #22252e !important;
+  background-color: #222227 !important;
 }
 
 /* Authentic Product Hunt Coral Red (#ff6154) Text Hover & Greyish Background System */
