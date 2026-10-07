@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS, isValidUUID } from '@/lib/api/response';
 import { checkContentViolation, getProductSlug } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -86,7 +86,7 @@ export async function GET(
     }
 
     let hasUpvoted = false;
-    if (userId) {
+    if (userId && isValidUUID(userId)) {
       const { data: upvote } = await supabase
         .from('thread_upvotes')
         .select('id')

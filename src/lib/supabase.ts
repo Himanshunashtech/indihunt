@@ -336,6 +336,13 @@ export const MOCK_PROFILES: Record<string, Profile> = {
   }
 };
 
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidUUID(str?: string | null): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return UUID_REGEX.test(str.trim());
+}
+
 export function normalizeProductUrl(rawUrl: string): string {
   if (!rawUrl) return "";
   try {
@@ -1115,6 +1122,7 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
 
     if (res && res.success && res.data) {
       const prodData = res.data;
+      clearCache('products');
       if (typeof window !== 'undefined') {
         try {
           const raw = localStorage.getItem('indihunt_products');
@@ -1128,6 +1136,7 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
               localStorage.setItem('indihunt_upvotes', JSON.stringify([...votes, prodData.id]));
             }
           }
+          window.dispatchEvent(new CustomEvent('ih_scheduled_product_updated', { detail: prodData }));
         } catch {}
       }
       return prodData;
@@ -1170,7 +1179,9 @@ export async function submitProduct(product: Omit<Product, 'id' | 'upvotes_count
     };
 
     const nextProducts = [newProduct, ...products];
+    clearCache('products');
     localStorage.setItem('indihunt_products', JSON.stringify(nextProducts));
+    window.dispatchEvent(new CustomEvent('ih_scheduled_product_updated', { detail: newProduct }));
 
     // Set self-upvote in votes only for live launches
     if (!isScheduled) {
@@ -1507,7 +1518,6 @@ export function getCategorySlug(category: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DETAIL_QUERY_COLUMNS =
   '*, maker:profiles!maker_id(id, username, full_name, avatar_url, bio, headline, website, twitter_url, karma_points, streak_count, is_maker)';
 
@@ -3489,15 +3499,34 @@ export async function deleteComment(
  * Fetch top users by karma_points (KP Leaderboard)
  */
 export async function getKarmaLeaderboard(limit: number = 20): Promise<Profile[]> {
-  try {
-    const res = await secureApiFetch<Profile[]>(`/t/leaderboard/karma?limit=${limit}`);
-    if (res && res.success && Array.isArray(res.data)) {
-      return res.data;
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, headline, bio, location, website, github_url, twitter_url, linkedin_url, is_maker, karma_points, streak_count, followers_count, following_count, created_at, is_verified')
+        .order('karma_points', { ascending: false })
+        .limit(limit);
+
+      if (!error && data && data.length > 0) {
+        console.log(`[getKarmaLeaderboard] direct Supabase returned ${data.length} profiles`);
+        return data as Profile[];
+      }
+    } catch (err: any) {
+      console.warn('[getKarmaLeaderboard] direct Supabase query failed:', err?.message);
     }
-  } catch (err) {
-    // fallback
   }
 
+  try {
+    const res = await secureApiFetch<Profile[]>(`/t/leaderboard/karma?limit=${limit}`);
+    console.log(`[getKarmaLeaderboard] secureApiFetch success=${res?.success} rows=${res?.data?.length ?? 0} error=${res?.error || 'none'}`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      return res.data;
+    }
+  } catch (err: any) {
+    console.warn('[getKarmaLeaderboard] secureApiFetch threw exception:', err?.message);
+  }
+
+  console.log('[getKarmaLeaderboard] Falling back to getAllUsersAdmin()');
   const allUsers = await getAllUsersAdmin();
   return allUsers
     .slice()
@@ -3509,15 +3538,34 @@ export async function getKarmaLeaderboard(limit: number = 20): Promise<Profile[]
  * Fetch top users by streak_count (Streak Leaderboard)
  */
 export async function getStreakLeaderboard(limit: number = 20): Promise<Profile[]> {
-  try {
-    const res = await secureApiFetch<Profile[]>(`/t/leaderboard/streak?limit=${limit}`);
-    if (res && res.success && Array.isArray(res.data)) {
-      return res.data;
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, headline, bio, location, website, github_url, twitter_url, linkedin_url, is_maker, karma_points, streak_count, followers_count, following_count, created_at, is_verified')
+        .order('streak_count', { ascending: false })
+        .limit(limit);
+
+      if (!error && data && data.length > 0) {
+        console.log(`[getStreakLeaderboard] direct Supabase returned ${data.length} profiles`);
+        return data as Profile[];
+      }
+    } catch (err: any) {
+      console.warn('[getStreakLeaderboard] direct Supabase query failed:', err?.message);
     }
-  } catch (error) {
-    // fallback
   }
 
+  try {
+    const res = await secureApiFetch<Profile[]>(`/t/leaderboard/streak?limit=${limit}`);
+    console.log(`[getStreakLeaderboard] secureApiFetch success=${res?.success} rows=${res?.data?.length ?? 0} error=${res?.error || 'none'}`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+      return res.data;
+    }
+  } catch (error: any) {
+    console.warn('[getStreakLeaderboard] secureApiFetch threw exception:', error?.message);
+  }
+
+  console.log('[getStreakLeaderboard] Falling back to getAllUsersAdmin()');
   const allUsers = await getAllUsersAdmin();
   return allUsers
     .slice()
@@ -4004,11 +4052,12 @@ async function getStoriesRaw(search?: string): Promise<Story[]> {
   try {
     const url = search ? `/t/stories?search=${encodeURIComponent(search)}` : `/t/stories`;
     const res = await secureApiFetch<Story[]>(url);
+    console.log(`[getStoriesRaw] secureApiFetch ${url} success=${res?.success} rows=${res?.data?.length ?? 0} error=${res?.error || 'none'}`);
     if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
       apiStories = res.data;
     }
-  } catch (err) {
-    // fallback
+  } catch (err: any) {
+    console.warn('[getStoriesRaw] secureApiFetch threw exception:', err?.message);
   }
 
   const mergedMap = new Map<string, Story>();
@@ -5656,22 +5705,44 @@ export function isAdminUser(profile?: Profile | null): boolean {
  * Fetch all registered users for Admin Dashboard
  */
 export async function getAllUsersAdmin(): Promise<Profile[]> {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, headline, bio, location, website, github_url, twitter_url, linkedin_url, is_maker, karma_points, streak_count, followers_count, following_count, created_at, is_verified')
+        .limit(200);
+
+      if (!error && data && data.length > 0) {
+        console.log(`[getAllUsersAdmin] direct Supabase returned ${data.length} profiles`);
+        return data as Profile[];
+      }
+    } catch (err: any) {
+      console.warn('[getAllUsersAdmin] direct Supabase query failed:', err?.message);
+    }
+  }
+
   try {
     const res = await secureApiFetch<Profile[]>('/t/admin/users');
-    if (res && res.success && Array.isArray(res.data)) {
+    console.log(`[getAllUsersAdmin] secureApiFetch /t/admin/users success=${res?.success} rows=${res?.data?.length ?? 0} error=${res?.error || 'none'}`);
+    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
       return res.data;
     }
-  } catch (err) { }
+  } catch (err: any) {
+    console.warn('[getAllUsersAdmin] secureApiFetch threw exception:', err?.message);
+  }
 
   if (typeof window !== 'undefined') {
     const cached = localStorage.getItem('indihunt_profiles');
     if (cached) {
       try {
-        return JSON.parse(cached);
+        const parsed = JSON.parse(cached);
+        console.log(`[getAllUsersAdmin] loaded from localStorage: ${parsed?.length ?? 0} profiles`);
+        return parsed;
       } catch (e) { }
     }
   }
 
+  console.log(`[getAllUsersAdmin] Falling back to MOCK_PROFILES (${Object.keys(MOCK_PROFILES).length} mock profiles: ${Object.keys(MOCK_PROFILES).join(', ')})`);
   return Object.values(MOCK_PROFILES);
 }
 
@@ -7330,8 +7401,33 @@ export async function deleteLaunchTag(id: string): Promise<{ success: boolean; e
 export async function getScheduledProductCounts(): Promise<Record<string, number>> {
   try {
     const res = await secureApiFetch<Record<string, number>>('/t/products/scheduled-counts');
-    if (res && res.data && typeof res.data === 'object') return res.data;
+    if (res && res.success && res.data && typeof res.data === 'object') {
+      return res.data;
+    }
   } catch {}
+
+  // Fallback to locally cached products if offline or network fails
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('indihunt_products');
+      const products: Product[] = raw ? JSON.parse(raw) : [];
+      const counts: Record<string, number> = {};
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+      products.forEach(p => {
+        if (p.status === 'scheduled' && p.scheduled_for && !p.is_deleted) {
+          const utcDate = new Date(p.scheduled_for);
+          const istDate = new Date(utcDate.getTime() + IST_OFFSET_MS);
+          const yyyy = istDate.getUTCFullYear();
+          const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+          const dd = String(istDate.getUTCDate()).padStart(2, '0');
+          const key = `${yyyy}-${mm}-${dd}`;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      });
+      return counts;
+    } catch {}
+  }
+
   return {};
 }
 
@@ -7621,14 +7717,23 @@ export async function getUserProducts(userId: string): Promise<Product[]> {
   try {
     const res = await secureApiFetch<Product[]>(`/t/products?makerId=${encodeURIComponent(userId)}&limit=100`);
     if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-      return res.data.filter(p => !p.is_deleted && (p.maker_id === userId || p.maker?.id === userId));
+      const liveAndScheduled = res.data.filter(p => !p.is_deleted && (p.maker_id === userId || p.maker?.id === userId));
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('indihunt_products');
+          const localList: Product[] = raw ? JSON.parse(raw) : [];
+          // Preserve any newly submitted pre-launch product from local storage if API didn't return it yet
+          const nonApiLocal = localList.filter(lp =>
+            (lp.maker_id === userId || lp.maker?.id === userId) &&
+            !lp.is_deleted &&
+            !liveAndScheduled.some(ap => ap.id === lp.id || (ap.name && lp.name && ap.name.toLowerCase() === lp.name.toLowerCase()))
+          );
+          const combined = [...liveAndScheduled, ...nonApiLocal];
+          return combined;
+        } catch { }
+      }
+      return liveAndScheduled;
     }
-  } catch (e) { }
-
-  try {
-    const allProds = await getProducts(userId);
-    const matched = allProds.filter(p => (p.maker_id === userId || p.maker?.id === userId) && !p.is_deleted);
-    if (matched.length > 0) return matched;
   } catch (e) { }
 
   if (typeof window !== 'undefined') {

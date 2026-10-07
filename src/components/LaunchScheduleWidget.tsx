@@ -74,9 +74,31 @@ export default function LaunchScheduleWidget() {
 
     fetchScheduledLaunch();
 
-    // Check periodically (every 30 seconds) in case it launches locally
-    const interval = setInterval(updateScheduledState, 30000);
-    return () => clearInterval(interval);
+    const handleUpdateEvent = (event?: any) => {
+      if (event?.detail) {
+        const newProd = event.detail as Product;
+        if (newProd && newProd.status === "scheduled") {
+          productsList = [newProd, ...productsList.filter(p => p.id !== newProd.id)];
+          updateScheduledState();
+        }
+      }
+      fetchScheduledLaunch();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ih_scheduled_product_updated", handleUpdateEvent);
+      window.addEventListener("storage", handleUpdateEvent);
+    }
+
+    // Check periodically in case launch date arrives or server status updates
+    const interval = setInterval(fetchScheduledLaunch, 15000);
+    return () => {
+      clearInterval(interval);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ih_scheduled_product_updated", handleUpdateEvent);
+        window.removeEventListener("storage", handleUpdateEvent);
+      }
+    };
   }, [user, profile]);
 
   const scheduledProduct = scheduledProducts[currentIndex] || null;

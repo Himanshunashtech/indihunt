@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, isValidUUID } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,10 +13,13 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const type = searchParams.get('type') || 'followers';
 
-    const supabase = await createServerSupabaseClient();
-
     // Check single follow status
     if (followerId && followingId) {
+      if (!isValidUUID(followerId) || !isValidUUID(followingId)) {
+        return apiSuccessSecure({ isFollowing: false });
+      }
+
+      const supabase = await createServerSupabaseClient();
       const { data, error } = await supabase
         .from('user_follows')
         .select('id')
@@ -33,6 +36,11 @@ export async function GET(request: NextRequest) {
 
     // List followers or following
     if (userId) {
+      if (!isValidUUID(userId)) {
+        return apiSuccessSecure([]);
+      }
+
+      const supabase = await createServerSupabaseClient();
       if (type === 'followers') {
         const { data, error } = await supabase
           .from('user_follows')

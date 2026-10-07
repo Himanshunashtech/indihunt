@@ -71,6 +71,38 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.6.3",
+    date: "October 2026",
+    title: "Calendar Launch Counts Engine & Zero-Refresh Scheduled Launch Sync",
+    summary: "Implemented dedicated /t/products/scheduled-counts API endpoint with IST date grouping, connected real-time cross-tab event synchronization for newly scheduled launches across LaunchScheduleWidget and My Products, and eliminated stale in-memory feed caching on launch submissions.",
+    icon: Calendar,
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-500/10",
+    tags: ["Launches", "New Feature", "Bugfix"],
+    features: [
+      { icon: Calendar, text: "Created /t/products/scheduled-counts endpoint with IST date aggregation, accurately showing real booked slots in the launch date picker." },
+      { icon: Rocket, text: "Added instant event dispatch on product scheduling so the pre-launch widget and My Products dashboard render new launches in 0ms without page reloads." },
+      { icon: Zap, text: "Synchronized in-memory client caches and local storage across scheduling flows, preventing stale product lists from overwriting active state." },
+    ],
+    highlight: true,
+  },
+  {
+    version: "v7.6.2",
+    date: "October 2026",
+    title: "UUID Input Validation & Mock Identity Guard Rails",
+    summary: "Guarded all user-centric API endpoints (/t/user-streak, /t/upvotes, /t/bootstrap, /t/profiles, /t/user-follows, /t/user-stacks, /t/notifications) against non-UUID syntax errors when querying PostgreSQL, providing graceful fallbacks for local dev mock accounts.",
+    icon: ShieldCheck,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Bugfix", "Security", "Improvement"],
+    features: [
+      { icon: ShieldCheck, text: "Added strict UUID validation utility to prevent PostgreSQL 'invalid input syntax for type uuid' database exceptions." },
+      { icon: CheckCircle, text: "Implemented graceful mock fallbacks across /t/user-streak, /t/upvotes, and /t/bootstrap for local demo users." },
+      { icon: Zap, text: "Protected follow, stack, and notification endpoints from invalid identifier lookups." },
+    ],
+    highlight: false,
+  },
+  {
     version: "v7.6.1",
     date: "October 2026",
     title: "Thread Detail & Product Settings Ultra-Fast Zero-Waterfall Engine",
@@ -86,7 +118,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Database, text: "Added dedicated PostgreSQL indexes for threads, thread categories, thread titles, and thread comments in migration 107." },
       { icon: Zap, text: "Added prefetch={false} to discussion thread cards to prevent background serverless execution storms." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.6.0",

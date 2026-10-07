@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, isValidUUID } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +11,10 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') || searchParams.get('user_id');
 
     if (!userId) return apiFailure('userId is required', 400);
+
+    if (!isValidUUID(userId)) {
+      return apiSuccessSecure([]);
+    }
 
     const supabase = await createServerSupabaseClient();
     const { data, error } = await supabase

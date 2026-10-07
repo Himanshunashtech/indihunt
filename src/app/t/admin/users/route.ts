@@ -12,9 +12,12 @@ export async function GET(_request: NextRequest) {
       .select('*')
       .order('created_at', { ascending: false });
 
+    console.log(`[GET /t/admin/users] supabaseRows=${data?.length ?? 0} error=${error?.message || 'none'}`);
+
     if (error) return apiFailure(error.message, 500);
     return apiSuccessSecure(data || []);
   } catch (err: any) {
+    console.error('[GET /t/admin/users Error]:', err);
     return apiFailure(err?.message || 'Failed to fetch admin users', 500);
   }
 }

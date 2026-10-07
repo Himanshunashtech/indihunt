@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createServerSupabaseClient();
     let query = supabase
       .from('stories')
-      .select('*, user:profiles(id, username, full_name, avatar_url, headline, karma_points)')
+      .select('*, user:profiles!user_id(id, username, full_name, avatar_url, headline, karma_points)')
       .order('published_at', { ascending: false })
       .limit(limit);
 
@@ -37,7 +37,19 @@ export async function GET(request: NextRequest) {
       query = query.ilike('title', `%${search}%`);
     }
 
-    const { data: stories, error: dbErr } = await query;
+    let { data: stories, error: dbErr } = await query;
+
+    if (dbErr) {
+      console.warn('[GET /t/stories] Joined query warning, retrying simple query:', dbErr.message);
+      const fallbackQuery = await supabase
+        .from('stories')
+        .select('*')
+        .order('published_at', { ascending: false })
+        .limit(limit);
+      stories = fallbackQuery.data || [];
+    }
+
+    console.log(`[GET /t/stories] limit=${limit} cached=${false} dbStories=${stories?.length ?? 0}`);
     const dbStories = (stories && stories.length > 0) ? stories : [];
 
     // Merge: Real DB user stories first + Mock DEFAULT_STORIES

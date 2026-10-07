@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, isValidUUID } from '@/lib/api/response';
+import { MOCK_PROFILES } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId') || searchParams.get('user_id');
     if (!userId) return apiFailure('userId required', 400);
+
+    if (!isValidUUID(userId)) {
+      const mock = MOCK_PROFILES[userId] || null;
+      return apiSuccessSecure({
+        profile: mock,
+        upvoteIds: [],
+        notifCount: 0,
+      });
+    }
 
     const cacheKey = `bootstrap:${userId}`;
     const cached = await getCachedData<{ profile: any; upvoteIds: string[]; notifCount: number }>(cacheKey);

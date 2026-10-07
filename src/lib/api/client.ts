@@ -2,8 +2,11 @@ import { decodePayload } from './obfuscate';
 
 function getBaseUrl(): string {
   if (typeof window !== 'undefined') return '';
-  const port = process.env.PORT || '3000';
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  if (process.env.URL) return process.env.URL.replace(/\/$/, '');
+  if (process.env.DEPLOY_PRIME_URL) return process.env.DEPLOY_PRIME_URL.replace(/\/$/, '');
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  const port = process.env.PORT || '3000';
   return `http://127.0.0.1:${port}`;
 }
 
@@ -29,8 +32,9 @@ export async function secureApiFetch<T = any>(
   }
 
   const fetchPromise = (async () => {
+    let fullUrl = url;
     try {
-      const fullUrl = url.startsWith('/') ? `${getBaseUrl()}${url}` : url;
+      fullUrl = url.startsWith('/') ? `${getBaseUrl()}${url}` : url;
 
       // On the server, add an internal bypass header so the middleware
       // skips bot-detection for SSR self-requests (Node fetch UA triggers the block)
@@ -57,7 +61,8 @@ export async function secureApiFetch<T = any>(
       const json = await res.json().catch(() => null);
 
       if (!json) {
-        return { success: false, error: 'Invalid JSON response from server' };
+        console.warn(`[secureApiFetch] ${method} ${fullUrl} returned non-JSON / status ${res.status}`);
+        return { success: false, error: `Invalid JSON response (status ${res.status})` };
       }
 
       let finalResult = json;
@@ -75,6 +80,7 @@ export async function secureApiFetch<T = any>(
 
       return finalResult;
     } catch (err: any) {
+      console.error(`[secureApiFetch Error] ${method} ${fullUrl}:`, err?.message);
       return { success: false, error: err?.message || 'Network request failed' };
     } finally {
       if (isGet) {

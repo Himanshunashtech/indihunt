@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, isValidUUID } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +13,10 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       return apiFailure('userId is required', 400);
+    }
+
+    if (!isValidUUID(userId)) {
+      return apiSuccessSecure([]);
     }
 
     const cacheKey = withProducts ? `upvotes_full:user:${userId}` : `upvotes:user:${userId}`;

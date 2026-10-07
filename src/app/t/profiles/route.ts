@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS, isValidUUID } from '@/lib/api/response';
 import { MOCK_PROFILES } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -42,16 +42,18 @@ export async function GET(request: NextRequest) {
       const supabase = await createServerSupabaseClient();
 
       if (userId) {
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select(PROFILE_COLS)
-          .eq('id', userId)
-          .maybeSingle();
+        if (isValidUUID(userId)) {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select(PROFILE_COLS)
+            .eq('id', userId)
+            .maybeSingle();
 
-        if (profile && !error) {
-          const formatted = formatProfile(profile);
-          await setCachedData(`profile:id:${profile.id}`, formatted, 3600);
-          return apiSuccessSecure(formatted);
+          if (profile && !error) {
+            const formatted = formatProfile(profile);
+            await setCachedData(`profile:id:${profile.id}`, formatted, 3600);
+            return apiSuccessSecure(formatted);
+          }
         }
       } else if (username) {
         const cleaned = username.replace(/^@/, '').toLowerCase().trim();

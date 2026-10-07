@@ -32,7 +32,9 @@ export default async function ProfileLeaderboardPage() {
   let leaders: Profile[] = [];
   try {
     leaders = await getKarmaLeaderboard(100);
-  } catch {
+    console.log(`[ProfileLeaderboardPage SSR] fetched ${leaders.length} leaders for Karma Leaderboard`);
+  } catch (err: any) {
+    console.error('[ProfileLeaderboardPage SSR Error]:', err?.message);
     leaders = [];
   }
 

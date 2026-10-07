@@ -6,59 +6,41 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(_request: NextRequest) {
   try {
-    const counts: Record<string, number> = {};
-
-    const recordProductDate = (dateVal: string | Date | undefined) => {
-      if (!dateVal) return;
-      try {
-        const dateKeys = new Set<string>();
-        if (typeof dateVal === 'string') {
-          const match = dateVal.match(/^(\d{4})-(\d{2})-(\d{2})/);
-          if (match) {
-            dateKeys.add(`${match[1]}-${match[2]}-${match[3]}`);
-          }
-        }
-        const d = new Date(dateVal);
-        if (!isNaN(d.getTime())) {
-          const yyyy = d.getFullYear();
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          dateKeys.add(`${yyyy}-${mm}-${dd}`);
-
-          // UTC representation
-          const utcYyyy = d.getUTCFullYear();
-          const utcMm = String(d.getUTCMonth() + 1).padStart(2, '0');
-          const utcDd = String(d.getUTCDate()).padStart(2, '0');
-          dateKeys.add(`${utcYyyy}-${utcMm}-${utcDd}`);
-        }
-
-        dateKeys.forEach((key) => {
-          counts[key] = (counts[key] || 0) + 1;
-        });
-      } catch {}
-    };
-
     const supabase = await createServerSupabaseClient();
+
     const { data, error } = await supabase
       .from('products')
-      .select('id, name, scheduled_for, status, is_deleted')
-      .eq('is_deleted', false)
+      .select('scheduled_for')
+      .eq('status', 'scheduled')
+      .or('is_deleted.is.null,is_deleted.eq.false')
       .not('scheduled_for', 'is', null);
 
     if (error) {
+      console.warn('[GET /t/products/scheduled-counts] Database error:', error.message);
       return apiFailure(error.message, 500);
     }
 
-    if (data && Array.isArray(data)) {
-      data.forEach((p: any) => {
-        if (!p.is_deleted && p.scheduled_for) {
-          recordProductDate(p.scheduled_for);
-        }
-      });
-    }
+    const counts: Record<string, number> = {};
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
-    return apiSuccessSecure(counts);
+    (data || []).forEach((p: any) => {
+      if (p.scheduled_for) {
+        // Normalize scheduled timestamp to Indian Standard Time (IST) date key YYYY-MM-DD
+        const utcDate = new Date(p.scheduled_for);
+        const istDate = new Date(utcDate.getTime() + IST_OFFSET_MS);
+        const yyyy = istDate.getUTCFullYear();
+        const mm = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(istDate.getUTCDate()).padStart(2, '0');
+        const key = `${yyyy}-${mm}-${dd}`;
+        counts[key] = (counts[key] || 0) + 1;
+      }
+    });
+
+    return apiSuccessSecure(counts, 200, {
+      'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+    });
   } catch (error: any) {
-    return apiFailure(error?.message || 'Failed to get scheduled product counts', 500);
+    console.error('[GET /t/products/scheduled-counts] Error:', error);
+    return apiFailure(error?.message || 'Failed to fetch scheduled counts', 500);
   }
 }

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
-import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
+import { apiSuccessSecure, apiFailure, isValidUUID } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +13,14 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       return apiFailure('Missing userId parameter', 400);
+    }
+
+    if (!isValidUUID(userId)) {
+      const countOnly = searchParams.get('count_only') === 'true' || searchParams.get('unread_count') === 'true';
+      if (countOnly) {
+        return apiSuccessSecure({ count: 0 });
+      }
+      return apiSuccessSecure([]);
     }
 
     const countOnly = searchParams.get('count_only') === 'true' || searchParams.get('unread_count') === 'true';

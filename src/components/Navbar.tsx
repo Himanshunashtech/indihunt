@@ -309,20 +309,25 @@ export default function Navbar({
         } catch (e) { }
       }
 
-      // 2. Optimistic Client Cleanup & URL sanitization
+      // 2. Optimistic Client Cleanup
       dispatch(logout());
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(null, "", "/");
-      }
 
       // 3. Trigger full signout in background non-blockingly
       signOut().catch(console.error);
 
-      // 4. Instant SPA navigation
-      router.push("/");
+      // 4. Instant navigation to home page
+      if (typeof window !== 'undefined') {
+        window.location.href = "/";
+      } else {
+        router.push("/");
+      }
     } catch (err) {
       console.error("Signout error:", err);
-      router.push("/");
+      if (typeof window !== 'undefined') {
+        window.location.href = "/";
+      } else {
+        router.push("/");
+      }
     }
   };
 

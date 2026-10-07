@@ -69,11 +69,11 @@ export async function GET(request: NextRequest) {
     if (queryStr || checkUrl) limit = Math.min(limit, 50);
 
     // 1. Shared Public Feed (fast path with versioned caching)
-    const isPublicFeed = !queryStr && !checkUrl && !full;
+    const isPublicFeed = !queryStr && !checkUrl && !full && !makerId;
     if (isPublicFeed) {
       const v = await getFeedVersion();
-      const cacheKey = `feed:v${v}:cat:${category ?? 'all'}:maker:${makerId ?? 'all'}:cursor:${cursor ?? '0'}:lim:${limit}`;
-      const products = await cached<any[]>(cacheKey, 60, () => fetchFeed({ category, makerId, cursor, limit }));
+      const cacheKey = `feed:v${v}:cat:${category ?? 'all'}:cursor:${cursor ?? '0'}:lim:${limit}`;
+      const products = await cached<any[]>(cacheKey, 60, () => fetchFeed({ category, cursor, limit }));
 
       if (!userId) {
         return apiSuccessSecure(products, 200, PUBLIC_CACHE_HEADERS);

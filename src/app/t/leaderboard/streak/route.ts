@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
       .order('streak_count', { ascending: false })
       .limit(limit);
 
+    console.log(`[GET /t/leaderboard/streak] limit=${limit} cached=${!!cached} supabaseRows=${profiles?.length ?? 0} error=${error?.message || 'none'}`);
+
     if (error) {
       return apiFailure(error.message, 500);
     }
@@ -33,6 +35,7 @@ export async function GET(request: NextRequest) {
 
     return apiSuccessSecure(leaderboard);
   } catch (error: any) {
+    console.error('[GET /t/leaderboard/streak Error]:', error);
     return apiFailure(error?.message || 'Failed to fetch leaderboard streaks', 500);
   }
 }

@@ -88,9 +88,15 @@ export default function MyProductsClient({
 
       if (isMounted) {
         setUser(currentUser);
-        // Instant render from local cache if present
-        const cached = getCachedProducts();
-        const userCached = cached.filter(
+        // Instant render from local storage or cache if present
+        let localAll: Product[] = [];
+        try {
+          const raw = localStorage.getItem('indihunt_products');
+          if (raw) localAll = JSON.parse(raw);
+        } catch {}
+        if (localAll.length === 0) localAll = getCachedProducts();
+
+        const userCached = localAll.filter(
           (p) => (p.maker_id === currentUser.id || p.maker?.id === currentUser.id) && !p.is_deleted
         );
         if (userCached.length > 0) {
@@ -105,8 +111,27 @@ export default function MyProductsClient({
 
     initUserAndProducts();
 
+    const handleProductUpdated = (e?: any) => {
+      if (e?.detail) {
+        const newProd = e.detail as Product;
+        setProducts(prev => [newProd, ...prev.filter(p => p.id !== newProd.id)]);
+        setIsLoading(false);
+      }
+      const uid = reduxUser?.id;
+      if (uid) fetchMyProducts(uid);
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ih_scheduled_product_updated", handleProductUpdated);
+      window.addEventListener("storage", handleProductUpdated);
+    }
+
     return () => {
       isMounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ih_scheduled_product_updated", handleProductUpdated);
+        window.removeEventListener("storage", handleProductUpdated);
+      }
     };
   }, [router, reduxUser]);
 

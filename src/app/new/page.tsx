@@ -433,6 +433,7 @@ function NewLaunchWizard() {
             localStorage.setItem('ih_prelaunch_seed', JSON.stringify(newProd));
             localStorage.setItem(`ih_product_${newProd.id}`, JSON.stringify(newProd));
             if (prodSlug) localStorage.setItem(`ih_product_${prodSlug}`, JSON.stringify(newProd));
+            window.dispatchEvent(new CustomEvent('ih_scheduled_product_updated', { detail: newProd }));
           } catch {}
         }
 

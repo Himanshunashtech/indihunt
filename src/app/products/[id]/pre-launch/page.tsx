@@ -45,37 +45,12 @@ export default function PreLaunchDashboardPage() {
   const params = useParams();
   const router = useRouter();
   const productId = params.id as string;
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState<any>(null);
-
-  // Instant synchronous hydration from localStorage/seed (0ms initial render)
-  const [product, setProduct] = useState<Product | null>(() => {
-    if (typeof window !== 'undefined' && productId) {
-      try {
-        const seeded = localStorage.getItem('ih_prelaunch_seed');
-        if (seeded) {
-          const parsed = JSON.parse(seeded);
-          if (parsed && (parsed.id === productId || getProductSlug(parsed.name) === productId)) {
-            return parsed;
-          }
-        }
-        const cachedDirect = localStorage.getItem(`ih_product_${productId}`);
-        if (cachedDirect) {
-          return JSON.parse(cachedDirect);
-        }
-        const raw = localStorage.getItem('indihunt_products');
-        if (raw) {
-          const list: Product[] = JSON.parse(raw);
-          const found = list.find(p => p.id === productId || getProductSlug(p.name) === productId);
-          if (found) return found;
-        }
-      } catch {}
-    }
-    return null;
-  });
-
+  const [product, setProduct] = useState<Product | null>(null);
   const [shoutoutsGiven, setShoutoutsGiven] = useState<ProductShoutout[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(() => !product);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Countdown State
   const [timeLeft, setTimeLeft] = useState("Calculating...");
@@ -84,6 +59,29 @@ export default function PreLaunchDashboardPage() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const [showEmbedModal, setShowEmbedModal] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    // Instant cache check on client mount
+    if (productId && typeof window !== 'undefined') {
+      try {
+        const seeded = localStorage.getItem('ih_prelaunch_seed');
+        if (seeded) {
+          const parsed = JSON.parse(seeded);
+          if (parsed && (parsed.id === productId || getProductSlug(parsed.name) === productId)) {
+            setProduct(parsed);
+            setIsLoading(false);
+          }
+        }
+        const cachedDirect = localStorage.getItem(`ih_product_${productId}`);
+        if (cachedDirect) {
+          const parsedDirect = JSON.parse(cachedDirect);
+          setProduct(parsedDirect);
+          setIsLoading(false);
+        }
+      } catch {}
+    }
+  }, [productId]);
 
   useEffect(() => {
     const client = supabase;
@@ -109,7 +107,7 @@ export default function PreLaunchDashboardPage() {
         setShoutoutsGiven(shoutouts);
         setComments(productComments);
       } else {
-        if (!product) setProduct(null);
+        setProduct((prev) => prev || null);
       }
     } catch (err) {
       console.error("Error loading pre-launch product:", err);
@@ -188,7 +186,7 @@ export default function PreLaunchDashboardPage() {
     }
   };
 
-  if (isLoading) {
+  if (!mounted || isLoading) {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
         <CircularLoader label="Loading Pre-Launch Dashboard..." size="lg" center={false} />

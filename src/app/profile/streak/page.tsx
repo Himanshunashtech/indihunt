@@ -32,7 +32,9 @@ export default async function ProfileStreakPage() {
   let leaders: Profile[] = [];
   try {
     leaders = await getStreakLeaderboard(100);
-  } catch {
+    console.log(`[ProfileStreakPage SSR] fetched ${leaders.length} leaders for Streak Leaderboard`);
+  } catch (err: any) {
+    console.error('[ProfileStreakPage SSR Error]:', err?.message);
     leaders = [];
   }
 
