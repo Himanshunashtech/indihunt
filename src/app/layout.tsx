@@ -8,6 +8,7 @@ import AuthModal from "@/components/AuthModal";
 import TopProgressBar from "@/components/TopProgressBar";
 import ScrollToTop from "@/components/ScrollToTop";
 import CookieConsentBanner from "@/components/CookieConsentBanner";
+import { DEFAULT_THEME } from "@/lib/theme";
 
 const dmSans = DM_Sans({
   variable: "--font-sans",
@@ -133,9 +134,17 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${DEFAULT_THEME === 'dark' ? 'dark ' : ''}${dmSans.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <head>
+        {/* Synchronous theme initialization before first paint to prevent white flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var d='${DEFAULT_THEME}';var s=localStorage.getItem('theme');var t=(s==='light'||s==='dark')?s:d;if(!s){localStorage.setItem('theme',d);}if(t==='dark'){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,
+          }}
+        />
+
         {/* Google Tag Manager */}
         <Script
           id="gtm-script"

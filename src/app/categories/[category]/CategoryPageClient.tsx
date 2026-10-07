@@ -31,6 +31,7 @@ import Navbar from "@/components/Navbar";
 import { SponsoredAd } from "@/components/SponsoredAd";
 import { useAppDispatch, useAppSelector, setAuthModalOpen } from "@/lib/store";
 import { HexagonAwardBadge } from "@/components/AwardBadge";
+import { getInitialTheme, applyTheme, Theme, DEFAULT_THEME } from "@/lib/theme";
 
 interface CompanyLogo {
   name: string;
@@ -59,7 +60,7 @@ export default function CategoryPageClient({
 }: CategoryPageClientProps) {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
   const reduxUser = useAppSelector((state) => state.auth.user);
   const [currentUser, setCurrentUser] = useState<any>(reduxUser);
   const effectiveUserId = reduxUser?.id || currentUser?.id || null;
@@ -113,25 +114,16 @@ export default function CategoryPageClient({
 
   // Initialize theme
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    const initialTheme = savedTheme || 'light';
+    const initialTheme = getInitialTheme();
     setTheme(initialTheme);
-    if (initialTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyTheme(initialTheme);
   }, []);
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    const nextTheme: Theme = theme === 'light' ? 'dark' : 'light';
     setTheme(nextTheme);
     localStorage.setItem('theme', nextTheme);
-    if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    applyTheme(nextTheme);
   };
 
   // Sync auth state from Redux and Supabase

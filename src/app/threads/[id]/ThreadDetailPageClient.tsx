@@ -483,10 +483,11 @@ export default function ThreadDetailPageClient({
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                       <button
                         onClick={handleVote}
-                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-full font-semibold text-xs transition-all cursor-pointer ${thread.has_upvoted
-                            ? "border-2 border-[#ff5733] bg-card text-foreground"
-                            : "border border-border bg-card text-muted-foreground hover:text-foreground hover:border-[#ff5733]/60"
-                          }`}
+                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs transition-all cursor-pointer shadow-sm ${
+                          thread.has_upvoted
+                            ? "bg-orange-500/10 border-2 border-[#ff5733] text-[#ff5733]"
+                            : "bg-[#ff5733] text-white hover:bg-[#e64a19] shadow-orange-500/20"
+                        }`}
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -494,16 +495,17 @@ export default function ThreadDetailPageClient({
                           height="16"
                           fill="none"
                           viewBox="0 0 16 16"
-                          className={`w-3.5 h-3.5 stroke-[1.5px] transition-all duration-300 ${thread.has_upvoted
+                          className={`w-3.5 h-3.5 stroke-[1.5px] transition-all duration-300 ${
+                            thread.has_upvoted
                               ? "fill-[#ff5733] stroke-[#ff5733]"
-                              : "fill-white dark:fill-transparent stroke-foreground/70"
-                            }`}
+                              : "fill-white stroke-white"
+                          }`}
                         >
                           <path d="M6.579 3.467c.71-1.067 2.132-1.067 2.842 0L12.975 8.8c.878 1.318.043 3.2-1.422 3.2H4.447c-1.464 0-2.3-1.882-1.422-3.2z" />
                         </svg>
                         <span>{thread.has_upvoted ? "Upvoted" : "Upvote"}</span>
-                        <span className="w-px h-3 bg-border"></span>
-                        <span>{thread.upvotes_count}</span>
+                        <span className={`w-px h-3 ${thread.has_upvoted ? "bg-[#ff5733]/40" : "bg-white/40"}`}></span>
+                        <span>{thread.upvotes_count || 0}</span>
                       </button>
 
                       <button

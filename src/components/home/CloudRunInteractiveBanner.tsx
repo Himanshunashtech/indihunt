@@ -71,7 +71,7 @@ export default function CloudRunInteractiveBanner() {
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-[28px] sm:rounded-[38px] p-2.5 sm:p-4 select-none mb-4"
+      className="relative w-full overflow-hidden rounded-[24px] sm:rounded-[38px] p-1 sm:p-4 select-none mb-4"
       style={{
         background: "linear-gradient(180deg, #5b2fd1 0%, #812fba 42%, #b62f8e 70%, #e63f5a 100%)",
       }}
@@ -124,7 +124,7 @@ export default function CloudRunInteractiveBanner() {
 
       {/* CONTENT CARD */}
       <div
-        className="relative z-10 w-full md:w-[65%] lg:w-[64%] rounded-[28px] sm:rounded-[36px] px-5 py-5 sm:px-7 sm:py-6 shadow-xl"
+        className="relative z-10 w-full md:w-[65%] lg:w-[64%] rounded-[20px] sm:rounded-[36px] px-3.5 py-4 sm:px-7 sm:py-6 shadow-xl"
         style={{
           backgroundColor: "#18181b",
           color: "#ffffff",

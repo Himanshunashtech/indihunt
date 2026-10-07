@@ -1244,20 +1244,25 @@ export async function signOut() {
     console.error("SignOut API Error:", err);
   }
 
-  // Wipe ALL in-memory caches so stale has_upvoted values don't survive logout
-  clearCache();
+  // Clear user-specific in-memory caches (upvotes)
+  clearCache('upvotes');
+  clearCache('user_upvotes');
 
   if (typeof window !== 'undefined') {
     try {
-      // 1. Wipe user data and Supabase auth sb- tokens, BUT strictly preserve cookie consent & theme preferences
+      // 1. Wipe user data and Supabase auth sb- tokens, BUT strictly preserve public feeds, cookie consent & theme preferences
       const keys = Object.keys(localStorage);
       keys.forEach(k => {
-        // Never delete cookie consent preferences or theme
+        // Never delete public product feeds, threads, cookie consent preferences or theme
         if (
           k === 'indihunt_cookie_consent_v1' ||
           k.includes('cookie_consent') ||
           k.includes('cookie_preference') ||
-          k === 'theme'
+          k === 'theme' ||
+          k === 'indihunt_products' ||
+          k === 'indihunt_threads' ||
+          k === 'indihunt_top_hunters' ||
+          k === 'indihunt_categories'
         ) {
           return;
         }
@@ -7836,7 +7841,7 @@ export const getHomeProductsDirect = async (limit: number = 30): Promise<Product
     const { data, error } = await supabase
       .from('products')
       .select('id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,maker:profiles!maker_id(id,username,full_name,avatar_url,headline,is_maker,is_verified)')
-      .eq('is_deleted', false)
+      .or('is_deleted.is.null,is_deleted.eq.false')
       .order('created_at', { ascending: false })
       .limit(limit);
 

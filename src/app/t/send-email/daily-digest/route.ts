@@ -10,36 +10,40 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT
 const supabaseKey = serviceRoleKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const dbClient = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
-// Direct Supabase query for fresh products — bypasses Redis/public cache
-// so the daily digest always sees the latest launches.
-const LIST_COLS =
-  'id,name,tagline,logo_url,website_url,tags,status,scheduled_for,created_at,upvotes_count,comments_count,quality_score,featured,featured_at,editor_pick,never_feature,country,pricing_type,is_open_source,is_deleted,maker_id,worked_on_launch,is_promoted,promoted';
-
 async function getFreshProducts(): Promise<any[]> {
-  // 1. Try a direct DB query (no cache) so today's products are always included
-  if (dbClient) {
-    try {
-      const { data, error } = await dbClient
-        .from('products')
-        .select(LIST_COLS)
-        .neq('is_deleted', true)
-        .order('created_at', { ascending: false })
-        .limit(300);
+  const base = (await getProducts()) || [];
 
-      if (!error && data && data.length > 0) {
-        const now = new Date();
-        return data.map((p: any) =>
-          p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
-            ? { ...p, status: 'live' }
-            : p
-        );
-      }
-    } catch { }
+  if (!dbClient) return base;
+
+  try {
+    const { data, error } = await dbClient
+      .from('products')
+      .select('*')
+      .or('is_deleted.is.null,is_deleted.eq.false')
+      .order('created_at', { ascending: false })
+      .limit(300);
+
+    if (error) {
+      console.error('[Digest] fresh query error:', error.message);
+      return base;
+    }
+
+    const now = new Date();
+    const map = new Map<string, any>();
+    base.forEach((p: any) => map.set(p.id, p));
+    (data || []).forEach((p: any) => {
+      const fixed =
+        p.status === 'scheduled' && p.scheduled_for && new Date(p.scheduled_for) <= now
+          ? { ...p, status: 'live' }
+          : p;
+      // keep getProducts() version if it exists (it has the normalized fields)
+      if (!map.has(p.id)) map.set(p.id, fixed);
+    });
+    return Array.from(map.values());
+  } catch (e: any) {
+    console.error('[Digest] fresh query exception:', e?.message);
+    return base;
   }
-
-  // 2. Fallback to getProducts() (may serve cached data, but better than nothing)
-  const fallback = await getProducts();
-  return (fallback && fallback.length > 0) ? fallback : [];
 }
 
 export async function POST(req: Request) {
@@ -111,6 +115,7 @@ async function handleDailyDigest(req: Request) {
       : "🔥 Trending Top Products on IndiHunt";
 
     const queryLogs: string[] = [];
+    queryLogs.push(`prods=${prods.length}, live=${liveProds.length}, today=${todaysLaunches.length}`);
     queryLogs.push(`Found ${todaysLaunches.length} products launched today, showing ${topToday.length} products total.`);
 
     // Helper functions for absolute URL formatting in emails
@@ -598,6 +603,7 @@ async function handleDailyDigest(req: Request) {
       activeBillboardAdsCount: billboardAds.length,
       billboardAdsDistribution: servedAdImpressions,
       batchesSent: results.length,
+      diagnostics: queryLogs,
       results
     });
   } catch (error: any) {

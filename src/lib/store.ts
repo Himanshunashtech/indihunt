@@ -4,6 +4,7 @@ import { configureStore, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import { User } from "@supabase/supabase-js";
 import { Profile } from "./supabase";
+import { DEFAULT_THEME, Theme } from "./theme";
 
 // Auth Slice
 interface AuthState {
@@ -43,11 +44,11 @@ const authSlice = createSlice({
 
 // Theme Slice
 interface ThemeState {
-  value: "light" | "dark";
+  value: Theme;
 }
 
 const initialThemeState: ThemeState = {
-  value: "light",
+  value: DEFAULT_THEME,
 };
 
 const themeSlice = createSlice({

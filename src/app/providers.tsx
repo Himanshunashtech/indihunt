@@ -129,9 +129,15 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
           sessionStorage.removeItem('indihunt_user_session');
           localStorage.removeItem('indihunt_upvotes');
           localStorage.removeItem('indihunt_thread_upvotes');
+          localStorage.removeItem('indihunt_profile');
         } catch (e) { }
-        clearCache();
-        queryClient.clear();
+        clearCache('upvotes');
+        clearCache('user_upvotes');
+        queryClient.removeQueries({ queryKey: ["user"] });
+        queryClient.removeQueries({ queryKey: ["profile"] });
+        queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) =>
+          Array.isArray(old) ? old.map((p: any) => ({ ...p, has_upvoted: false })) : old
+        );
         dispatch(setUser(null));
         dispatch(setProfile(null));
         setCurrentUser(null);

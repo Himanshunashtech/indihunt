@@ -34,7 +34,7 @@ async function fetchFeed({ category, makerId, cursor, limit }: { category?: stri
   let query = supabase
     .from('products')
     .select(LIST_COLS)
-    .eq('is_deleted', false)
+    .or('is_deleted.is.null,is_deleted.eq.false')
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('products')
       .select(selectCols)
-      .eq('is_deleted', false)
+      .or('is_deleted.is.null,is_deleted.eq.false')
       .order('created_at', { ascending: false })
       .limit(limit);
 

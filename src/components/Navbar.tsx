@@ -58,6 +58,7 @@ import { useUnreadNotificationsCount, useNotifications } from "@/hooks/useDb";
 import { queryClient } from "@/lib/queryClient";
 import { useAppDispatch, useAppSelector, setAuthModalOpen, logout } from "@/lib/store";
 import { usePathname, useRouter } from "next/navigation";
+import { getInitialTheme, applyTheme, Theme } from "@/lib/theme";
 
 interface NavbarProps {
   /** current theme — pass in from parent if you manage it there, otherwise Navbar manages it internally */
@@ -245,40 +246,46 @@ export default function Navbar({
   // Internal theme init (only when not controlled externally)
   useEffect(() => {
     if (externalTheme) return;
-    const saved = localStorage.getItem("theme") as "light" | "dark" | null;
-    const init = saved || "light";
+    const init = getInitialTheme();
     setInternalTheme(init);
-    if (init === "dark") document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
+    applyTheme(init);
   }, [externalTheme]);
 
   const handleThemeToggle = () => {
     if (onThemeToggle) {
       onThemeToggle();
     } else {
-      const next = internalTheme === "light" ? "dark" : "light";
+      const next: Theme = internalTheme === "light" ? "dark" : "light";
       setInternalTheme(next);
       localStorage.setItem("theme", next);
-      if (next === "dark") document.documentElement.classList.add("dark");
-      else document.documentElement.classList.remove("dark");
+      applyTheme(next);
     }
   };
 
   const handleSignOut = async () => {
     try {
-      // 1. Clear ALL caches synchronously BEFORE Redux state change triggers re-render
-      clearCache();
-      queryClient.clear();
+      // 1. Clear user-specific caches synchronously BEFORE Redux state change triggers re-render
+      clearCache('upvotes');
+      clearCache('user_upvotes');
+      queryClient.removeQueries({ queryKey: ["user"] });
+      queryClient.removeQueries({ queryKey: ["profile"] });
+      queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) =>
+        Array.isArray(old) ? old.map((p: any) => ({ ...p, has_upvoted: false })) : old
+      );
       if (typeof window !== 'undefined') {
         try {
           const keys = Object.keys(localStorage);
           keys.forEach(k => {
-            // Never delete cookie consent preferences or theme
+            // Never delete public product feeds, threads, cookie consent preferences or theme
             if (
               k === 'indihunt_cookie_consent_v1' ||
               k.includes('cookie_consent') ||
               k.includes('cookie_preference') ||
-              k === 'theme'
+              k === 'theme' ||
+              k === 'indihunt_products' ||
+              k === 'indihunt_threads' ||
+              k === 'indihunt_top_hunters' ||
+              k === 'indihunt_categories'
             ) {
               return;
             }

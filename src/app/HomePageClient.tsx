@@ -35,6 +35,7 @@ import Navbar from "@/components/Navbar";
 import { queryClient } from "@/lib/queryClient";
 import { useWebSocket } from "@/components/WebSocketProvider";
 import { secureApiFetch } from "@/lib/api/client";
+import { getInitialTheme, applyTheme, Theme, DEFAULT_THEME } from "@/lib/theme";
 
 import {
   PaymentBanner,
@@ -83,7 +84,7 @@ export default function HomePageClient({
 }: HomePageClientProps) {
   const dispatch = useAppDispatch();
   const { subscribe, publish } = useWebSocket();
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -539,28 +540,16 @@ export default function HomePageClient({
 
   // Theme
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") as
-      | "light"
-      | "dark"
-      | null;
-    const initialTheme = savedTheme || "light";
+    const initialTheme = getInitialTheme();
     setTheme(initialTheme);
-    if (initialTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    applyTheme(initialTheme);
   }, []);
 
   const toggleTheme = () => {
-    const nextTheme = theme === "light" ? "dark" : "light";
+    const nextTheme: Theme = theme === "light" ? "dark" : "light";
     setTheme(nextTheme);
     localStorage.setItem("theme", nextTheme);
-    if (nextTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    applyTheme(nextTheme);
   };
 
   // Pulse stats fetch — only fetch if SSR initial stats are not provided
@@ -703,12 +692,12 @@ export default function HomePageClient({
     return d;
   }, [startOfToday]);
 
-  const currentProducts = mounted ? products : initialProducts;
-  const currentThreads = mounted ? threads : initialThreads;
+  const currentProducts = (mounted && products && products.length > 0) ? products : (initialProducts && initialProducts.length > 0 ? initialProducts : (products || []));
+  const currentThreads = (mounted && threads && threads.length > 0) ? threads : (initialThreads && initialThreads.length > 0 ? initialThreads : (threads || []));
 
   const { data: promotedProducts = initialPromotedProducts } =
-    usePromotedProducts(products, initialPromotedProducts, effectiveUserId || undefined);
-  const currentPromotedProducts = mounted ? promotedProducts : initialPromotedProducts;
+    usePromotedProducts(currentProducts, initialPromotedProducts, effectiveUserId || undefined);
+  const currentPromotedProducts = (mounted && promotedProducts && promotedProducts.length > 0) ? promotedProducts : (initialPromotedProducts && initialPromotedProducts.length > 0 ? initialPromotedProducts : (promotedProducts || []));
 
   const searchedProducts = useMemo(() => {
     return currentProducts.filter(

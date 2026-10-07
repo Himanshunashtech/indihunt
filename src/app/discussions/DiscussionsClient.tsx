@@ -712,30 +712,37 @@ export default function DiscussionsClient({
                       {/* Upvote Box */}
                       <button
                         onClick={e => handleVote(e, thread.id)}
-                        className={`group/upvote flex size-12 flex-col items-center justify-center gap-1 rounded-xl transition-all cursor-pointer ${
-                          thread.has_upvoted
-                            ? "border-2 border-[#ff5733] bg-card text-foreground"
-                            : "border border-border bg-card hover:border-[#ff5733]/60 text-foreground"
-                        }`}
+                        type="button"
+                        data-test="vote-button"
+                        className="relative"
                         title="Upvote thread"
                       >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          fill="none"
-                          viewBox="0 0 16 16"
-                          className={`size-4 stroke-[1.5px] transition-all duration-300 ${
+                        <div
+                          className={`group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-300 ${
                             thread.has_upvoted
-                              ? "fill-[#ff5733] stroke-[#ff5733]"
-                              : "fill-white dark:fill-transparent stroke-slate-700 dark:stroke-slate-300 group-hover/upvote:stroke-[#ff5733]"
+                              ? "bg-orange-500/10 text-[#ff5733]"
+                              : "border border-border bg-card hover:border-[#ff5733]"
                           }`}
+                          data-filled={thread.has_upvoted ? "true" : "false"}
                         >
-                          <path d="M6.579 3.467c.71-1.067 2.132-1.067 2.842 0L12.975 8.8c.878 1.318.043 3.2-1.422 3.2H4.447c-1.464 0-2.3-1.882-1.422-3.2z" />
-                        </svg>
-                        <span className="text-sm font-medium leading-none text-foreground">
-                          {thread.upvotes_count}
-                        </span>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            fill="none"
+                            viewBox="0 0 16 16"
+                            className={`size-4 stroke-[1.5px] transition-all duration-300 ${
+                              thread.has_upvoted
+                                ? "fill-[#ff5733] stroke-[#ff5733]"
+                                : "fill-white dark:fill-transparent stroke-slate-700 dark:stroke-slate-300 group-hover/accessory:stroke-[#ff5733]"
+                            }`}
+                          >
+                            <path d="M6.579 3.467c.71-1.067 2.132-1.067 2.842 0L12.975 8.8c.878 1.318.043 3.2-1.422 3.2H4.447c-1.464 0-2.3-1.882-1.422-3.2z" />
+                          </svg>
+                          <p className={`text-base font-medium leading-none ${thread.has_upvoted ? "text-[#ff5733]" : "text-foreground"}`}>
+                            {thread.upvotes_count || 0}
+                          </p>
+                        </div>
                       </button>
                     </div>
                   </div>
