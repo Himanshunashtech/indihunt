@@ -7,12 +7,19 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createServerSupabaseClient();
+    const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+    const sessionUserId = authData?.user?.id;
+
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId') || searchParams.get('user_id');
+    const queryUserId = searchParams.get('userId') || searchParams.get('user_id');
     const withProducts = searchParams.get('withProducts') === 'true' || searchParams.get('products') === 'true';
 
+    // Prioritize authenticated session user, fallback to query param only if no active session
+    const userId = sessionUserId || queryUserId;
+
     if (!userId) {
-      return apiFailure('userId is required', 400);
+      return apiFailure('userId is required or session must be authenticated', 400);
     }
 
     if (!isValidUUID(userId)) {
@@ -24,8 +31,6 @@ export async function GET(request: NextRequest) {
     if (cached) {
       return apiSuccessSecure(cached);
     }
-
-    const supabase = await createServerSupabaseClient();
 
     if (withProducts) {
       const { data: upvotes, error } = await supabase

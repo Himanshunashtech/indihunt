@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { getCachedData, setCachedData, invalidateCache } from '@/lib/redis';
+import { getCachedData, setCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { bumpFeedVersion } from '@/lib/cache';
 import { apiSuccessSecure, apiFailure, PUBLIC_CACHE_HEADERS } from '@/lib/api/response';
 import { checkContentViolation, getProductSlug } from '@/lib/supabase';
 import { revalidateTag } from 'next/cache';
@@ -128,25 +129,24 @@ export async function POST(request: NextRequest) {
 
     if (pId) {
       const { data: prod } = await supabase.from('products').select('id, name, comments_count').eq('id', pId).maybeSingle();
-      if (prod) {
-        await supabase.from('products').update({ comments_count: (prod.comments_count || 0) + 1 }).eq('id', pId);
-        const slug = getProductSlug(prod.name);
-        await Promise.allSettled([
-          invalidateCache(`comments:product:${pId}`),
-          slug ? invalidateCache(`comments:product:${slug}`) : Promise.resolve(),
-        ]);
-        try { if (slug) (revalidateTag as any)(`comments-${slug}`, 'max'); } catch {}
-        try { (revalidateTag as any)(`comments-${pId}`, 'max'); } catch {}
-      } else {
-        await invalidateCache(`comments:product:${pId}`);
-        try { (revalidateTag as any)(`comments-${pId}`, 'max'); } catch {}
-      }
+      const slug = prod?.name ? getProductSlug(prod.name) : null;
+      await Promise.allSettled([
+        invalidateCache(`comments:product:${pId}`),
+        slug ? invalidateCache(`comments:product:${slug}`) : Promise.resolve(),
+        invalidateCachePattern('redis_products_'),
+        invalidateCache('public_products'),
+        invalidateCache(`product_detail_${pId.toLowerCase()}`),
+        slug ? invalidateCache(`product_detail_${slug.toLowerCase()}`) : Promise.resolve(),
+        bumpFeedVersion(),
+      ]);
+      try { if (slug) (revalidateTag as any)(`comments-${slug}`, 'max'); } catch {}
+      try { (revalidateTag as any)(`comments-${pId}`, 'max'); } catch {}
     } else if (tId) {
-      const { data: thr } = await supabase.from('threads').select('comments_count').eq('id', tId).maybeSingle();
-      if (thr) {
-        await supabase.from('threads').update({ comments_count: (thr.comments_count || 0) + 1 }).eq('id', tId);
-      }
-      await invalidateCache(`comments:thread:${tId}`);
+      await Promise.allSettled([
+        invalidateCache(`comments:thread:${tId}`),
+        invalidateCache(`thread_detail_${tId}`),
+        invalidateCache('threads_all_50'),
+      ]);
       try { (revalidateTag as any)(`comments-${tId}`, 'max'); } catch {}
     }
 

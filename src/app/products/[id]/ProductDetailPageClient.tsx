@@ -215,28 +215,6 @@ function ProductDetailsContent({
     }
   }, [queryProduct]);
 
-  // Sync upvote state from localStorage safely after hydration
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = (effectiveUserId && localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`)) ||
-                  localStorage.getItem('indihunt_upvotes');
-      if (raw && (localProduct || initialProduct)) {
-        const target = localProduct || initialProduct;
-        if (target._userToggled !== undefined) return;
-        const votedSet = new Set<string>(JSON.parse(raw));
-        const productSlug = getProductSlug(target.name);
-        const isVoted = votedSet.has(target.id) || (productSlug ? votedSet.has(productSlug) : false);
-        if (isVoted !== !!target.has_upvoted) {
-          setLocalProduct((prev: any) => {
-            if (!prev) return prev;
-            return { ...prev, has_upvoted: isVoted };
-          });
-        }
-      }
-    } catch {}
-  }, [effectiveUserId, localProduct?.id, initialProduct?.id]);
-
   useEffect(() => {
     if (!productId && !localProduct?.id && !initialProduct?.id) return;
     const targetId = localProduct?.id || initialProduct?.id || productId;
@@ -581,32 +559,9 @@ function ProductDetailsContent({
       ? Math.max(0, (currentTarget.upvotes_count || 1) - 1)
       : (currentTarget.upvotes_count || 0) + 1;
 
-    // Immediately update localStorage synchronously
-    if (typeof window !== 'undefined') {
-      try {
-        const rawUser = activeUser.id ? localStorage.getItem(`indihunt_upvotes_${activeUser.id}`) : null;
-        const rawGuest = localStorage.getItem('indihunt_upvotes');
-        const votes = new Set<string>(JSON.parse(rawUser || rawGuest || '[]'));
-        const productSlug = currentTarget.name ? getProductSlug(currentTarget.name) : undefined;
-        if (isCurrentlyUpvoted) {
-          votes.delete(currentTarget.id);
-          if (productSlug) votes.delete(productSlug);
-        } else {
-          votes.add(currentTarget.id);
-          if (productSlug) votes.add(productSlug);
-        }
-        const nextArr = Array.from(votes);
-        localStorage.setItem('indihunt_upvotes', JSON.stringify(nextArr));
-        if (activeUser.id) {
-          localStorage.setItem(`indihunt_upvotes_${activeUser.id}`, JSON.stringify(nextArr));
-        }
-      } catch {}
-    }
-
     // Optimistically update product state in component and Query cache immediately
     const optimisticProduct = {
       ...currentTarget,
-      _userToggled: true,
       has_upvoted: !isCurrentlyUpvoted,
       upvotes_count: newCount,
     };

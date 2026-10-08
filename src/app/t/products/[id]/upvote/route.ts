@@ -157,6 +157,11 @@ export async function POST(
       invalidateCache('public_products'),
       invalidateCache(`upvotes:user:${effectiveUserId}`),
       invalidateCache(`upvotes_full:user:${effectiveUserId}`),
+      ...(userId && userId !== effectiveUserId ? [
+        invalidateCache(`upvotes:user:${userId}`),
+        invalidateCache(`upvotes_full:user:${userId}`),
+        invalidateCache(`bootstrap:${userId}`),
+      ] : []),
       invalidateCache(`bootstrap:${effectiveUserId}`),
       bumpFeedVersion(),
     ]);

@@ -101,6 +101,8 @@ export async function invalidateCache(key: string): Promise<void> {
   }
 }
 
+export const deleteCachedData = invalidateCache;
+
 export async function invalidateCachePattern(prefix: string): Promise<void> {
   // Evict matching keys from L1 memory
   for (const k of Array.from(memoryStore.keys())) {

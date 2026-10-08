@@ -71,6 +71,24 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v7.6.4",
+    date: "October 2026",
+    title: "Upvote Cache Synchronization & User-Scoped Isolation Engine",
+    summary: "Fixed Redis upvote cache invalidation on toggle, resolved React Query product page key matching between IDs and slugs, isolated localStorage upvotes strictly per authenticated user, secured the /t/upvotes API with session user authentication, and purged all product queries upon logout.",
+    icon: Flame,
+    iconColor: "text-rose-400",
+    iconBg: "bg-rose-500/10",
+    tags: ["Bugfix", "Performance", "Security"],
+    features: [
+      { icon: Zap, text: "Invalidated Redis upvote caches (upvotes:user and upvotes_full:user) on every upvote toggle to prevent 30s stale vote flashes." },
+      { icon: CheckCircle, text: "Updated syncProductUpvoteWithLocalStorage to prevent skipping has_upvoted booleans and isolated upvote keys per user ID." },
+      { icon: LayoutGrid, text: "Unified React Query cache invalidation and optimistic updates using ['product'] prefix matching across both UUIDs and slugs." },
+      { icon: ShieldCheck, text: "Secured /t/upvotes API to authenticate via Supabase session user, preventing unauthorized vote reading." },
+      { icon: Database, text: "Added comprehensive logout cleanup purging all cached product queries and user-specific upvote localStorage entries." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v7.6.3",
     date: "October 2026",
     title: "Calendar Launch Counts Engine & Zero-Refresh Scheduled Launch Sync",
@@ -84,7 +102,7 @@ const CHANGELOG: ChangelogItem[] = [
       { icon: Rocket, text: "Added instant event dispatch on product scheduling so the pre-launch widget and My Products dashboard render new launches in 0ms without page reloads." },
       { icon: Zap, text: "Synchronized in-memory client caches and local storage across scheduling flows, preventing stale product lists from overwriting active state." },
     ],
-    highlight: true,
+    highlight: false,
   },
   {
     version: "v7.6.2",

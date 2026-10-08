@@ -26,27 +26,6 @@ import {
   NotificationItem
 } from "@/lib/supabase";
 
-function syncProductUpvoteWithLocalStorage(p: Product, currentUserId?: string): Product {
-  if (typeof window === 'undefined' || !p) return p;
-  if (typeof p.has_upvoted === 'boolean') {
-    return p;
-  }
-  try {
-    const raw = (currentUserId ? localStorage.getItem(`indihunt_upvotes_${currentUserId}`) : null) || localStorage.getItem('indihunt_upvotes');
-    const votedSet = raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
-    const slug = getProductSlug(p.name);
-    const isVoted = votedSet.has(p.id) || (slug ? votedSet.has(slug) : false);
-
-    return {
-      ...p,
-      has_upvoted: isVoted,
-      upvotes_count: p.upvotes_count ?? 0,
-    };
-  } catch (e) {
-    return p;
-  }
-}
-
 /**
  * Supabase Realtime synchronization hook for products, threads, and upvotes.
  * Keeps React Query cache in sync automatically across tabs and users in real time.
@@ -118,86 +97,33 @@ export function useProducts(currentUserId?: string, initialData?: Product[], ena
     enabled,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
-    initialData: initialData && initialData.length > 0
-      ? () => {
-          if (typeof window !== 'undefined') {
-            return initialData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-          }
-          return initialData;
-        }
-      : () => {
-          const guestData = queryClient.getQueryData<Product[]>(["products", "guest"]);
-          if (guestData && guestData.length > 0) {
-            if (typeof window !== 'undefined') {
-              return guestData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-            }
-            return guestData;
-          }
-          return undefined;
-        },
+    initialData: initialData && initialData.length > 0 ? initialData : () => {
+      const guestData = queryClient.getQueryData<Product[]>(["products", "guest"]);
+      if (guestData && guestData.length > 0) return guestData;
+      return undefined;
+    },
     initialDataUpdatedAt: 0,
     placeholderData: (previousData) => {
-      if (previousData && previousData.length > 0) {
-        if (typeof window !== 'undefined') {
-          return previousData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-        }
-        return previousData;
-      }
-      // Last-resort fallback: use localStorage cached products to avoid blank state
-      if (typeof window !== 'undefined') {
-        const cached = getCachedProducts();
-        if (cached && cached.length > 0) {
-          return cached.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-        }
-      }
+      if (previousData && previousData.length > 0) return previousData;
       return previousData;
     },
   });
 }
 
-// 1b. Fetch promoted products (instant placeholder cache lookup + localStorage upvote sync)
+// 1b. Fetch promoted products
 export function usePromotedProducts(existingProducts?: Product[], initialData?: Product[], currentUserId?: string) {
   return useQuery({
-    queryKey: ["promoted_products"],
+    queryKey: ["promoted_products", currentUserId || "guest"],
     queryFn: () => getPromotedProducts(existingProducts),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
-    initialData: initialData && initialData.length > 0
-      ? () => {
-          if (typeof window !== 'undefined') {
-            return initialData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-          }
-          return initialData;
-        }
-      : undefined,
+    initialData: initialData && initialData.length > 0 ? initialData : undefined,
     initialDataUpdatedAt: 0,
-    placeholderData: (previousData) => {
-      if (previousData && previousData.length > 0) {
-        if (typeof window !== 'undefined') {
-          return previousData.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-        }
-        return previousData;
-      }
-      // Fallback: localStorage cached promoted products
-      if (typeof window !== 'undefined') {
-        const cached = getCachedPromotedProducts();
-        if (cached && cached.length > 0) {
-          return cached.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-        }
-      }
-      return previousData || (initialData && initialData.length > 0 ? initialData : undefined);
-    },
-    select: (data) => {
-      // Always sync has_upvoted from localStorage when data arrives
-      if (typeof window !== 'undefined' && Array.isArray(data)) {
-        return data.map((p) => syncProductUpvoteWithLocalStorage(p, currentUserId));
-      }
-      return data;
-    },
+    placeholderData: (previousData) => previousData || (initialData && initialData.length > 0 ? initialData : undefined),
   });
 }
 
-// 2. Fetch a single product by ID (with instant placeholder cache lookup)
+// 2. Fetch a single product by ID
 export function useProduct(productId: string, currentUserId?: string, initialData?: Product | null) {
   const queryClient = useQueryClient();
   return useQuery({
@@ -206,41 +132,22 @@ export function useProduct(productId: string, currentUserId?: string, initialDat
     enabled: !!productId,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
-    initialData: initialData
-      ? () => {
-          if (typeof window !== 'undefined') {
-            return syncProductUpvoteWithLocalStorage(initialData, currentUserId);
-          }
-          return initialData;
-        }
-      : () => {
-          const guestProduct = queryClient.getQueryData<Product>(["product", productId, "guest"]);
-          if (guestProduct) {
-            if (typeof window !== 'undefined') {
-              return syncProductUpvoteWithLocalStorage(guestProduct, currentUserId);
-            }
-            return guestProduct;
-          }
-          return undefined;
-        },
+    initialData: initialData ? initialData : () => {
+      const guestProduct = queryClient.getQueryData<Product>(["product", productId, "guest"]);
+      if (guestProduct) return guestProduct;
+      return undefined;
+    },
     initialDataUpdatedAt: 0,
     placeholderData: (previousData) => {
-      if (previousData) {
-        if (typeof window !== 'undefined') {
-          return syncProductUpvoteWithLocalStorage(previousData, currentUserId);
-        }
-        return previousData;
-      }
-      if (typeof window !== 'undefined' && productId) {
+      if (previousData) return previousData;
+      if (productId) {
         try {
           const normalized = productId.toLowerCase();
           const existing = queryClient.getQueryData<Product[]>(["products", currentUserId || "guest"]) ||
                            queryClient.getQueryData<Product[]>(["products", "guest"]);
           if (existing && Array.isArray(existing)) {
-            const match = existing.find(p => p.id === productId || getProductSlug(p.name) === normalized);
-            if (match) {
-              return syncProductUpvoteWithLocalStorage(match, currentUserId);
-            }
+            const match = existing.find(p => p.id === productId || getProductSlug(p.name).toLowerCase() === normalized);
+            if (match) return match;
           }
         } catch (e) {}
       }
@@ -469,11 +376,11 @@ export function useToggleUpvoteMutation() {
     onMutate: async ({ productId }) => {
       await queryClient.cancelQueries({ queryKey: ["products"] });
       await queryClient.cancelQueries({ queryKey: ["promoted_products"] });
-      await queryClient.cancelQueries({ queryKey: ["product", productId] });
+      await queryClient.cancelQueries({ queryKey: ["product"] });
 
       const previousProducts = queryClient.getQueriesData({ queryKey: ["products"] });
       const previousPromoted = queryClient.getQueriesData({ queryKey: ["promoted_products"] });
-      const previousProduct = queryClient.getQueriesData({ queryKey: ["product", productId] });
+      const previousProduct = queryClient.getQueriesData({ queryKey: ["product"] });
 
       const matchesTarget = (p: Product) =>
         p.id === productId ||
@@ -513,14 +420,15 @@ export function useToggleUpvoteMutation() {
         });
       });
 
-      queryClient.setQueriesData({ queryKey: ["product", productId] }, (old: unknown) => {
+      queryClient.setQueriesData({ queryKey: ["product"] }, (old: unknown) => {
         if (!old || typeof old !== "object") return old;
         const p = old as Product;
-        const wasUpvoted = !!p.has_upvoted;
+        if (!matchesTarget(p)) return old;
+        const was = !!p.has_upvoted;
         return {
           ...p,
-          has_upvoted: !wasUpvoted,
-          upvotes_count: wasUpvoted
+          has_upvoted: !was,
+          upvotes_count: was
             ? Math.max(0, (p.upvotes_count || 1) - 1)
             : (p.upvotes_count || 0) + 1,
         };
@@ -551,33 +459,35 @@ export function useToggleUpvoteMutation() {
         const matchesTarget = (p: Product) =>
           p.id === targetId ||
           p.id === variables.productId ||
-          getProductSlug(p.name).toLowerCase() === variables.productId.toLowerCase();
+          getProductSlug(p.name).toLowerCase() === variables.productId.toLowerCase() ||
+          (!!data.productId && getProductSlug(p.name).toLowerCase() === data.productId.toLowerCase());
+
+        const hasUpvotedOverride = typeof data.has_upvoted === 'boolean' ? { has_upvoted: data.has_upvoted } : {};
 
         queryClient.setQueriesData({ queryKey: ["products"] }, (old: unknown) => {
           if (!Array.isArray(old)) return old;
           return old.map((p: Product) =>
-            matchesTarget(p) ? { ...p, upvotes_count: data.upvotes_count } : p
+            matchesTarget(p) ? { ...p, upvotes_count: data.upvotes_count, ...hasUpvotedOverride } : p
           );
         });
 
         queryClient.setQueriesData({ queryKey: ["promoted_products"] }, (old: unknown) => {
           if (!Array.isArray(old)) return old;
           return old.map((p: Product) =>
-            matchesTarget(p) ? { ...p, upvotes_count: data.upvotes_count } : p
+            matchesTarget(p) ? { ...p, upvotes_count: data.upvotes_count, ...hasUpvotedOverride } : p
           );
         });
 
-        queryClient.setQueriesData({ queryKey: ["product", variables.productId] }, (old: unknown) => {
+        queryClient.setQueriesData({ queryKey: ["product"] }, (old: unknown) => {
           if (!old || typeof old !== "object") return old;
-          return { ...(old as Product), upvotes_count: data.upvotes_count };
+          const p = old as Product;
+          if (!matchesTarget(p)) return old;
+          return {
+            ...p,
+            upvotes_count: data.upvotes_count,
+            ...hasUpvotedOverride,
+          };
         });
-
-        if (targetId && targetId !== variables.productId) {
-          queryClient.setQueriesData({ queryKey: ["product", targetId] }, (old: unknown) => {
-            if (!old || typeof old !== "object") return old;
-            return { ...(old as Product), upvotes_count: data.upvotes_count };
-          });
-        }
       }
     },
   });

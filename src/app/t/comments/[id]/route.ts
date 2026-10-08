@@ -3,6 +3,10 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { apiSuccessSecure, apiFailure } from '@/lib/api/response';
 import { checkContentViolation } from '@/lib/supabase';
 
+import { getCachedData, invalidateCache, invalidateCachePattern } from '@/lib/redis';
+import { bumpFeedVersion } from '@/lib/cache';
+import { getProductSlug } from '@/lib/supabase';
+
 export const dynamic = 'force-dynamic';
 
 export async function PUT(
@@ -34,6 +38,12 @@ export async function PUT(
 
     if (error) {
       return apiFailure(error.message, 500);
+    }
+
+    if (updatedComment?.product_id) {
+      await invalidateCache(`comments:product:${updatedComment.product_id}`);
+    } else if (updatedComment?.thread_id) {
+      await invalidateCache(`comments:thread:${updatedComment.thread_id}`);
     }
 
     return apiSuccessSecure(updatedComment);
@@ -76,17 +86,25 @@ export async function DELETE(
       return apiFailure(error.message, 500);
     }
 
-    // Decrement comments_count
+    // Invalidate caches (Postgres triggers handle decrementing comments_count in the DB)
     if (comment.product_id) {
-      const { data: prod } = await supabase.from('products').select('comments_count').eq('id', comment.product_id).single();
-      if (prod && (prod.comments_count || 0) > 0) {
-        await supabase.from('products').update({ comments_count: prod.comments_count - 1 }).eq('id', comment.product_id);
-      }
+      const { data: prod } = await supabase.from('products').select('id, name').eq('id', comment.product_id).maybeSingle();
+      const slug = prod?.name ? getProductSlug(prod.name) : null;
+      await Promise.allSettled([
+        invalidateCache(`comments:product:${comment.product_id}`),
+        slug ? invalidateCache(`comments:product:${slug}`) : Promise.resolve(),
+        invalidateCachePattern('redis_products_'),
+        invalidateCache('public_products'),
+        invalidateCache(`product_detail_${comment.product_id.toLowerCase()}`),
+        slug ? invalidateCache(`product_detail_${slug.toLowerCase()}`) : Promise.resolve(),
+        bumpFeedVersion(),
+      ]);
     } else if (comment.thread_id) {
-      const { data: thr } = await supabase.from('threads').select('comments_count').eq('id', comment.thread_id).single();
-      if (thr && (thr.comments_count || 0) > 0) {
-        await supabase.from('threads').update({ comments_count: thr.comments_count - 1 }).eq('id', comment.thread_id);
-      }
+      await Promise.allSettled([
+        invalidateCache(`comments:thread:${comment.thread_id}`),
+        invalidateCache(`thread_detail_${comment.thread_id}`),
+        invalidateCache('threads_all_50'),
+      ]);
     }
 
     return apiSuccessSecure({ deleted: true });

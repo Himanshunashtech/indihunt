@@ -24,7 +24,8 @@ import {
   Product,
   supabase,
   getProductSlug,
-  getProducts
+  getProducts,
+  getUserUpvotedProductIds
 } from "@/lib/supabase";
 import { isProductInCategory } from "@/lib/categoryMatcher";
 import Navbar from "@/components/Navbar";
@@ -83,31 +84,6 @@ export default function CategoryPageClient({
     }
   }, [initialProducts, slug, categoryName]);
 
-  useEffect(() => {
-    try {
-      let uid = reduxUser?.id;
-      if (!uid) {
-        const sessionItem = sessionStorage.getItem("indihunt_user_session");
-        if (sessionItem) {
-          uid = JSON.parse(sessionItem)?.id;
-        }
-      }
-      const raw = uid
-        ? localStorage.getItem(`indihunt_upvotes_${uid}`) ||
-          localStorage.getItem("indihunt_upvotes")
-        : null;
-      if (raw) {
-        const votedSet = new Set<string>(JSON.parse(raw));
-        setProducts((prev) =>
-          prev.map((p) => ({
-            ...p,
-            has_upvoted: votedSet.has(p.id),
-          }))
-        );
-      }
-    } catch (e) {}
-  }, [reduxUser?.id]);
-
   const [sortBy, setSortBy] = useState<'recent' | 'upvotes' | 'alphabetical'>('recent');
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -153,50 +129,19 @@ export default function CategoryPageClient({
       return;
     }
 
-    // 1. Instant 0ms highlight from local storage cache
-    try {
-      const raw =
-        localStorage.getItem(`indihunt_upvotes_${effectiveUserId}`) ||
-        localStorage.getItem("indihunt_upvotes");
-      if (raw) {
-        const votedSet = new Set<string>(JSON.parse(raw));
+    // Fresh live fetch from DB / Redis
+    getUserUpvotedProductIds(effectiveUserId)
+      .then((ids) => {
+        if (!Array.isArray(ids)) return;
+        const votedIds = new Set(ids);
         setProducts((prev) =>
           prev.map((p) => ({
             ...p,
-            has_upvoted: votedSet.has(p.id),
+            has_upvoted: votedIds.has(p.id),
           }))
         );
-      }
-    } catch (e) {}
-
-    // 2. Fresh live fetch from Supabase to ensure 100% accuracy
-    if (supabase) {
-      supabase
-        .from("upvotes")
-        .select("product_id")
-        .eq("user_id", effectiveUserId)
-        .then(({ data, error }) => {
-          if (!error && data) {
-            const votedIds = new Set(data.map((u: any) => u.product_id));
-            try {
-              localStorage.setItem(
-                `indihunt_upvotes_${effectiveUserId}`,
-                JSON.stringify(Array.from(votedIds))
-              );
-              localStorage.setItem(
-                "indihunt_upvotes",
-                JSON.stringify(Array.from(votedIds))
-              );
-            } catch (e) {}
-            setProducts((prev) =>
-              prev.map((p) => ({
-                ...p,
-                has_upvoted: votedIds.has(p.id),
-              }))
-            );
-          }
-        });
-    }
+      })
+      .catch(() => { });
   }, [effectiveUserId]);
 
   const displayedProducts = useMemo(() => {
@@ -673,11 +618,10 @@ export default function CategoryPageClient({
                               className="relative"
                             >
                               <div
-                                className={`group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-300 ${
-                                  product.has_upvoted
+                                className={`group/accessory flex size-12 flex-col items-center justify-center gap-1 rounded-xl transition-all duration-300 ${product.has_upvoted
                                     ? "bg-orange-500/10 text-[#ff5733]"
                                     : "border border-border bg-card hover:border-[#ff5733]"
-                                }`}
+                                  }`}
                                 data-filled={product.has_upvoted ? "true" : "false"}
                               >
                                 <svg
@@ -686,11 +630,10 @@ export default function CategoryPageClient({
                                   height="16"
                                   fill="none"
                                   viewBox="0 0 16 16"
-                                  className={`size-4 stroke-[1.5px] transition-all duration-300 ${
-                                    product.has_upvoted
+                                  className={`size-4 stroke-[1.5px] transition-all duration-300 ${product.has_upvoted
                                       ? "fill-[#ff5733] stroke-[#ff5733]"
                                       : "fill-white dark:fill-transparent stroke-slate-700 dark:stroke-slate-300 group-hover/accessory:stroke-[#ff5733]"
-                                  }`}
+                                    }`}
                                 >
                                   <path d="M6.579 3.467c.71-1.067 2.132-1.067 2.842 0L12.975 8.8c.878 1.318.043 3.2-1.422 3.2H4.447c-1.464 0-2.3-1.882-1.422-3.2z" />
                                 </svg>
@@ -792,11 +735,10 @@ export default function CategoryPageClient({
                       <button
                         key={pageNum}
                         onClick={() => handlePageChange(pageNum)}
-                        className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${
-                          isActive
+                        className={`min-w-[36px] h-9 sm:min-w-[40px] sm:h-10 px-2.5 sm:px-3 rounded-xl text-sm sm:text-base font-medium transition-all cursor-pointer ${isActive
                             ? "bg-[#ff5733] text-white font-semibold shadow-xs"
                             : "text-foreground/80 hover:bg-muted hover:text-foreground border border-border/40 bg-card"
-                        }`}
+                          }`}
                       >
                         {pageNum}
                       </button>

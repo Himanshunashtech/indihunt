@@ -124,34 +124,6 @@ export default function BestProductsCatchAllPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Sync upvoted states from localStorage on mount & when auth resolves
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      let uid = reduxUser?.id || currentUser?.id;
-      if (!uid) {
-        const sessionItem = sessionStorage.getItem("indihunt_user_session");
-        if (sessionItem) uid = JSON.parse(sessionItem)?.id;
-      }
-      const raw = uid
-        ? localStorage.getItem(`indihunt_upvotes_${uid}`) || localStorage.getItem("indihunt_upvotes")
-        : localStorage.getItem("indihunt_upvotes");
-      if (raw) {
-        const votedArr: string[] = JSON.parse(raw);
-        setProductState(prev => {
-          const next = { ...prev };
-          votedArr.forEach(id => {
-            next[id] = {
-              ...(next[id] || {}),
-              has_upvoted: true,
-            };
-          });
-          return next;
-        });
-      }
-    } catch {}
-  }, [effectiveUserId]);
-
   useEffect(() => {
     setCurrentPage(1);
   }, [period, year, monthFull, rawDay]);
@@ -184,25 +156,6 @@ export default function BestProductsCatchAllPage() {
         upvotes_count: nextCount
       }
     }));
-
-    if (typeof window !== "undefined") {
-      try {
-        const raw = activeUserId
-          ? localStorage.getItem(`indihunt_upvotes_${activeUserId}`) || localStorage.getItem("indihunt_upvotes")
-          : localStorage.getItem("indihunt_upvotes");
-        const votes: string[] = JSON.parse(raw || "[]");
-        let nextVotes: string[];
-        if (nextVoted) {
-          nextVotes = Array.from(new Set([...votes, productId]));
-        } else {
-          nextVotes = votes.filter(id => id !== productId);
-        }
-        localStorage.setItem("indihunt_upvotes", JSON.stringify(nextVotes));
-        if (activeUserId) {
-          localStorage.setItem(`indihunt_upvotes_${activeUserId}`, JSON.stringify(nextVotes));
-        }
-      } catch {}
-    }
 
     try {
       const result = await toggleUpvote(productId, activeUserId);
@@ -347,25 +300,7 @@ export default function BestProductsCatchAllPage() {
         dateFiltered = filtered;
       }
 
-      let votedSet = new Set<string>();
-      if (typeof window !== "undefined") {
-        try {
-          const raw = uid
-            ? localStorage.getItem(`indihunt_upvotes_${uid}`) || localStorage.getItem("indihunt_upvotes")
-            : localStorage.getItem("indihunt_upvotes");
-          if (raw) {
-            const arr = JSON.parse(raw);
-            if (Array.isArray(arr)) votedSet = new Set(arr);
-          }
-        } catch {}
-      }
-
-      const dateFilteredWithUpvotes = dateFiltered.map(p => ({
-        ...p,
-        has_upvoted: !!p.has_upvoted || votedSet.has(p.id)
-      }));
-
-      return dateFilteredWithUpvotes.sort(compareProductsForRanking);
+      return dateFiltered.sort(compareProductsForRanking);
     },
   });
 
@@ -544,25 +479,9 @@ export default function BestProductsCatchAllPage() {
             ) : (
               <div className="space-y-3">
                 {paginatedProducts.map((product, idx) => {
-                  const isUpvoted = (() => {
-                    if (productState[product.id]?.has_upvoted !== undefined) {
-                      return productState[product.id].has_upvoted;
-                    }
-                    if (product.has_upvoted) return true;
-                    if (typeof window !== "undefined") {
-                      try {
-                        const uid = reduxUser?.id || currentUser?.id;
-                        const raw = uid
-                          ? localStorage.getItem(`indihunt_upvotes_${uid}`) || localStorage.getItem("indihunt_upvotes")
-                          : localStorage.getItem("indihunt_upvotes");
-                        if (raw) {
-                          const votedArr: string[] = JSON.parse(raw);
-                          if (Array.isArray(votedArr) && votedArr.includes(product.id)) return true;
-                        }
-                      } catch {}
-                    }
-                    return false;
-                  })();
+                  const isUpvoted = productState[product.id]?.has_upvoted !== undefined
+                    ? productState[product.id].has_upvoted
+                    : !!product.has_upvoted;
                   const upvoteCount = productState[product.id]?.upvotes_count !== undefined
                     ? (productState[product.id].upvotes_count || 0)
                     : (product.upvotes_count || 0);

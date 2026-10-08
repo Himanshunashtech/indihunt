@@ -106,17 +106,18 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
       // Notify orchestrator listeners of completed setup
       dataOrchestrator.startMigration(session.user.id);
 
-      // Upvotes fetch on login
+      // Upvotes fetch on login directly from DB / Redis
       getUserUpvotedProductIds(session.user.id)
         .then((ids) => {
           if (!Array.isArray(ids)) return;
           const voted = new Set(ids);
-          try {
-            localStorage.setItem(`indihunt_upvotes_${session.user.id}`, JSON.stringify(ids));
-          } catch (e) { }
           queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) =>
             Array.isArray(old) ? old.map((p: any) => ({ ...p, has_upvoted: voted.has(p.id) })) : old
           );
+          queryClient.setQueriesData({ queryKey: ["product"] }, (old: any) => {
+            if (!old || typeof old !== "object") return old;
+            return { ...old, has_upvoted: voted.has(old.id) };
+          });
         })
         .catch(() => { });
     };
@@ -127,7 +128,7 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
         dataOrchestrator.destroy();
         try {
           sessionStorage.removeItem('indihunt_user_session');
-          localStorage.removeItem('indihunt_upvotes');
+          Object.keys(localStorage).filter(k => k.startsWith('indihunt_upvotes')).forEach(k => localStorage.removeItem(k));
           localStorage.removeItem('indihunt_thread_upvotes');
           localStorage.removeItem('indihunt_profile');
         } catch (e) { }
@@ -135,9 +136,9 @@ function AuthInitializer({ children, initialUser }: { children: React.ReactNode;
         clearCache('user_upvotes');
         queryClient.removeQueries({ queryKey: ["user"] });
         queryClient.removeQueries({ queryKey: ["profile"] });
-        queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) =>
-          Array.isArray(old) ? old.map((p: any) => ({ ...p, has_upvoted: false })) : old
-        );
+        queryClient.removeQueries({ queryKey: ["products"] });
+        queryClient.removeQueries({ queryKey: ["product"] });
+        queryClient.removeQueries({ queryKey: ["promoted_products"] });
         dispatch(setUser(null));
         dispatch(setProfile(null));
         setCurrentUser(null);

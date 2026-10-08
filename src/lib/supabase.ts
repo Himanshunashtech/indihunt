@@ -276,25 +276,6 @@ export function getCachedProducts(currentUserId?: string): Product[] {
     p.name !== 'OmniPlay Pro'
   );
 
-  if (typeof window !== 'undefined' && products.length > 0) {
-    try {
-      if (currentUserId) {
-        const rawVotes = localStorage.getItem(`indihunt_upvotes_${currentUserId}`) || localStorage.getItem('indihunt_upvotes');
-        const votes: string[] = JSON.parse(rawVotes || '[]');
-        const votedSet = new Set(votes);
-        return products.map(p => ({
-          ...p,
-          has_upvoted: votedSet.has(p.id)
-        }));
-      } else {
-        return products.map(p => ({
-          ...p,
-          has_upvoted: false
-        }));
-      }
-    } catch (e) { }
-  }
-
   return products;
 }
 
@@ -780,56 +761,43 @@ export async function toggleUpvote(productId: string, userId: string): Promise<{
         ? data.upvotes_count
         : (typeof res?.upvotes_count === 'number' ? res.upvotes_count : 0);
       const resolvedId = String(data?.productId || res?.productId || productId);
-
-      if (typeof window !== 'undefined') {
-        const rawVotes = (userId ? localStorage.getItem(`indihunt_upvotes_${userId}`) : null) || localStorage.getItem('indihunt_upvotes');
-        const votes: string[] = JSON.parse(rawVotes || '[]');
-        let nextVotes: string[];
-        if (hasUpvoted) {
-          nextVotes = Array.from(new Set([...votes, resolvedId, productId]));
-        } else {
-          nextVotes = votes.filter(id => id !== resolvedId && id !== productId);
-        }
-        localStorage.setItem('indihunt_upvotes', JSON.stringify(nextVotes));
-        if (userId) {
-          localStorage.setItem(`indihunt_upvotes_${userId}`, JSON.stringify(nextVotes));
-        }
-      }
       return { success: true, has_upvoted: hasUpvoted, upvotes_count: upvotesCount, productId: resolvedId };
     }
   } catch (err) {
-    // fallback
+    console.error('[toggleUpvote] API error:', err);
   }
 
-  // Fallback state for offline / local mode
-  if (typeof window !== 'undefined') {
-    const products = await getProducts();
-    const rawVotes = (userId && localStorage.getItem(`indihunt_upvotes_${userId}`)) || localStorage.getItem('indihunt_upvotes') || '[]';
-    const votes: string[] = JSON.parse(rawVotes);
-    const isVoted = votes.includes(productId);
+  // Direct Supabase fallback if secureApiFetch failed
+  if (supabase) {
+    try {
+      const { data: existing } = await supabase
+        .from('upvotes')
+        .select('id')
+        .eq('product_id', productId)
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    let nextVotes: string[];
-    if (isVoted) {
-      nextVotes = votes.filter(id => id !== productId);
-    } else {
-      nextVotes = [...votes, productId];
-    }
-    localStorage.setItem('indihunt_upvotes', JSON.stringify(nextVotes));
-    if (userId) {
-      localStorage.setItem(`indihunt_upvotes_${userId}`, JSON.stringify(nextVotes));
-    }
-
-    const updatedProducts = products.map(p => {
-      if (p.id === productId) {
-        const diff = isVoted ? -1 : 1;
-        return { ...p, upvotes_count: Math.max(0, (p.upvotes_count || 0) + diff), has_upvoted: !isVoted };
+      let hasUpvoted = false;
+      if (existing) {
+        await supabase.from('upvotes').delete().eq('id', existing.id);
+        hasUpvoted = false;
+      } else {
+        await supabase.from('upvotes').insert({ product_id: productId, user_id: userId });
+        hasUpvoted = true;
       }
-      return p;
-    });
-    localStorage.setItem('indihunt_products', JSON.stringify(updatedProducts));
 
-    const count = updatedProducts.find(p => p.id === productId)?.upvotes_count || 0;
-    return { success: true, has_upvoted: !isVoted, upvotes_count: count, productId };
+      const { count } = await supabase
+        .from('upvotes')
+        .select('*', { count: 'exact', head: true })
+        .eq('product_id', productId);
+
+      const countVal = typeof count === 'number' ? count : (hasUpvoted ? 1 : 0);
+      await supabase.from('products').update({ upvotes_count: countVal }).eq('id', productId);
+
+      return { success: true, has_upvoted: hasUpvoted, upvotes_count: countVal, productId };
+    } catch (e) {
+      console.error('[toggleUpvote] Direct DB fallback error:', e);
+    }
   }
 
   return { success: false, has_upvoted: false, upvotes_count: 0, productId };
@@ -7757,11 +7725,15 @@ export async function getUserUpvotedProductIds(userId: string): Promise<string[]
     console.warn('[getUserUpvotedProductIds] API call failed:', err);
   }
 
-  if (typeof window !== 'undefined') {
+  if (supabase) {
     try {
-      const raw = localStorage.getItem(`indihunt_upvotes_${userId}`) || localStorage.getItem('indihunt_upvotes');
-      if (raw) return JSON.parse(raw);
-    } catch { }
+      const { data } = await supabase
+        .from('upvotes')
+        .select('product_id')
+        .eq('user_id', userId)
+        .limit(2000);
+      if (data) return data.map(u => u.product_id);
+    } catch {}
   }
   return [];
 }

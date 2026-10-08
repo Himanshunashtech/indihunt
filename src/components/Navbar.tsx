@@ -269,9 +269,9 @@ export default function Navbar({
       clearCache('user_upvotes');
       queryClient.removeQueries({ queryKey: ["user"] });
       queryClient.removeQueries({ queryKey: ["profile"] });
-      queryClient.setQueriesData({ queryKey: ["products"] }, (old: any) =>
-        Array.isArray(old) ? old.map((p: any) => ({ ...p, has_upvoted: false })) : old
-      );
+      queryClient.removeQueries({ queryKey: ["products"] });
+      queryClient.removeQueries({ queryKey: ["product"] });
+      queryClient.removeQueries({ queryKey: ["promoted_products"] });
       if (typeof window !== 'undefined') {
         try {
           const keys = Object.keys(localStorage);
