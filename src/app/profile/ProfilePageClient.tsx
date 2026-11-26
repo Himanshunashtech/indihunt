@@ -821,7 +821,7 @@ function ProfileContent({
                 >
                   Edit my profile
                 </Link>
-                {profile?.indie_page_enabled !== false ? (
+                {profile?.indie_page_enabled === true ? (
                   <Link
                     href={`/page/${profile?.username}`}
                     className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2 text-center text-sm font-semibold text-white transition-all duration-300 hover:from-orange-600 hover:to-amber-600 shadow-sm shadow-orange-500/20"

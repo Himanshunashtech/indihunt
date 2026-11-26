@@ -18,8 +18,16 @@ export async function generateMetadata({
 
   if (!product) {
     return {
-      title: "Product — IndiHunt",
+      title: "Product Not Found — IndiHunt",
       description: "Discover and launch amazing indie tech products on IndiHunt.",
+      robots: {
+        index: false,
+        follow: false,
+        googleBot: {
+          index: false,
+          follow: false,
+        },
+      },
     };
   }
 

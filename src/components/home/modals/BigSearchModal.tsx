@@ -326,7 +326,8 @@ export default function BigSearchModal({
                           key={person.id}
                           onClick={() => {
                             onOpenChange(false);
-                            router.push(`/page/${person.username}`);
+                            const clean = person.username.replace(/^@/, "");
+                            router.push(`/@${clean}`);
                           }}
                           className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-secondary/60 hover:bg-secondary cursor-pointer transition-all group"
                         >

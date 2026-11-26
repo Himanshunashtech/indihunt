@@ -86,7 +86,6 @@ const MONTHS_SHORT = [
   "july", "august", "september", "october", "november", "december",
 ];
 
-const BEST_PRODUCTS_PERIODS = ["daily", "weekly", "monthly", "yearly"];
 
 // Create a server-side Supabase client using env vars
 function getSupabaseClient() {
@@ -209,18 +208,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
               const month = MONTHS_SHORT[createdDate.getMonth()];
               const day = createdDate.getDate();
 
-              // /best-products/[period]/[year]/[month]
-              for (const period of BEST_PRODUCTS_PERIODS) {
-                const bpUrl = `${SITE_URL}/best-products/${period}/${year}/${month}`;
-                if (!seenBestProductUrls.has(bpUrl)) {
-                  seenBestProductUrls.add(bpUrl);
-                  bestProductRoutes.push({
-                    url: bpUrl,
-                    lastModified: STATIC_LAST_MODIFIED,
-                    changeFrequency: "daily" as const,
-                    priority: 0.75,
-                  });
-                }
+              // Only generate monthly & yearly best-products archive routes for periods with published products (no daily/weekly thin routes)
+              const bpMonthlyUrl = `${SITE_URL}/best-products/monthly/${year}/${month}`;
+              if (!seenBestProductUrls.has(bpMonthlyUrl)) {
+                seenBestProductUrls.add(bpMonthlyUrl);
+                bestProductRoutes.push({
+                  url: bpMonthlyUrl,
+                  lastModified: STATIC_LAST_MODIFIED,
+                  changeFrequency: "monthly" as const,
+                  priority: 0.75,
+                });
+              }
+
+              const bpYearlyUrl = `${SITE_URL}/best-products/yearly/${year}`;
+              if (!seenBestProductUrls.has(bpYearlyUrl)) {
+                seenBestProductUrls.add(bpYearlyUrl);
+                bestProductRoutes.push({
+                  url: bpYearlyUrl,
+                  lastModified: STATIC_LAST_MODIFIED,
+                  changeFrequency: "monthly" as const,
+                  priority: 0.75,
+                });
               }
 
               // /launch-insights/[year]/[month]/[day]

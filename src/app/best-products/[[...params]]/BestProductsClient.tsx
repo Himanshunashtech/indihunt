@@ -46,7 +46,15 @@ function getDaysInMonth(monthName: string, year: number) {
 
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 
-export default function BestProductsCatchAllPage() {
+interface BestProductsClientProps {
+  initialProducts?: Product[];
+  initialTotalCount?: number;
+}
+
+export default function BestProductsCatchAllPage({
+  initialProducts,
+  initialTotalCount,
+}: BestProductsClientProps = {}) {
   const urlParams = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -103,11 +111,12 @@ export default function BestProductsCatchAllPage() {
     : null;
 
   const [productState, setProductState] = useState<Record<string, { upvotes_count?: number; has_upvoted: boolean }>>({});
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(initialProducts || []);
   const [page, setPage] = useState<number>(1);
-  const [totalCount, setTotalCount] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount || 0);
+  const [isLoading, setIsLoading] = useState<boolean>(!initialProducts);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const isFirstMount = React.useRef(true);
   const PAGE_LIMIT = 20;
 
   // Sync auth state from Redux and Supabase
@@ -171,6 +180,12 @@ export default function BestProductsCatchAllPage() {
 
   // Initial load and filter change trigger
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      if (initialProducts && initialProducts.length > 0) {
+        return;
+      }
+    }
     let isCancelled = false;
 
     async function fetchInitialProducts() {

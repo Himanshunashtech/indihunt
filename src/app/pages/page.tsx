@@ -117,10 +117,9 @@ export default function PagesLandingPage() {
             <div className="relative flex overflow-hidden py-1">
               <div className="flex items-center gap-3 sm:gap-4 animate-marquee-left hover:[animation-play-state:paused] w-max">
                 {[...HERO_MAKERS.slice(0, 9), ...HERO_MAKERS.slice(0, 9)].map((maker, idx) => (
-                  <Link
+                  <div
                     key={`row1-${maker.username}-${idx}`}
-                    href={`/page/${maker.username}`}
-                    className="bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-orange-500/40 p-3 px-4 rounded-2xl flex items-center gap-3 shrink-0 text-slate-900 transition-all hover:-translate-y-0.5 cursor-pointer min-w-[210px]"
+                    className="bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-orange-500/40 p-3 px-4 rounded-2xl flex items-center gap-3 shrink-0 text-slate-900 transition-all hover:-translate-y-0.5 select-none min-w-[210px]"
                   >
                     <Image
                       src={maker.avatar}
@@ -137,7 +136,7 @@ export default function PagesLandingPage() {
                         </span>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>
@@ -146,10 +145,9 @@ export default function PagesLandingPage() {
             <div className="relative flex overflow-hidden py-1">
               <div className="flex items-center gap-3 sm:gap-4 animate-marquee-right hover:[animation-play-state:paused] w-max">
                 {[...HERO_MAKERS.slice(9), ...HERO_MAKERS.slice(9)].map((maker, idx) => (
-                  <Link
+                  <div
                     key={`row2-${maker.username}-${idx}`}
-                    href={`/page/${maker.username}`}
-                    className="bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-orange-500/40 p-3 px-4 rounded-2xl flex items-center gap-3 shrink-0 text-slate-900 transition-all hover:-translate-y-0.5 cursor-pointer min-w-[210px]"
+                    className="bg-white border border-slate-200/90 shadow-xs hover:shadow-md hover:border-orange-500/40 p-3 px-4 rounded-2xl flex items-center gap-3 shrink-0 text-slate-900 transition-all hover:-translate-y-0.5 select-none min-w-[210px]"
                   >
                     <Image
                       src={maker.avatar}
@@ -166,7 +164,7 @@ export default function PagesLandingPage() {
                         </span>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>

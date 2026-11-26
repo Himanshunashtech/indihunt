@@ -72,6 +72,23 @@ interface ChangelogItem {
 
 const CHANGELOG: ChangelogItem[] = [
   {
+    version: "v8.11.0",
+    date: "November 2026",
+    title: "Google Search Console Soft 404 Resolution & SSR Archive Optimization",
+    summary: "Completely eliminated Google Search Console Soft 404 crawl errors across best-products date archives, uncreated indie maker pages, and deleted product paths. Added server-side validation with real HTTP 404 responses via notFound(), dynamic robots noindex tags for thin/empty daily archives, server-rendered initial payloads for leaderboard dates, and pruned thin date permutations from sitemap.xml.",
+    icon: ShieldCheck,
+    iconColor: "text-emerald-400",
+    iconBg: "bg-emerald-500/10",
+    tags: ["Improvement", "Performance", "Bugfix", "Architecture"],
+    features: [
+      { icon: CheckCircle, text: "True HTTP 404 for Missing Maker Pages: Converted /page/[username] to server-side validation using notFound() with robots: noindex, replacing 200 OK client 'not found' states with genuine 404 headers." },
+      { icon: Zap, text: "Soft 404 Protection on Date Archives: Implemented dynamic robots noindex metadata on /best-products/daily/* routes and empty archive periods so crawlers never treat 0-launch days as soft 404s." },
+      { icon: LayoutGrid, text: "Server-Side Leaderboard Pre-rendering: Pre-fetches and renders initial products for /best-products dates directly in SSR HTML, eliminating blank initial loading states for Googlebot." },
+      { icon: TrendingUp, text: "Sitemap & Internal Link Sanitization: Pruned empty daily/weekly date routes from sitemap.xml, cleaned demo maker marquee links on /pages, and routed maker search results directly to canonical /@username profiles." },
+    ],
+    highlight: true,
+  },
+  {
     version: "v8.10.0",
     date: "November 2026",
     title: "Product Hunt High-Velocity Architecture & Gravity Ranking Engine",

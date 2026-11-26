@@ -41,6 +41,21 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   const cleanUsername = username ? decodeURIComponent(username).replace(/^@/, "") : "";
   const profile = await fetchIndiePageForSeo(cleanUsername);
 
+  if (!profile || profile.indie_page_enabled === false) {
+    return {
+      title: "Page Not Found — IndiHunt",
+      description: "This maker page does not exist or has not been enabled yet.",
+      robots: {
+        index: false,
+        follow: false,
+        googleBot: {
+          index: false,
+          follow: false,
+        },
+      },
+    };
+  }
+
   const displayName = profile?.full_name || `@${cleanUsername}`;
   const title = `${displayName} — Products & Maker Portfolio | IndiHunt`;
   const bio = profile?.headline || profile?.bio || `Discover products, open-source tools, and projects built by ${displayName} on IndiHunt.`;
@@ -90,6 +105,10 @@ export default async function IndiePageLayout({ children, params }: LayoutProps)
   const { username } = await params;
   const cleanUsername = username ? decodeURIComponent(username).replace(/^@/, "") : "";
   const profile = await fetchIndiePageForSeo(cleanUsername);
+
+  if (!profile || profile.indie_page_enabled === false) {
+    return <>{children}</>;
+  }
 
   const displayName = profile?.full_name || `@${cleanUsername}`;
   const canonicalUrl = `${baseUrl}/page/${cleanUsername}`;
